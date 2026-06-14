@@ -1,0 +1,194 @@
+.btbl-table-wrapper {
+	overflow-x: auto;
+	position: relative;
+}
+
+.btbl-table {
+	width: 100%;
+}
+
+.btbl-filter-wrapper {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 12px;
+	position: relative;
+}
+
+.btbl-reset-button {
+	cursor: pointer;
+}
+
+.btbl-filter {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.btbl-filter .select2-container {
+	width: 100% !important;
+}
+
+.select2-container .select2-dropdown {
+	z-index: 9999;
+}
+
+.btbl-filter .select2-container .select2-selection--single {
+	border: 1px solid #d0d7de;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+}
+
+.btbl-filter .select2-container .select2-selection--single .select2-selection__rendered {
+	padding-right: 26px;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 1.4;
+}
+
+.btbl-filter .select2-container .select2-selection--single .select2-selection__arrow {
+	height: 100%;
+}
+
+.btbl-filter-options label {
+	display: inline-block;
+	margin-right: 10px;
+}
+
+.btbl-table-wrapper .dataTables_filter,
+.btbl-table-wrapper .dt-search {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.btbl-table-wrapper .dataTables_filter label,
+.btbl-table-wrapper .dt-search label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+}
+
+.btbl-search-placeholder-visual {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: #6c757d;
+	font-size: 13px;
+	pointer-events: none;
+}
+
+.btbl-has-placeholder-visual .btbl-search-placeholder-visual svg {
+	width: 14px;
+	height: 14px;
+}
+
+.btbl-has-placeholder-visual.btbl-search-filled .btbl-search-placeholder-visual {
+	display: none;
+}
+
+.btbl-search-columns {
+	position: relative;
+}
+
+.btbl-search-columns-toggle {
+	border: 1px solid #d0d7de;
+	background: #fff;
+	border-radius: 4px;
+	padding: 5px 10px;
+	font-size: 13px;
+	cursor: pointer;
+	line-height: 1.2;
+}
+
+.btbl-search-columns-toggle:focus {
+	outline: 2px solid #2271b1;
+	outline-offset: 1px;
+}
+
+.btbl-search-columns-dropdown {
+	position: absolute;
+	right: 0;
+	top: calc(100% + 5px);
+	padding: 10px 10px 10px 12px;
+	border: 1px solid #d0d7de;
+	border-radius: 6px;
+	background: #fff;
+	box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+	display: none;
+	z-index: 20;
+	white-space: nowrap;
+}
+
+.btbl-search-columns-dropdown.is-open {
+	display: block;
+}
+
+.btbl-search-columns-heading {
+	font-weight: 600;
+	font-size: 13px;
+	margin-bottom: 6px;
+}
+
+.btbl-search-columns-list {
+	max-height: 220px;
+	overflow-y: auto;
+	display: grid;
+	gap: 6px;
+	padding-right: 18px;
+}
+
+.btbl-search-columns-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+}
+
+.btbl-empty-state {
+	display: none;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border: 1px dashed #d63638;
+	background: #fff5f5;
+	color: #8a1f11;
+}
+
+.btbl-loading-mask {
+	position: absolute;
+	inset: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	background: rgba(255, 255, 255, 0.9);
+	z-index: 50;
+}
+
+.btbl-table-wrapper.is-loading .btbl-loading-mask {
+	display: flex;
+}
+
+.btbl-table-wrapper.is-loading .btbl-filter-wrapper,
+.btbl-table-wrapper.is-loading .btbl-table {
+	opacity: 0.35;
+	filter: blur(0.5px);
+}
+
+.btbl-spinner {
+	width: 18px;
+	height: 18px;
+	border: 2px solid #c3c4c7;
+	border-top-color: #0073aa;
+	border-radius: 50%;
+	animation: btbl-spin 0.8s linear infinite;
+}
+
+@keyframes btbl-spin {
+	to { transform: rotate(360deg); }
+}

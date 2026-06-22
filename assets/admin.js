@@ -752,6 +752,7 @@ jQuery(function($) {
 		$('.btbl-filter-sort').val('asc');
 		$('input[name^="btbl_dropdown_"]').prop('checked', false);
 		$('.btbl-date-format-input').val('');
+		$('.btbl-format-date-toggle').prop('checked', false);
 		$('textarea[name^="btbl_filter_values"]').val('');
 		$('.btbl-hide-column, .btbl-sort-enabled, .btbl-sortable-toggle').prop('checked', false);
 		$('.btbl-sort-priority').val('');

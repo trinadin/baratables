@@ -3339,6 +3339,9 @@ class BaraTables_Service {
 			if (!empty($col['filter_strict'])) {
 				$state['selected_filter_strict'][$slug] = true;
 			}
+			if (!empty($col['format_date'])) {
+				$state['selected_format_date'][$slug] = true;
+			}
 			if (!empty($col['date_format'])) {
 				$state['selected_date_format'][$slug] = (string) $col['date_format'];
 			}
@@ -3433,7 +3436,7 @@ class BaraTables_Service {
 		$sort_enabled = $this->sanitize_sort_enabled($raw['sort_enabled'] ?? [], $columns);
 		$sortable = $this->sanitize_column_flags($raw['sortable'] ?? [], $columns, true);
 		$date_formats = $this->sanitize_date_formats($raw['date_formats'] ?? []);
-		$format_date_flags = [];
+		$format_date_flags = $this->sanitize_column_flags($raw['format_date_flags'] ?? [], $columns, false);
 		foreach ($date_formats as $slug => $fmt) {
 			$format_date_flags[$slug] = true;
 		}

@@ -20,7 +20,7 @@ final class BaraTables_Asset_Utils {
 
 final class BaraTables_Id_Generator {
 	public static function generate_chart_id(): string {
-		return uniqid('btbl-chart-', false);
+		return 'btbl-chart-' . wp_generate_uuid4();
 	}
 }
 

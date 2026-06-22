@@ -964,6 +964,7 @@ class BaraTables_Admin_Tab_Columns {
 		$selected_sort_enabled = $state['selected_sort_enabled'] ?? [];
 		$selected_sortable = $state['selected_sortable'] ?? [];
 		$selected_filter_values = $state['selected_filter_values'] ?? [];
+		$selected_format_date = $state['selected_format_date'] ?? [];
 		$selected_date_format = $state['selected_date_format'] ?? [];
 		$is_checked = !empty($state['checked']);
 
@@ -1010,6 +1011,7 @@ class BaraTables_Admin_Tab_Columns {
 		$dropdown_search_checked = !empty($selected_dropdown_search[$slug]);
 		$sortable_checked = array_key_exists($slug, $selected_sortable) ? !empty($selected_sortable[$slug]) : true;
 		$date_format_val = $selected_date_format[$slug] ?? '';
+		$format_date_checked = !empty($selected_format_date[$slug]) || $date_format_val !== '';
 		$filter_values_text = '';
 		if (isset($selected_filter_values[$slug]) && is_array($selected_filter_values[$slug])) {
 			$lines = [];
@@ -1134,6 +1136,11 @@ class BaraTables_Admin_Tab_Columns {
 					</div>
 					<?php endif; ?>
 					<div class="btbl-options-row btbl-options-inline btbl-date-format-row <?php echo $is_date_candidate ? '' : 'is-hidden'; ?>" data-date-candidate="<?php echo $is_date_candidate ? '1' : '0'; ?>">
+						<label class="btbl-inline">
+							<input type="hidden" name="btbl_format_date[<?php echo esc_attr($slug_attr); ?>]" value="0" />
+							<input type="checkbox" class="btbl-format-date-toggle" name="btbl_format_date[<?php echo esc_attr($slug_attr); ?>]" value="1" <?php checked($format_date_checked); ?> />
+							<?php esc_html_e('Format as date', 'baratables'); ?>
+						</label>
 						<label class="btbl-inline">
 							<span class="btbl-small-label"><?php esc_html_e('PHP date format', 'baratables'); ?></span>
 							<input type="text" class="btbl-date-format-input" name="btbl_date_format[<?php echo esc_attr($slug_attr); ?>]" value="<?php echo esc_attr($date_format_val); ?>" placeholder="<?php echo esc_attr(get_option('date_format')); ?>" />

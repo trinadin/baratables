@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.2
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -68,10 +68,20 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 == Changelog ==
 
+= 1.0.1 =
+* Improved date formatting controls for WordPress date columns, including support for the site's default date format.
+* Hardened frontend table and chart configuration output.
+* Improved internal table and chart lookups for better admin performance.
+* Switched generated chart IDs to WordPress-native UUIDs.
+* Cleaned the release package for WordPress.org distribution.
+
 = 1.0.0 =
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.1 =
+Maintenance release with improved date formatting controls, safer frontend output, and small admin performance improvements.
 
 = 1.0.0 =
 Initial release.

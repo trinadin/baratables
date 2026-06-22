@@ -133,6 +133,7 @@ class BaraTables_Admin_Action_Handler {
 			'sort_direction' => $sort_direction_raw,
 			'sort_enabled' => $sort_enabled_raw,
 			'sortable' => $sortable_raw,
+			'format_date_flags' => $format_date_raw,
 			'date_formats' => $date_format_raw,
 		], $columns);
 		$custom_labels = $column_state['custom_labels'];

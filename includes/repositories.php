@@ -121,6 +121,7 @@ abstract class BaraTables_Base_Repository {
 			'posts_per_page' => -1,
 			'orderby'        => 'title',
 			'order'          => 'ASC',
+			'no_found_rows'  => true,
 			'fields'         => 'ids',
 		]);
 
@@ -140,6 +141,7 @@ abstract class BaraTables_Base_Repository {
 			'post_type'      => $cpt,
 			'post_status'    => $statuses,
 			'posts_per_page' => 1,
+			'no_found_rows'  => true,
 			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Required for slug-based lookup; indexed meta key.
 			'meta_query'     => [
 				[
@@ -162,6 +164,7 @@ abstract class BaraTables_Base_Repository {
 			'post_type'      => $cpt,
 			'post_status'    => self::STATUSES_WITH_TRASH,
 			'posts_per_page' => 1,
+			'no_found_rows'  => true,
 			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Required for slug-based lookup; indexed meta key.
 			'meta_query'     => [
 				[

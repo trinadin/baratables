@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.2
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -68,6 +68,35 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 == Changelog ==
 
+= 1.1.0 =
+New:
+* Editable Table ID: rename a table's shortcode ID after it is created (handy for fixing a typo). Charts linked to the table are updated automatically, and a notice reminds you to update any [bara_table] shortcodes already placed in your content.
+* Editable Chart ID: the same rename ability for charts, with a reminder to update any [bara_chart] shortcodes already placed in your content.
+* Reorder manual-data rows directly in the editor with up and down controls.
+* Manual-table column headers are now translation-ready and follow the site language.
+* Import a table from another table plugin or a spreadsheet: upload a JSON or XML table export, or a CSV file, and BaraTables creates a matching table for you.
+
+Improvements:
+* Wide manual-data tables now scroll horizontally while keeping the row number and row controls in view.
+* Smoother admin experience: clearer first-time guidance, a Show/Hide help text preference, improved click-to-copy for shortcodes and IDs, and fewer page reloads when configuring a WP Query source.
+* The Table ID / Chart ID now tucks behind an "Edit ID" link (like WordPress's permalink editor), keeping the builder header clean.
+* On Columns & Filters, the column boxes now lay out two-up on desktop, so a single column no longer stretches across the full width.
+* Paste tabular data straight from a spreadsheet into the manual-data grid.
+* Editing a column's heading now updates its label in the column list and the selected-order pills instantly, without a refresh.
+
+Fixes:
+* Removed a deprecated jQuery call (jQuery.trim) that logged a browser console warning.
+* Corrected date columns that used far-future Unix timestamps.
+* Fixed date/time format conversion when importing a table from another plugin (e.g. 24-hour "HH" and short-month "MMM" no longer convert incorrectly).
+* CSV tables with row-level access control now enforce it even when no display columns are selected.
+* The admin column picker now shows translation-ready default column names, matching the rendered table.
+* Numeric columns now sort numerically instead of being mis-read as dates (e.g. values like 3.15, 3.2, 3.9 sort in numeric order).
+* Hardened the table/chart builder AJAX endpoints to require administrator access, matching the rest of the plugin.
+* Gantt charts no longer show a spurious "no data series selected" warning when saved.
+* Reordering columns now correctly enables the Refresh Preview button.
+* Switching the data source away from and back to CSV no longer clears the columns loaded for the selected file.
+* Additional input-sanitization hardening across the admin and import request handlers.
+
 = 1.0.1 =
 * Improved date formatting controls for WordPress date columns, including support for the site's default date format.
 * Hardened frontend table and chart configuration output.
@@ -79,6 +108,9 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.1.0 =
+Feature release: import tables from other plugins or spreadsheets, editable Table and Chart IDs, manual-row reordering, and translation-ready headers, plus admin polish, fixes, and security hardening.
 
 = 1.0.1 =
 Maintenance release with improved date formatting controls, safer frontend output, and small admin performance improvements.

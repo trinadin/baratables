@@ -362,6 +362,7 @@ class BaraTables_Service {
 		'gantt_group' => '',
 		'gantt_progress' => '',
 	];
+	public const AUTO_LABEL_MIGRATION_OPTION = 'btbl_auto_label_migrated';
 	private const MAX_QUERY_ROWS = 500;
 	private const MAX_CSV_BYTES = 5242880;
 	private const MAX_CSV_LINE_LENGTH = 1048576;
@@ -1274,11 +1275,24 @@ class BaraTables_Service {
 		}
 		$key    = implode(':', $parts);
 
+		// Manual (custom) columns default to a positional "Column N" — matching the picker
+		// and the grid — rather than the key-derived name used by other sources.
 		$default_label = ucwords(str_replace(['_', '-'], ' ', $key));
+		if ($source === 'custom' && preg_match('/^col_(\d+)$/', $key, $auto_match)) {
+			$default_label = sprintf('Column %d', (int) $auto_match[1]);
+		}
+
+		// Auto-label is decided purely by whether the user supplied a heading: the gear
+		// field submits an empty string when left at its placeholder default. No
+		// string-matching of the label text — the flag is the single source of truth that
+		// display_column_label reads at render.
+		$auto_label = ($source === 'custom' && $custom_label === '');
+
 		$label_raw = $custom_label !== '' ? $custom_label : $default_label;
 		$label = $this->sanitize_inline_html($label_raw);
 		if ($label === '') {
 			$label = $default_label;
+			$auto_label = ($source === 'custom');
 		}
 		$filter_label_raw = $filter_label === null ? $label : $filter_label;
 		$filter_label_clean = $this->sanitize_inline_html($filter_label_raw);
@@ -1290,6 +1304,7 @@ class BaraTables_Service {
 		return [
 			'key'    => $key,
 			'label'  => $label,
+			'auto_label' => $auto_label,
 			'filter_label' => $filter_label_value,
 			'source' => $source,
 			'filter' => in_array($filter_type, ['dropdown', 'dropdown_multi', 'dropdown_plain', 'dropdown_plain_multi', 'checkbox', 'radio'], true) ? $filter_type : 'none',
@@ -1416,11 +1431,10 @@ class BaraTables_Service {
 		$columns = [];
 		for ($i = 0; $i < $column_count; $i++) {
 			$label_raw = $column_labels_raw[$i] ?? '';
-			$label = $this->sanitize_inline_html((string) $label_raw);
-			if ($label === '') {
-				$label = 'Column ' . ($i + 1);
-			}
-			$columns[] = $label;
+			// Store an empty string for unnamed columns rather than baking "Column N":
+			// the positional default is supplied at render. Keeping it empty preserves the
+			// "the user gave no name" signal so the column is flagged auto_label at save.
+			$columns[] = $this->sanitize_inline_html((string) $label_raw);
 		}
 
 		$target_rows = $rows_count > 0 ? $rows_count : count($rows_raw);
@@ -1455,6 +1469,116 @@ class BaraTables_Service {
 		];
 	}
 
+	/**
+	 * Resolve a column's display header, localized at render time.
+	 *
+	 * Auto-ness comes solely from the explicit `auto_label` flag (set at save when the user
+	 * leaves a manual column's heading blank) or a genuinely empty label — never from
+	 * pattern-matching the label text. A one-time migration (migrate_auto_labels) stamps the
+	 * flag onto tables saved before it existed, so every rendered column is flag-driven.
+	 *
+	 * On en_US "Column %d" returns the identical string, so English tables render unchanged;
+	 * user-named labels and non-manual sources are never touched.
+	 */
+	public function display_column_label(array $col, int $index, string $source_type = ''): string {
+		$label = (string) ($col['label'] ?? '');
+		if ($label === '') {
+			/* translators: %d is the column number. */
+			return sprintf(__('Column %d', 'baratables'), $index + 1);
+		}
+		if (BaraTables_Source_Type::is_custom_data($source_type) && !empty($col['auto_label'])) {
+			/* translators: %d is the column number. */
+			return sprintf(__('Column %d', 'baratables'), $index + 1);
+		}
+		return $label;
+	}
+
+	/**
+	 * Forward-fix chart links after a table's id changes. Charts store their link as the
+	 * table's id (slug); this rewrites any chart pointing at $old_id to $new_id so the
+	 * link survives the rename without leaving an alias behind. Returns the count updated.
+	 */
+	public function rewrite_chart_table_id(string $old_id, string $new_id): int {
+		if ($old_id === '' || $new_id === '' || $old_id === $new_id) {
+			return 0;
+		}
+		// Include 'trash' (which get_posts excludes under 'any'): a trashed chart that is
+		// later restored must still point at the renamed table, not a dead id.
+		$ids = get_posts([
+			'post_type' => BaraTables_Chart_Repository::CPT,
+			'post_status' => ['publish', 'draft', 'pending', 'future', 'private', 'trash'],
+			'numberposts' => -1,
+			'fields' => 'ids',
+			'no_found_rows' => true,
+			'suppress_filters' => true,
+		]);
+		$updated = 0;
+		foreach ($ids as $id) {
+			$chart = get_post_meta((int) $id, BaraTables_Chart_Repository::META_KEY, true);
+			if (!is_array($chart) || ($chart['table_id'] ?? '') !== $old_id) {
+				continue;
+			}
+			$chart['table_id'] = $new_id;
+			update_post_meta((int) $id, BaraTables_Chart_Repository::META_KEY, $chart);
+			$updated++;
+		}
+		return $updated;
+	}
+
+	/**
+	 * One-time upgrade: stamp the explicit auto_label flag onto manual columns saved before
+	 * the flag existed, so the renderer never has to interpret the legacy "Column N" string.
+	 * Idempotent and gated by an option; safe to call on every admin load.
+	 */
+	public function migrate_auto_labels(): void {
+		if (get_option(self::AUTO_LABEL_MIGRATION_OPTION)) {
+			return;
+		}
+		$ids = get_posts([
+			'post_type' => BaraTables_Repository::CPT,
+			'post_status' => 'any',
+			'numberposts' => -1, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page -- One-time migration must visit every table once.
+			'fields' => 'ids',
+			'no_found_rows' => true,
+		]);
+		foreach ($ids as $id) {
+			$defn = get_post_meta((int) $id, BaraTables_Repository::META_KEY, true);
+			if (!is_array($defn) || empty($defn['columns']) || !is_array($defn['columns'])) {
+				continue;
+			}
+			$changed = false;
+			foreach ($defn['columns'] as &$col) {
+				if (!is_array($col) || array_key_exists('auto_label', $col)) {
+					continue;
+				}
+				$col['auto_label'] = $this->legacy_column_is_auto($col);
+				$changed = true;
+			}
+			unset($col);
+			if ($changed) {
+				update_post_meta((int) $id, BaraTables_Repository::META_KEY, $defn);
+			}
+		}
+		update_option(self::AUTO_LABEL_MIGRATION_OPTION, 1, false);
+	}
+
+	/**
+	 * Legacy interpretation used ONLY by the one-time migration: a pre-flag manual column is
+	 * auto when its stored label is blank or equals its positional "Column N" default. This
+	 * is the single place the old string is read — render and save are purely flag-driven.
+	 */
+	private function legacy_column_is_auto(array $col): bool {
+		if (($col['source'] ?? '') !== 'custom') {
+			return false;
+		}
+		$key = (string) ($col['key'] ?? '');
+		if (!preg_match('/^col_(\d+)$/', $key, $m)) {
+			return false;
+		}
+		$label = (string) ($col['label'] ?? '');
+		return $label === '' || $label === sprintf('Column %d', (int) $m[1]);
+	}
+
 	public function build_custom_display_columns(array $labels): array {
 		$labels = array_values($labels);
 		if (empty($labels)) {
@@ -1469,13 +1593,27 @@ class BaraTables_Service {
 
 	private function build_columns_from_keys_and_labels(array $keys, array $labels, string $source): array {
 		$columns = [];
+		$used_keys = [];
 		foreach ($keys as $idx => $key_raw) {
 			$key = sanitize_key((string) $key_raw);
 			if ($key === '') {
 				$key = 'col_' . ($idx + 1);
 			}
+			// Two headers that sanitize to the same key (e.g. "Region"/"region", "Q1"/"q1") would
+			// otherwise share a slug, so row data keyed by slug collapses onto one column. Suffix
+			// duplicates so each column keeps a distinct slug (csv:region, csv:region-2, ...).
+			if (isset($used_keys[$key])) {
+				$base = $key;
+				$n = 2;
+				do {
+					$key = $base . '-' . $n;
+					$n++;
+				} while (isset($used_keys[$key]));
+			}
+			$used_keys[$key] = true;
 			$label_raw = $labels[$idx] ?? '';
-			$label = $label_raw !== '' ? (string) $label_raw : 'Column ' . ($idx + 1);
+			/* translators: %d is the column number. */
+			$label = $label_raw !== '' ? (string) $label_raw : sprintf(__('Column %d', 'baratables'), $idx + 1);
 			$columns[] = [
 				'key' => $key,
 				'label' => $label,
@@ -1697,6 +1835,19 @@ class BaraTables_Service {
 
 		$query = new WP_Query($query_args);
 
+		// If an author column is selected, prime the author user-caches in one query so the
+		// get_the_author_meta() call in the row loop is not a per-author lookup (mild N+1).
+		$wants_author = false;
+		foreach ($definition['columns'] as $col) {
+			if (($col['source'] ?? '') === 'core' && ($col['key'] ?? '') === 'post_author') {
+				$wants_author = true;
+				break;
+			}
+		}
+		if ($wants_author && !empty($query->posts)) {
+			cache_users(array_unique(array_map('intval', wp_list_pluck($query->posts, 'post_author'))));
+		}
+
 		$rows = [];
 		foreach ($query->posts as $post) {
 			if (!empty($access_policy['post_meta_key']) && !$this->post_passes_access_policy($post, $access_policy)) {
@@ -1835,25 +1986,28 @@ class BaraTables_Service {
 			}
 		}
 
-		if (!empty($definition['columns'])) {
-			$inferred = $this->last_inferred_columns ?: [];
-			$csv_index_map = $this->build_slug_map($inferred, function ($col, $idx) {
-				return $idx;
-			});
+		$inferred = $this->last_inferred_columns ?: [];
+		$csv_index_map = $this->build_slug_map($inferred, function ($col, $idx) {
+			return $idx;
+		});
 
-			if ($access_enabled && !empty($access_policy['csv_column'])) {
-				$access_index = $this->resolve_csv_access_column_index($csv_index_map, (string) $access_policy['csv_column']);
-				if ($access_index === null) {
-					return [];
-				}
-				$rows = array_values(array_filter($rows, static function ($row) use ($access_index) {
-					return is_array($row) && array_key_exists($access_index, $row);
-				}));
-				$rows = $this->filter_rows_by_access($rows, function ($row) use ($access_index) {
-					return $row[$access_index];
-				}, $access_policy);
+		// Access control is enforced regardless of whether display columns are configured, so
+		// a CSV table with access control but no selected columns never returns unfiltered
+		// rows (matching the external-DB path).
+		if ($access_enabled && !empty($access_policy['csv_column'])) {
+			$access_index = $this->resolve_csv_access_column_index($csv_index_map, (string) $access_policy['csv_column']);
+			if ($access_index === null) {
+				return [];
 			}
+			$rows = array_values(array_filter($rows, static function ($row) use ($access_index) {
+				return is_array($row) && array_key_exists($access_index, $row);
+			}));
+			$rows = $this->filter_rows_by_access($rows, function ($row) use ($access_index) {
+				return $row[$access_index];
+			}, $access_policy);
+		}
 
+		if (!empty($definition['columns'])) {
 			$rows = $this->reorder_rows_by_slug_map($rows, $definition['columns'], $csv_index_map);
 		}
 
@@ -1867,7 +2021,9 @@ class BaraTables_Service {
 		}
 
 		$file = get_attached_file($attachment_id);
-		if (!$file) {
+		if (!$file || !file_exists($file)) {
+			// The attachment row can outlive its file (e.g. the file was deleted but the post
+			// lingered); a missing file is not a usable CSV source.
 			return false;
 		}
 		$file_type = wp_check_filetype((string) $file, ['csv' => 'text/csv']);
@@ -2115,7 +2271,11 @@ class BaraTables_Service {
 			return $logged_out_policy === 'all';
 		}
 		if (empty($user_tokens)) {
-			return $logged_out_policy === 'all';
+			// A logged-in user with no matching tokens must not see a restricted (tokened) row.
+			// The logged_out policy governs anonymous visitors only — applying it here leaked
+			// restricted CSV/external rows to logged-in users under logged_out='all'. Denying
+			// matches build_access_meta_query (the WP_Query path), so all three sources agree.
+			return false;
 		}
 		return (bool) array_intersect($row_tokens, $user_tokens);
 	}
@@ -2212,13 +2372,13 @@ class BaraTables_Service {
 		$schema['searchColumnsHeading']['label'] = __('Dropdown heading', 'baratables');
 
 		$schema['buttons']['label'] = __('Table buttons', 'baratables');
-		$schema['buttons']['description'] = __('Enable DataTables Buttons for export and visibility controls.', 'baratables');
+		$schema['buttons']['description'] = __('Add export and column-visibility buttons to the table.', 'baratables');
 		$schema['buttons']['choices'] = [
 			'copy' => __('Copy', 'baratables'),
 			'csv' => __('Export CSV', 'baratables'),
 			'print' => __('Print', 'baratables'),
 			'colvis' => __('Column visibility', 'baratables'),
-			'pagelength' => __('Page length', 'baratables'),
+			'pagelength' => __('Page length button', 'baratables'),
 		];
 		$schema['buttonTextCopy']['label'] = __('Copy button text', 'baratables');
 		$schema['buttonTextCsv']['label'] = __('CSV button text', 'baratables');
@@ -2687,7 +2847,9 @@ class BaraTables_Service {
 			return 'date';
 		}
 
-		if (!$has_letters && preg_match('/^[+-]?\\d+(?:\\.\\d+)*$/', $value)) {
+		if (!$has_letters && preg_match('/^[+-]?\\d+(?:\\.\\d+)?$/', $value)) {
+			// `?` (not `*`): a single optional decimal part. `*` matched multi-dot strings like
+			// IP addresses ("10.0.0.1") and version numbers ("1.2.3"), mis-sorting them numerically.
 			return 'number';
 		}
 
@@ -2744,7 +2906,11 @@ class BaraTables_Service {
 		$timestamp = null;
 		if (is_numeric($value)) {
 			$intVal = (int) $value;
-			if ($intVal > 2000000000) {
+			// Treat very large integers as JS millisecond timestamps. The threshold
+			// (1e11) sits well above any plausible seconds-timestamp date (1e11 s ~ year
+			// 5138) and below any modern ms timestamp (~1.7e12), so a seconds-timestamp
+			// for a post-2033 date is no longer misread as milliseconds.
+			if ($intVal > 100000000000) {
 				$intVal = (int) ($intVal / 1000);
 			}
 			$timestamp = $intVal;
@@ -2854,7 +3020,7 @@ class BaraTables_Service {
 			case 'post_title':
 				return get_the_title($post);
 			case 'post_excerpt':
-				return wp_trim_words($post->post_content, 30);
+				return get_the_excerpt($post);
 			case 'post_content':
 				return wp_trim_words($post->post_content, 40);
 			case 'post_date':
@@ -3302,6 +3468,7 @@ class BaraTables_Service {
 			'selected_sort_direction' => [],
 			'selected_sort_enabled' => [],
 			'selected_sortable' => [],
+			'selected_auto_labels' => [],
 		];
 
 		foreach ($columns as $col) {
@@ -3330,6 +3497,7 @@ class BaraTables_Service {
 			if (!empty($col['label'])) {
 				$state['selected_custom_labels'][$slug] = $col['label'];
 			}
+			$state['selected_auto_labels'][$slug] = !empty($col['auto_label']);
 			if (array_key_exists('filter_label', $col)) {
 				$state['selected_filter_labels'][$slug] = (string) $col['filter_label'];
 			}
@@ -3538,18 +3706,25 @@ class BaraTables_Chart_Service {
 		$chart_definition = $chart_definition ?? [];
 		$tables = $this->table_repo->get_definitions();
 		$table_choices = [];
+		$tables_by_id = [];
 		foreach ($tables as $table) {
 			if (!is_array($table) || empty($table['id'])) {
 				continue;
 			}
 			$label = $table['name'] ?? $table['id'];
 			$table_choices[$table['id']] = $label;
+			$tables_by_id[$table['id']] = $table;
 		}
 
 		$table_definition = null;
 		$requested_table_id = $selected_table_id ?: ($chart_definition['table_id'] ?? '');
 		if ($requested_table_id !== '') {
-			$table_definition = $this->table_repo->find_definition($requested_table_id);
+			// get_definitions() already returned every (non-trashed) table's full
+			// definition via the same mapper find_definition() uses, and slugs/ids are
+			// unique, so the in-memory entry is identical to a fresh lookup. Reuse it and
+			// only fall back to a DB round trip if the id isn't in the loaded set.
+			$table_definition = $tables_by_id[$requested_table_id]
+				?? $this->table_repo->find_definition($requested_table_id);
 		}
 		if (!$table_definition && !empty($tables)) {
 			$table_definition = $tables[0];
@@ -3564,6 +3739,36 @@ class BaraTables_Chart_Service {
 		}
 		$chart_options = $this->table_service->sanitize_chart_options($chart_options_raw, $columns);
 
+		// R28: when showing the chart's OWN table (not a deliberate ?table switch), report any
+		// saved column choices that no longer exist on that table so the user isn't left guessing.
+		$dropped_columns = [];
+		$is_own_table = !empty($chart_definition) && $requested_table_id === ($chart_definition['table_id'] ?? '');
+		if ($is_own_table && !empty($columns)) {
+			$slug_set = [];
+			foreach ($columns as $col) {
+				if (!empty($col['slug'])) {
+					$slug_set[$col['slug']] = true;
+				}
+			}
+			$check = [];
+			if (!empty($chart_options_raw['x_axis'])) {
+				$check[] = (string) $chart_options_raw['x_axis'];
+			}
+			foreach ((array) ($chart_options_raw['series'] ?? []) as $series_slug) {
+				$check[] = (string) $series_slug;
+			}
+			foreach (['gantt_label', 'gantt_start', 'gantt_end', 'gantt_group', 'gantt_progress'] as $gantt_key) {
+				if (!empty($chart_options_raw[$gantt_key])) {
+					$check[] = (string) $chart_options_raw[$gantt_key];
+				}
+			}
+			foreach (array_unique(array_filter($check)) as $slug) {
+				if (!isset($slug_set[$slug])) {
+					$dropped_columns[] = $slug;
+				}
+			}
+		}
+
 		return [
 			'definition'       => $chart_definition,
 			'chart_options'    => $chart_options,
@@ -3571,6 +3776,7 @@ class BaraTables_Chart_Service {
 			'table_definition' => $table_definition,
 			'selected_table'   => $table_definition['id'] ?? '',
 			'column_choices'   => $this->table_service->build_column_choices($columns, $columns),
+			'dropped_columns'  => $dropped_columns,
 			'active_tab'       => 'btbl-tab-chart',
 		];
 	}

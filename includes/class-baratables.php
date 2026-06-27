@@ -11,6 +11,7 @@ require_once __DIR__ . '/admin/support.php';
 require_once __DIR__ . '/admin/ui.php';
 require_once __DIR__ . '/admin/actions.php';
 require_once __DIR__ . '/admin/pages.php';
+require_once __DIR__ . '/admin/import.php';
 require_once __DIR__ . '/admin/options.php';
 require_once __DIR__ . '/admin/admin.php';
 require_once __DIR__ . '/frontend.php';
@@ -39,6 +40,7 @@ class BaraTables {
 
 		add_action('init', [$this->admin, 'register_cpt']);
 		add_action('init', [$this->chart_admin, 'register_cpt']);
+		add_action('admin_init', [$this->service, 'migrate_auto_labels']);
 		add_action('admin_menu', [$this, 'cleanup_admin_menu'], 20);
 		add_filter('parent_file', [$this, 'highlight_tables_parent_menu']);
 		add_filter('submenu_file', [$this, 'highlight_tables_submenu'], 10, 2);

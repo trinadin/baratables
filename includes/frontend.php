@@ -392,9 +392,9 @@ class BaraTables_Frontend {
 					<table id="btbl-table-<?php echo esc_attr($table_id); ?>" class="<?php echo esc_attr($table_class_attr); ?>">
 						<thead>
 							<tr>
-								<?php foreach ($definition['columns'] as $col) : ?>
+								<?php foreach ($definition['columns'] as $idx => $col) : ?>
 									<?php $hidden_attr = !empty($col['hidden']) ? ' style="display:none;"' : ''; ?>
-									<?php $heading = !empty($col['hide_title']) ? '&nbsp;' : wp_kses((string) ($col['label'] ?? ''), $allowed_inline); ?>
+									<?php $heading = !empty($col['hide_title']) ? '&nbsp;' : wp_kses($this->service->display_column_label($col, (int) $idx, (string) ($definition['source_type'] ?? '')), $allowed_inline); ?>
 									<th<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo $heading; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through wp_kses(). ?></th>
 								<?php endforeach; ?>
 							</tr>

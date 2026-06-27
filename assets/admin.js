@@ -14,7 +14,7 @@ jQuery(function($) {
 		$row.toggleClass('is-hidden', !sortEnabled);
 		// Keep priority blank unless the user explicitly sets it.
 		if (sortEnabled && $sortPriority.length) {
-			var priorityVal = $.trim($sortPriority.val());
+			var priorityVal = ($sortPriority.val() || '').trim();
 			if (!priorityVal || parseInt(priorityVal, 10) < 1) {
 				$sortPriority.val('1');
 			}
@@ -156,8 +156,9 @@ jQuery(function($) {
 		updateSortVisibility($label);
 	}
 
-	$('#btbl-tab-columns .btbl-checkbox').each(function() {
-		var $label = $(this);
+	// Bind a single column row's controls. Extracted so swapped-in rows (AJAX
+	// post-type refresh) can be re-initialised without a page reload.
+	function initColumnOption($label) {
 		toggleFilterControls($label);
 		$label.find('input[type="checkbox"][name="btbl_columns[]"]').on('change', function() {
 			toggleFilterControls($label);
@@ -185,6 +186,10 @@ jQuery(function($) {
 			var isOpen = $label.find('.btbl-field-options-body').hasClass('is-open');
 			setOptionsOpen($label, !isOpen, true);
 		});
+	}
+
+	$('#btbl-tab-columns .btbl-checkbox').each(function() {
+		initColumnOption($(this));
 	});
 
 	$(document).on('change', 'input[name="btbl_table_options[ordering]"]', function() {
@@ -228,25 +233,14 @@ jQuery(function($) {
 	if ($sourceSelect.length) {
 		$sourceSelect.on('change', function() {
 			syncSourceVisibility();
-			triggerCsvPreviewRefresh(true);
-			var selected = $(this).val();
-			var url = new URL(window.location.href);
-			url.searchParams.set('btbl_source', selected);
-			if (selected === 'custom_query') {
-				var customQuery = $('#btbl_custom_query_json').val() || '';
-				url.searchParams.set('btbl_preview_custom_query', customQuery);
-			} else {
-				url.searchParams.delete('btbl_preview_custom_query');
-			}
-			if (isBuilderPage) {
-				var editId = $('#btbl_post_type').data('edit-id');
-				var pageSlug = $('#btbl_post_type').data('page') || 'baratables';
-				url.searchParams.set('page', pageSlug);
-				if (editId) {
-					url.searchParams.set('id', editId);
-				}
-			}
-			window.location.href = url.toString();
+			// Each source's control block is already in the DOM (toggled above), so switching only
+			// needs to refresh the source-dependent columns panel — done in place via
+			// btbl_refresh_fields (the same AJAX swap the post-type switch uses), no full reload.
+			// CSV column inference still runs through the CSV controls' own refresh (file upload /
+			// delimiter / header), and custom-query/external columns load via their own actions.
+			var postTypeVal = $postTypeSelect.length ? $postTypeSelect.val() : '';
+			var typeParam = Array.isArray(postTypeVal) ? postTypeVal.join(',') : (postTypeVal || '');
+			refreshSourceFields(typeParam);
 		});
 		syncSourceVisibility();
 	}
@@ -255,43 +249,182 @@ jQuery(function($) {
 	if ($postTypeSelect.length) {
 		$postTypeSelect.on('change', function() {
 			var selected = $(this).val();
-			var typeParam = Array.isArray(selected) ? selected.join(',') : selected;
-			var url = new URL(window.location.href);
-			if (isBuilderPage) {
-				var editId = $(this).data('edit-id');
-				var pageSlug = $(this).data('page') || 'baratables';
-				url.searchParams.set('page', pageSlug);
-				if (editId) {
-					url.searchParams.set('id', editId);
-				} else {
-					url.searchParams.delete('id');
-				}
-			}
-			url.searchParams.set('type', typeParam || '');
-			window.location.href = url.toString();
+			var typeParam = Array.isArray(selected) ? selected.join(',') : (selected || '');
+			refreshSourceFields(typeParam);
 		});
+	}
+
+	// Legacy full-page reload — used as a graceful fallback if the AJAX refresh fails.
+	function legacyPostTypeReload(typeParam) {
+		var url = new URL(window.location.href);
+		if (isBuilderPage) {
+			var editId = $postTypeSelect.data('edit-id');
+			var pageSlug = $postTypeSelect.data('page') || 'baratables';
+			url.searchParams.set('page', pageSlug);
+			if (editId) {
+				url.searchParams.set('id', editId);
+			} else {
+				url.searchParams.delete('id');
+			}
+		}
+		url.searchParams.set('type', typeParam || '');
+		window.location.href = url.toString();
+	}
+
+	// Fetch the post-type-dependent fields via admin-ajax and swap them in place
+	// instead of reloading the whole editor.
+	var fieldRefreshSeq = 0;
+	function refreshSourceFields(typeParam) {
+		var $form = $postTypeSelect.closest('form');
+		if (!$form.length) { $form = $('#post'); }
+		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
+		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		var source = $sourceSelect.length ? ($sourceSelect.val() || 'wp_query') : 'wp_query';
+		// CSV columns come from the selected file (id/delimiter/header), not the post type. The
+		// generic fields refresh doesn't carry those params, so it would blank the columns while
+		// leaving a file in the uploader. Route CSV through the CSV-aware refresh instead, which
+		// re-infers the columns of whatever file is still selected (or clears them if none is).
+		if (source === 'csv') {
+			triggerCsvPreviewRefresh();
+			return;
+		}
+		if (!nonce || !window.ajaxurl) {
+			legacyPostTypeReload(typeParam);
+			return;
+		}
+		var seq = ++fieldRefreshSeq;
+		$.post(window.ajaxurl, {
+			action: 'btbl_refresh_fields',
+			post_id: postId,
+			type: typeParam,
+			source: source,
+			_baratables_nonce: nonce
+		}).done(function(resp) {
+			if (seq !== fieldRefreshSeq) { return; } // a newer toggle superseded this response
+			if (resp && resp.success && resp.data) {
+				applyFieldRefresh(resp.data);
+			} else {
+				legacyPostTypeReload(typeParam);
+			}
+		}).fail(function() {
+			if (seq === fieldRefreshSeq) {
+				legacyPostTypeReload(typeParam);
+			}
+		});
+	}
+
+	function applyFieldRefresh(data) {
+		if (typeof data.columns === 'string') {
+			var $newCols = $('<div>').html(data.columns);
+			var $newFieldset = $newCols.find('.btbl-columns').first();
+			if ($newFieldset.length) {
+				$('#btbl-tab-columns .btbl-columns').first().replaceWith($newFieldset);
+				$('#btbl-tab-columns .btbl-checkbox').each(function() {
+					initColumnOption($(this));
+				});
+			}
+		}
+		if (typeof data.source === 'string') {
+			var $newSrc = $('<div>').html(data.source);
+			['.btbl-taxonomy-select', '.btbl-taxonomy-filter'].forEach(function(sel) {
+				var $frag = $newSrc.find(sel).first();
+				var $old = $(sel).first();
+				if ($frag.length && $old.length) {
+					$old.replaceWith($frag);
+				}
+			});
+			$('.btbl-taxonomy-select .btbl-chip-picker').each(function() {
+				initChipPicker($(this));
+			});
+			$('.btbl-tax-terms-group').each(function() {
+				updateTermCount($(this));
+			});
+		}
+		syncSourceVisibility();
+		syncOrderFromSelection();
+		syncFilterOrderFromSelection();
+		if (typeof syncTaxonomyTerms === 'function') {
+			syncTaxonomyTerms();
+		}
 	}
 
 	var $chartTableSelect = $('#btbl_chart_table');
 	if ($chartTableSelect.length) {
-		$chartTableSelect.on('change', function() {
-			var selected = $(this).val();
-			var url = new URL(window.location.href);
-			if (selected) {
-				url.searchParams.set('table', selected);
-			} else {
-				url.searchParams.delete('table');
-			}
-			if (isBuilderPage) {
-				var editId = $('#btbl_chart_id').val() || '';
-				var pageSlug = $(this).data('page') || 'wp-btbl-charts-add';
-				url.searchParams.set('page', pageSlug);
-				if (editId) {
-					url.searchParams.set('id', editId);
-				}
-			}
-			window.location.href = url.toString();
+		$chartTableSelect.on('focus', function() {
+			$(this).data('previous', $(this).val());
 		});
+		$chartTableSelect.on('change', function() {
+			// R29: warn before the reload discards the current column choices.
+			var hasChoices = ($('#btbl_chart_x_axis').val() || '') !== '' ||
+				$('#btbl_chart_series input[type="checkbox"]:checked').length > 0;
+			var confirmMsg = $(this).data('switch-confirm');
+			if (hasChoices && confirmMsg && !window.confirm(confirmMsg)) {
+				$(this).val($(this).data('previous') || '');
+				return;
+			}
+			var selected = $(this).val() || '';
+			$(this).data('previous', selected); // keep the revert target in sync after a switch
+			refreshChartFields(selected);
+		});
+	}
+
+	// Switching a chart's source table rebuilds its X-axis/series/gantt pickers in place via
+	// admin-ajax (btbl_refresh_chart_fields) instead of a full page reload.
+	var chartRefreshSeq = 0;
+	function legacyChartReload(tableId) {
+		var url = new URL(window.location.href);
+		if (tableId) { url.searchParams.set('table', tableId); } else { url.searchParams.delete('table'); }
+		if (isBuilderPage) {
+			var editId = $('#btbl_chart_id').val() || '';
+			var pageSlug = $chartTableSelect.data('page') || 'wp-btbl-charts-add';
+			url.searchParams.set('page', pageSlug);
+			if (editId) { url.searchParams.set('id', editId); }
+		}
+		window.location.href = url.toString();
+	}
+	function refreshChartFields(tableId) {
+		var $form = $chartTableSelect.closest('form');
+		if (!$form.length) { $form = $('#post'); }
+		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
+		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		if (!nonce || !window.ajaxurl) { legacyChartReload(tableId); return; }
+		var seq = ++chartRefreshSeq;
+		$.post(window.ajaxurl, {
+			action: 'btbl_refresh_chart_fields',
+			post_id: postId,
+			table_id: tableId,
+			_baratables_nonce: nonce
+		}).done(function(resp) {
+			if (seq !== chartRefreshSeq) { return; }
+			if (resp && resp.success && resp.data && typeof resp.data.panel === 'string') {
+				applyChartFieldRefresh(resp.data.panel);
+			} else {
+				legacyChartReload(tableId);
+			}
+		}).fail(function() {
+			if (seq === chartRefreshSeq) { legacyChartReload(tableId); }
+		});
+	}
+	function applyChartFieldRefresh(panelHtml) {
+		var $new = $('<div>').html(panelHtml);
+		// Swap only the INNER content of the live, handler-bound nodes — never replace the
+		// <select>/<div> elements themselves, or their directly-bound change handlers are orphaned.
+		['#btbl_chart_x_axis', '#btbl_chart_gantt_label', '#btbl_chart_gantt_start', '#btbl_chart_gantt_end', '#btbl_chart_gantt_group', '#btbl_chart_gantt_progress'].forEach(function(sel) {
+			var $frag = $new.find(sel).first();
+			var $old = $(sel).first();
+			if ($frag.length && $old.length) { $old.html($frag.html()); }
+		});
+		var $seriesFrag = $new.find('#btbl_chart_series').first();
+		if ($seriesFrag.length) { $('#btbl_chart_series').first().html($seriesFrag.html()); }
+		var $oldNotice = $('#btbl-tab-chart .btbl-dropped-columns').first();
+		var $newNotice = $new.find('.btbl-dropped-columns').first();
+		if ($newNotice.length) {
+			if ($oldNotice.length) { $oldNotice.replaceWith($newNotice); } else { $('#btbl-tab-chart').first().prepend($newNotice); }
+		} else if ($oldNotice.length) {
+			$oldNotice.remove();
+		}
+		if (typeof toggleChartControlsUI === 'function') { toggleChartControlsUI(); }
+		if (typeof syncChartSeriesOptions === 'function') { syncChartSeriesOptions(); }
 	}
 	if ($taxonomySelect.length) {
 		$taxonomySelect.on('change', syncTaxonomyTerms);
@@ -310,48 +443,51 @@ jQuery(function($) {
 		return [String(values)];
 	}
 
+	function initChipPicker($picker) {
+		var target = $picker.data('btbl-target');
+		if (!target) {
+			return;
+		}
+		var $select = $(target);
+		if (!$select.length) {
+			return;
+		}
+
+		function syncChips() {
+			var selected = normalizeSelectValues($select.val());
+			$picker.find('.btbl-chip').each(function() {
+				var $chip = $(this);
+				var value = String($chip.data('value'));
+				var isSelected = selected.indexOf(value) !== -1;
+				$chip.toggleClass('is-selected', isSelected);
+				$chip.attr('aria-pressed', isSelected ? 'true' : 'false');
+			});
+		}
+
+		$picker.on('click', '.btbl-chip', function() {
+			var $chip = $(this);
+			if ($chip.hasClass('is-disabled') || $chip.attr('aria-disabled') === 'true') {
+				return;
+			}
+			var value = String($chip.data('value'));
+			var selected = normalizeSelectValues($select.val());
+			var index = selected.indexOf(value);
+			if (index === -1) {
+				selected.push(value);
+			} else {
+				selected.splice(index, 1);
+			}
+			$select.val(selected);
+			syncChips();
+			$select.trigger('change');
+		});
+
+		syncChips();
+	}
+
 	function initChipPickers() {
 		$('.btbl-chip-picker').each(function() {
-			var $picker = $(this);
-			var target = $picker.data('btbl-target');
-			if (!target) {
-				return;
-			}
-			var $select = $(target);
-			if (!$select.length) {
-				return;
-			}
-
-			function syncChips() {
-				var selected = normalizeSelectValues($select.val());
-				$picker.find('.btbl-chip').each(function() {
-					var $chip = $(this);
-					var value = String($chip.data('value'));
-					var isSelected = selected.indexOf(value) !== -1;
-					$chip.toggleClass('is-selected', isSelected);
-					$chip.attr('aria-pressed', isSelected ? 'true' : 'false');
-				});
-			}
-
-			$picker.on('click', '.btbl-chip', function() {
-				var $chip = $(this);
-				if ($chip.hasClass('is-disabled') || $chip.attr('aria-disabled') === 'true') {
-					return;
-				}
-				var value = String($chip.data('value'));
-				var selected = normalizeSelectValues($select.val());
-				var index = selected.indexOf(value);
-				if (index === -1) {
-					selected.push(value);
-				} else {
-					selected.splice(index, 1);
-				}
-				$select.val(selected);
-				syncChips();
-				$select.trigger('change');
-			});
-
-			syncChips();
+			initChipPicker($(this));
 		});
 	}
 
@@ -478,29 +614,64 @@ jQuery(function($) {
 		if (!forceWpQuery && source !== 'csv' && !clearCsv) {
 			return;
 		}
-		var url = new URL(window.location.href);
 		var csvId = clearCsv ? '0' : ($('#btbl_csv_attachment_id').val() || '');
 		var delim = $('#btbl_csv_delimiter').val() || ',';
 		var hasHeader = $('#btbl_csv_has_header').is(':checked') ? '1' : '0';
+		// Fallback: the original full-page reload (used if AJAX is unavailable or the request fails).
+		function legacyCsvReload() {
+			var url = new URL(window.location.href);
+			if (clearCsv) {
+				url.searchParams.set('btbl_preview_csv_id', '0');
+				url.searchParams.delete('btbl_preview_csv_delim');
+				url.searchParams.delete('btbl_preview_csv_header');
+			} else if (csvId) {
+				url.searchParams.set('btbl_preview_csv_id', csvId);
+				url.searchParams.set('btbl_preview_csv_delim', delim);
+				url.searchParams.set('btbl_preview_csv_header', hasHeader);
+			} else {
+				url.searchParams.delete('btbl_preview_csv_id');
+				url.searchParams.delete('btbl_preview_csv_delim');
+				url.searchParams.delete('btbl_preview_csv_header');
+			}
+			url.searchParams.set('btbl_source', source);
+			var activeTab = $('.btbl-tab-link.nav-tab-active').data('target') || '';
+			if (activeTab) { url.searchParams.set('tab', activeTab); }
+			window.location.href = url.toString();
+		}
+		// Infer the CSV columns in place via the shared fields endpoint instead of reloading.
+		var $form = $('#btbl_csv_attachment_id').closest('form');
+		if (!$form.length) { $form = $('#post'); }
+		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
+		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		if (!nonce || !window.ajaxurl) { legacyCsvReload(); return; }
+		var typeVal = $postTypeSelect.length ? $postTypeSelect.val() : '';
+		var payload = {
+			action: 'btbl_refresh_fields',
+			post_id: postId,
+			type: Array.isArray(typeVal) ? typeVal.join(',') : (typeVal || ''),
+			source: 'csv',
+			_baratables_nonce: nonce
+		};
 		if (clearCsv) {
-			url.searchParams.set('btbl_preview_csv_id', '0');
-			url.searchParams.delete('btbl_preview_csv_delim');
-			url.searchParams.delete('btbl_preview_csv_header');
+			payload.csv_id = '0';
 		} else if (csvId) {
-			url.searchParams.set('btbl_preview_csv_id', csvId);
-			url.searchParams.set('btbl_preview_csv_delim', delim);
-			url.searchParams.set('btbl_preview_csv_header', hasHeader);
+			payload.csv_id = csvId;
+			payload.csv_delim = delim;
+			payload.csv_header = hasHeader;
 		} else {
-			url.searchParams.delete('btbl_preview_csv_id');
-			url.searchParams.delete('btbl_preview_csv_delim');
-			url.searchParams.delete('btbl_preview_csv_header');
+			payload.csv_id = '0';
 		}
-		url.searchParams.set('btbl_source', source);
-		var activeTab = $('.btbl-tab-link.nav-tab-active').data('target') || '';
-		if (activeTab) {
-			url.searchParams.set('tab', activeTab);
-		}
-		window.location.href = url.toString();
+		var seq = ++fieldRefreshSeq;
+		$.post(window.ajaxurl, payload).done(function(resp) {
+			if (seq !== fieldRefreshSeq) { return; }
+			if (resp && resp.success && resp.data) {
+				applyFieldRefresh(resp.data);
+			} else {
+				legacyCsvReload();
+			}
+		}).fail(function() {
+			if (seq === fieldRefreshSeq) { legacyCsvReload(); }
+		});
 	}
 
 	$('#btbl_csv_delimiter, #btbl_csv_has_header').on('change input', function() {
@@ -531,6 +702,27 @@ jQuery(function($) {
 		};
 	}
 
+	var gridLabels = {
+		moveUp: $customGrid.data('label-move-up') || 'Move row up',
+		moveDown: $customGrid.data('label-move-down') || 'Move row down',
+		insert: $customGrid.data('label-insert') || 'Insert row below',
+		duplicate: $customGrid.data('label-duplicate') || 'Duplicate row',
+		remove: $customGrid.data('label-delete') || 'Delete row'
+	};
+	var gridConfirmShrink = $customGrid.data('confirm-shrink') || 'Reducing the grid will remove %d filled cell(s). Continue?';
+
+	// R17: read the current header labels from the DOM so resizes preserve them
+	// instead of resetting to the generic "Column N" placeholders.
+	function readCustomGridHeaders() {
+		var headers = [];
+		$customGrid.find('thead th').each(function(idx) {
+			if (idx === 0) { return; } // corner "Column" cell
+			if ($(this).hasClass('btbl-row-actions-head')) { return; }
+			headers.push($(this).text());
+		});
+		return headers;
+	}
+
 	function readCustomGridValues() {
 		var rows = [];
 		$customGrid.find('tbody tr').each(function(rowIdx) {
@@ -543,6 +735,42 @@ jQuery(function($) {
 		return { rows: rows };
 	}
 
+	// R11: how many filled cells would be discarded if we shrink to these counts.
+	function countDroppedCells(rows, counts) {
+		var dropped = 0;
+		for (var r = 0; r < rows.length; r++) {
+			var row = rows[r] || [];
+			for (var c = 0; c < row.length; c++) {
+				if ((r >= counts.rows || c >= counts.cols) && String(row[c] || '') !== '') {
+					dropped++;
+				}
+			}
+		}
+		return dropped;
+	}
+
+	// R12: per-row delete / insert-below / duplicate controls.
+	// Uniform dashicons (shared 20x20 metrics) so the three actions align and size
+	// identically, instead of three mismatched text glyphs.
+	function buildRowAction(cls, dashicon, label, disabled) {
+		var $btn = $('<button type="button"/>')
+			.addClass('button-link ' + cls)
+			.attr({ title: label, 'aria-label': label })
+			.append($('<span class="dashicons ' + dashicon + '" aria-hidden="true"/>'));
+		if (disabled) { $btn.attr('disabled', 'disabled'); }
+		return $btn;
+	}
+	function buildRowActions(rowIndex, rowCount) {
+		var $td = $('<td class="btbl-row-actions"/>');
+		// Reorder controls (disabled at the boundaries), then the edit controls.
+		buildRowAction('btbl-row-move-up', 'dashicons-arrow-up-alt2', gridLabels.moveUp, rowIndex === 0).appendTo($td);
+		buildRowAction('btbl-row-move-down', 'dashicons-arrow-down-alt2', gridLabels.moveDown, rowIndex === rowCount - 1).appendTo($td);
+		buildRowAction('btbl-row-insert', 'dashicons-plus-alt2', gridLabels.insert).appendTo($td);
+		buildRowAction('btbl-row-duplicate', 'dashicons-admin-page', gridLabels.duplicate).appendTo($td);
+		buildRowAction('btbl-row-delete', 'dashicons-no-alt', gridLabels.remove).appendTo($td);
+		return $td;
+	}
+
 	function renderCustomGrid(headers, rows, counts) {
 		var headingLabel = $customGrid.data('heading-label') || 'Column';
 		var colTemplate = $customGrid.data('column-label') || 'Column %d';
@@ -550,26 +778,31 @@ jQuery(function($) {
 		var $table = $('<table class="widefat fixed striped"/>');
 		var $thead = $('<thead/>').appendTo($table);
 		var $headRow = $('<tr/>').appendTo($thead);
-		$('<th scope="col"/>').text(headingLabel).appendTo($headRow);
+		$('<th scope="col" class="btbl-grid-corner"/>').text(headingLabel).appendTo($headRow);
 		for (var c = 0; c < counts.cols; c++) {
 			var placeholder = (colTemplate || '').replace('%d', (c + 1));
 			var headerVal = (headers && headers[c]) ? headers[c] : placeholder;
-			var $th = $('<th scope="col"/>').text(headerVal);
-			$headRow.append($th);
+			$('<th scope="col"/>').text(headerVal).appendTo($headRow);
 		}
+		$('<th scope="col" class="btbl-row-actions-head"><span class="screen-reader-text">' + gridLabels.remove + '</span></th>').appendTo($headRow);
 		var $tbody = $('<tbody/>').appendTo($table);
 		for (var r = 0; r < counts.rows; r++) {
 			var rowLabel = (rowTemplate || 'Row %d').replace('%d', (r + 1));
 			var $tr = $('<tr/>');
-			$tr.append($('<th scope="row"/>').text(rowLabel));
+			// Visible gutter shows just the number; the descriptive "Row N" stays as an
+			// aria-label so screen readers still announce it.
+			$tr.append($('<th scope="row" class="btbl-grid-rownum"/>').attr('aria-label', rowLabel).text(r + 1));
 			var rowValues = rows[r] || [];
 			for (var c2 = 0; c2 < counts.cols; c2++) {
 				var cellVal = rowValues[c2] || '';
+				// R39: title mirrors the value so truncated cells reveal on hover.
 				var $cellInput = $('<input type="text"/>')
 					.attr('name', 'btbl_custom_data[' + r + '][' + c2 + ']')
+					.attr('title', cellVal)
 					.val(cellVal);
 				$tr.append($('<td/>').append($cellInput));
 			}
+			$tr.append(buildRowActions(r, counts.rows));
 			$tbody.append($tr);
 		}
 		$customGrid.empty().append($table);
@@ -578,12 +811,19 @@ jQuery(function($) {
 		$customRowsInput.val(counts.rows);
 	}
 
-	function rebuildCustomGrid() {
+	function rebuildCustomGrid(confirmLoss) {
 		if (!$customGrid.length) {
-			return;
+			return false;
 		}
 		var counts = getCustomCounts();
+		var headers = readCustomGridHeaders();
 		var values = readCustomGridValues();
+		if (confirmLoss) {
+			var dropped = countDroppedCells(values.rows, counts);
+			if (dropped > 0 && !window.confirm(gridConfirmShrink.replace('%d', dropped))) {
+				return false;
+			}
+		}
 		var rows = [];
 		for (var r = 0; r < counts.rows; r++) {
 			var sourceRow = values.rows[r] || [];
@@ -593,18 +833,147 @@ jQuery(function($) {
 			}
 			rows[r] = normalized;
 		}
-		renderCustomGrid([], rows, counts);
+		renderCustomGrid(headers.slice(0, counts.cols), rows, counts);
+		return true;
+	}
+
+	// Re-render from a mutated rows array (used by the row-action buttons).
+	function renderRows(rows) {
+		var cols = parseInt($customGrid.attr('data-cols'), 10) || 1;
+		var rowCount = Math.max(1, Math.min(500, rows.length));
+		renderCustomGrid(readCustomGridHeaders().slice(0, cols), rows, { cols: cols, rows: rowCount });
 	}
 
 	if ($customGrid.length) {
+		// R26/R45: the "Update grid size" button only appears while the column/row counts
+		// differ from the grid that's actually rendered, and hides again on revert.
+		function syncGridRefreshVisibility() {
+			var counts = getCustomCounts();
+			var gridCols = parseInt($customGrid.attr('data-cols'), 10) || counts.cols;
+			var gridRows = parseInt($customGrid.attr('data-rows'), 10) || counts.rows;
+			var changed = (counts.cols !== gridCols) || (counts.rows !== gridRows);
+			// The button simply appearing when counts change is signal enough — no extra
+			// highlight on the button or the grid cells.
+			$customRefresh.prop('hidden', !changed);
+		}
 		$customRefresh.on('click', function(e) {
 			e.preventDefault();
-			rebuildCustomGrid();
+			if (rebuildCustomGrid(true) !== false) {
+				syncGridRefreshVisibility(); // counts now match the grid -> button hides
+			}
 		});
-		$customColsInput.add($customRowsInput).on('change input', function() {
-			$(this).closest('.btbl-custom-grid-control').addClass('is-dirty');
+		$customColsInput.add($customRowsInput).on('change input', syncGridRefreshVisibility);
+		syncGridRefreshVisibility(); // hidden on load (counts match the rendered grid)
+		// R39: keep the hover title in sync as the user types.
+		$customGrid.on('input', 'input[name^="btbl_custom_data"]', function() {
+			$(this).attr('title', $(this).val());
 		});
-		rebuildCustomGrid();
+		// Reorder rows (R44): move the focused row up/down one position.
+		function focusMovedRow(newIdx, dir) {
+			var primary = dir === 'up' ? '.btbl-row-move-up' : '.btbl-row-move-down';
+			var fallback = dir === 'up' ? '.btbl-row-move-down' : '.btbl-row-move-up';
+			var $row = $customGrid.find('tbody tr').eq(newIdx);
+			var $btn = $row.find(primary);
+			if (!$btn.length || $btn.is('[disabled]')) {
+				$btn = $row.find(fallback); // hit the boundary — keep focus on the row
+			}
+			$btn.trigger('focus');
+		}
+		$customGrid.on('click', '.btbl-row-move-up', function() {
+			var idx = $(this).closest('tr').index();
+			if (idx <= 0) { return; }
+			var rows = readCustomGridValues().rows;
+			var moved = rows.splice(idx, 1)[0];
+			rows.splice(idx - 1, 0, moved);
+			renderRows(rows);
+			focusMovedRow(idx - 1, 'up');
+		});
+		$customGrid.on('click', '.btbl-row-move-down', function() {
+			var idx = $(this).closest('tr').index();
+			var rows = readCustomGridValues().rows;
+			if (idx >= rows.length - 1) { return; }
+			var moved = rows.splice(idx, 1)[0];
+			rows.splice(idx + 1, 0, moved);
+			renderRows(rows);
+			focusMovedRow(idx + 1, 'down');
+		});
+		// R12: row actions.
+		$customGrid.on('click', '.btbl-row-delete', function() {
+			var idx = $(this).closest('tr').index();
+			var rows = readCustomGridValues().rows;
+			if (rows.length <= 1) {
+				rows = [[]];
+			} else {
+				rows.splice(idx, 1);
+			}
+			renderRows(rows);
+		});
+		$customGrid.on('click', '.btbl-row-insert', function() {
+			var idx = $(this).closest('tr').index();
+			var rows = readCustomGridValues().rows;
+			rows.splice(idx + 1, 0, []);
+			renderRows(rows);
+		});
+		$customGrid.on('click', '.btbl-row-duplicate', function() {
+			var idx = $(this).closest('tr').index();
+			var rows = readCustomGridValues().rows;
+			var copy = (rows[idx] || []).slice();
+			rows.splice(idx + 1, 0, copy);
+			renderRows(rows);
+		});
+		// R13: paste tab/newline-delimited data from a spreadsheet.
+		$customGrid.on('paste', 'input[name^="btbl_custom_data"]', function(e) {
+			var clip = (e.originalEvent || e).clipboardData || window.clipboardData;
+			if (!clip) { return; }
+			var text = clip.getData('text/plain') || clip.getData('Text') || '';
+			var hasTab = text.indexOf('\t') !== -1;
+			var hasNewline = /\r|\n/.test(text);
+			if (!hasTab && !hasNewline) { return; } // single cell — default paste
+			e.preventDefault();
+			var lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
+			var $cell = $(this);
+			var $row = $cell.closest('tr');
+			var startRow = $row.index();
+			var startCol = $row.find('input[name^="btbl_custom_data"]').index($cell);
+			var values = readCustomGridValues().rows;
+			var maxCol = startCol;
+			for (var i = 0; i < lines.length; i++) {
+				var cells = lines[i].split('\t');
+				var rIdx = startRow + i;
+				if (!values[rIdx]) { values[rIdx] = []; }
+				for (var j = 0; j < cells.length; j++) {
+					values[rIdx][startCol + j] = cells[j];
+					if (startCol + j > maxCol) { maxCol = startCol + j; }
+				}
+			}
+			var newCols = Math.min(50, Math.max(parseInt($customGrid.attr('data-cols'), 10) || 1, maxCol + 1));
+			var newRows = Math.min(500, Math.max(parseInt($customGrid.attr('data-rows'), 10) || 1, values.length));
+			renderCustomGrid(readCustomGridHeaders().slice(0, newCols), values, { cols: newCols, rows: newRows });
+		});
+		rebuildCustomGrid(false);
+	}
+
+	function customQueryPostTypeParam(raw) {
+		try {
+			var parsed = JSON.parse(raw);
+			var pt = parsed && parsed.post_type;
+			if (Array.isArray(pt)) { return pt.join(','); }
+			if (typeof pt === 'string' && pt) { return pt; }
+		} catch (e) {}
+		return '';
+	}
+
+	// Gate "Load columns": show it only once the JSON differs from the query whose columns are
+	// currently loaded. With the AJAX load (no reload), markCustomQueryLoaded() advances
+	// loadedQuery after a successful swap so the button re-hides.
+	var loadedQuery = $customQueryInput.length ? ($customQueryInput.val() || '') : '';
+	function syncQueryRefreshVisibility() {
+		if (!$customQueryRefresh.length) { return; }
+		$customQueryRefresh.prop('hidden', ($customQueryInput.val() || '') === loadedQuery);
+	}
+	function markCustomQueryLoaded(raw) {
+		loadedQuery = raw;
+		syncQueryRefreshVisibility();
 	}
 
 	function triggerCustomQueryPreview() {
@@ -612,17 +981,43 @@ jQuery(function($) {
 			return;
 		}
 		var raw = $customQueryInput.val() || '';
-		var url = new URL(window.location.href);
-		url.searchParams.set('btbl_source', 'custom_query');
-		url.searchParams.set('btbl_preview_custom_query', raw);
-		var activeTab = $('.btbl-tab-link.nav-tab-active').data('target') || '';
-		if (activeTab) {
-			url.searchParams.set('tab', activeTab);
+		var $form = $customQueryInput.closest('form');
+		if (!$form.length) { $form = $('#post'); }
+		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
+		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		if (!nonce || !window.ajaxurl) {
+			// Fallback: legacy full-page reload.
+			var url = new URL(window.location.href);
+			url.searchParams.set('btbl_source', 'custom_query');
+			url.searchParams.set('btbl_preview_custom_query', raw);
+			var activeTab = $('.btbl-tab-link.nav-tab-active').data('target') || '';
+			if (activeTab) { url.searchParams.set('tab', activeTab); }
+			window.location.href = url.toString();
+			return;
 		}
-		window.location.href = url.toString();
+		$customQueryRefresh.prop('disabled', true);
+		var seq = ++fieldRefreshSeq;
+		$.post(window.ajaxurl, {
+			action: 'btbl_refresh_fields',
+			post_id: postId,
+			type: customQueryPostTypeParam(raw),
+			source: 'custom_query',
+			custom_query: raw,
+			_baratables_nonce: nonce
+		}).done(function(resp) {
+			if (seq !== fieldRefreshSeq) { return; }
+			if (resp && resp.success && resp.data) {
+				applyFieldRefresh(resp.data);
+				markCustomQueryLoaded(raw); // columns now match this query -> re-hide the button
+			}
+		}).always(function() {
+			if (seq === fieldRefreshSeq) { $customQueryRefresh.prop('disabled', false); }
+		});
 	}
 
 	if ($customQueryRefresh.length) {
+		$customQueryInput.on('change input', syncQueryRefreshVisibility);
+		syncQueryRefreshVisibility();
 		$customQueryRefresh.on('click', function(e) {
 			e.preventDefault();
 			triggerCustomQueryPreview();
@@ -666,21 +1061,36 @@ jQuery(function($) {
 			return;
 		}
 		$el.addClass('is-copied');
+		// R9: announce the copy to screen readers.
+		var label = $el.data('copied-label') || 'Copied';
+		var $live = $('#btbl-copy-live');
+		if (!$live.length) {
+			$live = $('<span id="btbl-copy-live" class="screen-reader-text" aria-live="polite"></span>').appendTo('body');
+		}
+		$live.text('');
+		setTimeout(function() { $live.text(label); }, 50);
 		setTimeout(function() {
 			$el.removeClass('is-copied');
 		}, 1500);
 	}
+
+	// Re-sync hook (assigned by the select-all block below). The master "select all" checkbox
+	// can only be counted correctly once the Columns tab is visible, so re-run it on activation.
+	var resyncSelectAllColumns = function () {};
 
 	function activateTab(targetId) {
 		var $targetPanel = $('#' + targetId);
 		if (!$targetPanel.length) {
 			return;
 		}
-		$('.btbl-tab-link').removeClass('nav-tab-active');
-		$('.btbl-tab-link[data-target="' + targetId + '"]').addClass('nav-tab-active');
+		$('.btbl-tab-link').removeClass('nav-tab-active').attr('aria-selected', 'false');
+		$('.btbl-tab-link[data-target="' + targetId + '"]').addClass('nav-tab-active').attr('aria-selected', 'true');
 		$('.btbl-tab-panel').removeClass('is-active');
 		$targetPanel.addClass('is-active');
 		$('#btbl_active_tab').val(targetId);
+		if (targetId === 'btbl-tab-columns') {
+			resyncSelectAllColumns();
+		}
 		if (window.history && window.history.replaceState) {
 			var url = new URL(window.location.href);
 			url.searchParams.set('tab', targetId);
@@ -716,6 +1126,50 @@ jQuery(function($) {
 		var $el = $(this);
 		var shortcode = $el.data('shortcode') || $el.text();
 		copyShortcode(shortcode, $el);
+	});
+
+	// Collapsible shortcode-ID editor (WordPress slug-editor pattern): "Edit ID" reveals the
+	// input; OK collapses and optimistically updates the shortcode display; Cancel reverts.
+	function collapseIdEditor($editor) {
+		$editor.closest('.btbl-shortcode-row').removeClass('is-editing-id');
+		$editor.find('.btbl-id-edit-panel').prop('hidden', true);
+		$editor.find('.btbl-id-edit-toggle').prop('hidden', false).trigger('focus');
+	}
+	function reflectShortcodeId(newId) {
+		var clean = String(newId).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+		var $code = $('.btbl-shortcode-permalink .btbl-shortcode').first();
+		if (!$code.length) { return; }
+		var updated = $code.text().replace(/id="[^"]*"/, 'id="' + clean + '"');
+		$code.text(updated).attr('data-shortcode', updated);
+	}
+	$(document).on('click', '.btbl-id-edit-toggle', function() {
+		var $editor = $(this).closest('.btbl-id-editor');
+		$editor.closest('.btbl-shortcode-row').addClass('is-editing-id');
+		$(this).prop('hidden', true);
+		var $input = $editor.find('.btbl-id-edit-panel').prop('hidden', false).find('.btbl-id-input');
+		$input.data('original', $input.val()).trigger('focus');
+		if ($input[0] && $input[0].select) { $input[0].select(); }
+	});
+	$(document).on('click', '.btbl-id-edit-ok', function() {
+		var $editor = $(this).closest('.btbl-id-editor');
+		reflectShortcodeId($editor.find('.btbl-id-input').val());
+		collapseIdEditor($editor);
+	});
+	$(document).on('click', '.btbl-id-edit-cancel', function() {
+		var $editor = $(this).closest('.btbl-id-editor');
+		var $input = $editor.find('.btbl-id-input');
+		if (typeof $input.data('original') !== 'undefined') { $input.val($input.data('original')); }
+		collapseIdEditor($editor);
+	});
+	// Enter acts as OK, Escape as Cancel — and never submits the surrounding post form.
+	$(document).on('keydown', '.btbl-id-input', function(e) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			$(this).closest('.btbl-id-editor').find('.btbl-id-edit-ok').trigger('click');
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			$(this).closest('.btbl-id-editor').find('.btbl-id-edit-cancel').trigger('click');
+		}
 	});
 
 	function togglePaginationControls() {
@@ -930,14 +1384,41 @@ jQuery(function($) {
 				paging: isPagingEnabled,
 				buttons: hasButtons
 			};
+			var disabledHint = $builder.find('.btbl-layout-grid').data('disabled-hint') || '';
 			Object.keys(availability).forEach(function(key) {
 				var enabled = availability[key];
 				$builder.find('.btbl-layout-chip[data-feature="' + key + '"]')
 					.toggleClass('is-disabled', !enabled)
-					.attr('aria-disabled', enabled ? 'false' : 'true');
+					.attr('aria-disabled', enabled ? 'false' : 'true')
+					.attr('title', enabled ? null : disabledHint);
 			});
 		}
 
+		function getCurrentLayout() {
+			var map = {};
+			$builder.find('.btbl-layout-drop[data-zone]').each(function() {
+				var zone = $(this).data('zone');
+				if (zone === 'palette') { return; }
+				map[zone] = $(this).find('.btbl-layout-chip').map(function() {
+					return $(this).data('feature');
+				}).get();
+			});
+			return map;
+		}
+		function layoutMatchesDefaults() {
+			var d = $builder.data('defaults') || {};
+			if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } }
+			var cur = getCurrentLayout();
+			var keys = {};
+			Object.keys(d).forEach(function(k) { keys[k] = 1; });
+			Object.keys(cur).forEach(function(k) { keys[k] = 1; });
+			return Object.keys(keys).every(function(k) {
+				return JSON.stringify(d[k] || []) === JSON.stringify(cur[k] || []);
+			});
+		}
+		function syncLayoutResetVisibility() {
+			$builder.find('.btbl-layout-reset').prop('hidden', layoutMatchesDefaults());
+		}
 		function resetLayout() {
 			var defaults = $builder.data('defaults') || {};
 			if (typeof defaults === 'string') {
@@ -959,7 +1440,7 @@ jQuery(function($) {
 				});
 			});
 			syncLayoutInputs();
-			updateLayoutAvailability();
+			updateLayoutAvailability(); syncLayoutResetVisibility();
 		}
 
 		$builder.on('dragstart', '.btbl-layout-chip', function(e) {
@@ -995,7 +1476,7 @@ jQuery(function($) {
 				$(this).append(dragItem);
 			}
 			syncLayoutInputs();
-			updateLayoutAvailability();
+			updateLayoutAvailability(); syncLayoutResetVisibility();
 		});
 
 		$builder.on('dragover', '.btbl-layout-chip', function(e) {
@@ -1017,11 +1498,11 @@ jQuery(function($) {
 		});
 
 		$(document).on('change', 'input[name="btbl_table_options[searchBox]"], input[name="btbl_table_options[lengthChange]"], input[name="btbl_table_options[info]"], input[name="btbl_table_options[paging]"], input[name="btbl_table_options[buttons][]"]', function() {
-			updateLayoutAvailability();
+			updateLayoutAvailability(); syncLayoutResetVisibility();
 		});
 
 		syncLayoutInputs();
-		updateLayoutAvailability();
+		updateLayoutAvailability(); syncLayoutResetVisibility();
 	}
 
 	$('.btbl-layout-builder').each(function() {
@@ -1043,7 +1524,10 @@ jQuery(function($) {
 		var dragSlug = null;
 
 		function updateInput() {
-			$input.val(order.join(','));
+			// Fire change so listeners (e.g. the Refresh-preview reveal) notice a reorder —
+			// jQuery .val() alone is silent. Safe during init: the reveal handler binds later,
+			// so the initial sync's change is a no-op until a real user reorder.
+			$input.val(order.join(',')).trigger('change');
 		}
 
 		function renderList() {
@@ -1056,6 +1540,9 @@ jQuery(function($) {
 				var $item = $('<li/>')
 					.attr('draggable', true)
 					.attr('data-slug', slug)
+					.attr('tabindex', '0')
+					.attr('role', 'listitem')
+					.attr('title', config.keyboardHint || 'Use the up and down arrow keys to reorder.')
 					.html(label);
 				$list.append($item);
 			});
@@ -1075,6 +1562,28 @@ jQuery(function($) {
 			renderList();
 			updateInput();
 		}
+
+		// R19: keyboard reordering (parity with drag-and-drop).
+		$list.on('keydown', 'li', function(e) {
+			if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+				return;
+			}
+			e.preventDefault();
+			var slug = $(this).data('slug');
+			var idx = order.indexOf(slug);
+			if (idx === -1) {
+				return;
+			}
+			var newIdx = e.key === 'ArrowUp' ? idx - 1 : idx + 1;
+			if (newIdx < 0 || newIdx >= order.length) {
+				return;
+			}
+			order.splice(idx, 1);
+			order.splice(newIdx, 0, slug);
+			renderList();
+			updateInput();
+			$list.find('li[data-slug="' + slug + '"]').trigger('focus');
+		});
 
 		$list.on('dragstart', 'li', function(e) {
 			dragSlug = $(this).data('slug');
@@ -1169,6 +1678,25 @@ jQuery(function($) {
 		filterOrderController.sync();
 	}
 
+	// Live-update a column's heading — the label next to its checkbox and its order/filter pills —
+	// as the gear's "Column heading" field is typed, instead of waiting for a Refresh.
+	$(document).on('input', '#btbl-tab-columns input[name^="btbl_custom_labels"]', function() {
+		var $input = $(this);
+		var $box = $input.closest('.btbl-checkbox');
+		var $checkbox = $box.find('input[name="btbl_columns[]"]').first();
+		var slug = $checkbox.val();
+		if (!slug) {
+			return;
+		}
+		var typed = ($input.val() || '').trim();
+		var label = typed !== '' ? typed : ($input.attr('data-default-label') || slug);
+		$box.find('.btbl-field-name').first().text(label);
+		// Keep the checkbox's data-label (read by getSelectedColumnsMap) in sync — both the
+		// attribute and jQuery's cached .data() — so any rebuilt pills use the new heading too.
+		$checkbox.attr('data-label', label).data('label', label);
+		$('#btbl-column-order-list li[data-slug="' + slug + '"], #btbl-filter-order-list li[data-slug="' + slug + '"]').text(label);
+	});
+
 	var $selectAllColumns = $('#btbl_select_all_columns');
 	if ($selectAllColumns.length) {
 		function syncSelectAllState() {
@@ -1177,6 +1705,9 @@ jQuery(function($) {
 			$selectAllColumns.prop('checked', allChecked);
 		}
 
+		// Let activateTab() re-sync once the Columns tab is actually visible (on load the tab is
+		// display:none, so a :visible count here would see zero checkboxes and read "unchecked").
+		resyncSelectAllColumns = syncSelectAllState;
 		syncSelectAllState();
 
 		$selectAllColumns.on('change', function() {
@@ -1250,15 +1781,15 @@ jQuery(function($) {
 		if (!$series.length) {
 			return;
 		}
-		$series.find('option').each(function() {
+		// R8: checkbox series list — hide and uncheck the column chosen as the X-axis.
+		$series.find('.btbl-chart-series-option').each(function() {
 			var $opt = $(this);
-			var isXAxis = xAxis !== '' && $opt.val() === xAxis;
-			$opt.prop('hidden', isXAxis);
-			if (isXAxis && $opt.is(':selected')) {
-				$opt.prop('selected', false);
+			var isXAxis = xAxis !== '' && String($opt.data('slug')) === xAxis;
+			$opt.toggleClass('is-hidden', isXAxis);
+			if (isXAxis) {
+				$opt.find('input[type="checkbox"]').prop('checked', false);
 			}
 		});
-		$series.trigger('change.select2');
 	}
 
 	function toggleChartControlsUI() {
@@ -1269,7 +1800,8 @@ jQuery(function($) {
 		$standardBlock.toggleClass('is-hidden', isGantt);
 		$ganttBlock.toggleClass('is-hidden', !isGantt);
 
-		var $requiredStandard = $('#btbl_chart_x_axis, #btbl_chart_series');
+		// Series is now a checkbox group (no native required); the save guard warns on empty series.
+		var $requiredStandard = $('#btbl_chart_x_axis');
 		var $requiredGantt = $('#btbl_chart_gantt_label, #btbl_chart_gantt_start, #btbl_chart_gantt_end');
 		if (!isGantt) {
 			$requiredStandard.attr('required', 'required');
@@ -1280,7 +1812,6 @@ jQuery(function($) {
 		}
 
 		updateChartStackToggle();
-		$('#btbl_chart_series').trigger('change.select2');
 	}
 
 	$('#btbl_chart_x_axis').on('change', syncChartSeriesOptions);
@@ -1297,13 +1828,59 @@ jQuery(function($) {
 			return;
 		}
 
-		function closeModal() {
-			$modal.removeClass('is-open');
+		var lastFocus = null;
+
+		function getFocusable() {
+			return $modal.find('.btbl-chart-type-card, .btbl-chart-modal__close, a[href], button').filter(':visible');
 		}
 
-		function openModal() {
-			$modal.addClass('is-open');
+		function closeModal() {
+			if (!$modal.hasClass('is-open')) {
+				return;
+			}
+			$modal.removeClass('is-open');
+			// R10: return focus to the control that opened the modal.
+			if (lastFocus && typeof lastFocus.focus === 'function') {
+				lastFocus.focus();
+			}
 		}
+
+		function openModal(trigger) {
+			lastFocus = trigger || document.activeElement;
+			$modal.addClass('is-open');
+			// R10: move focus into the dialog (active card, else first card/close).
+			var $target = $chooser.find('.btbl-chart-type-card.is-active').first();
+			if (!$target.length) {
+				$target = $chooser.find('.btbl-chart-type-card').first();
+			}
+			if (!$target.length) {
+				$target = $modal.find('.btbl-chart-modal__close').first();
+			}
+			if ($target.length) {
+				$target.attr('tabindex', '0');
+				$target[0].focus();
+			}
+		}
+
+		// R10: trap Tab within the open dialog.
+		$modal.on('keydown', function(e) {
+			if (e.key !== 'Tab' || !$modal.hasClass('is-open')) {
+				return;
+			}
+			var $focusable = getFocusable();
+			if (!$focusable.length) {
+				return;
+			}
+			var first = $focusable[0];
+			var last = $focusable[$focusable.length - 1];
+			if (e.shiftKey && document.activeElement === first) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && document.activeElement === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		});
 
 		function syncFromSelect() {
 			var val = $select.val() || '';
@@ -1337,7 +1914,7 @@ jQuery(function($) {
 				return;
 			}
 			e.preventDefault();
-			openModal();
+			openModal(this);
 		});
 
 		$closers.on('click keydown', function(e) {
@@ -1356,4 +1933,67 @@ jQuery(function($) {
 	}
 
 	initChartTypeChooser();
+
+	// Audit follow-up: per-user "Show/Hide help text" toggle (governs .btbl-help-text).
+	$(document).on('click', '#btbl-help-toggle', function(e) {
+		e.preventDefault();
+		var $t = $(this);
+		var hide = !document.body.classList.contains('btbl-help-hidden');
+		document.body.classList.toggle('btbl-help-hidden', hide);
+		var label = hide ? ($t.data('show-label') || 'Show help text') : ($t.data('hide-label') || 'Hide help text');
+		$t.attr({ 'aria-label': label, title: label });
+		$.post(window.ajaxurl, { action: 'btbl_toggle_help', hide: hide ? '1' : '0', _wpnonce: $t.data('nonce') });
+	});
+
+	// R6: validate the Value overrides JSON on blur so a typo doesn't silently discard rules.
+	$(document).on('blur', '#btbl_value_overrides_json', function() {
+		var $ta = $(this);
+		var $err = $('#btbl_value_overrides_error');
+		var val = ($ta.val() || '').trim();
+		if (val === '') {
+			$err.prop('hidden', true);
+			$ta.removeClass('btbl-invalid');
+			return;
+		}
+		try {
+			JSON.parse(val);
+			$err.prop('hidden', true);
+			$ta.removeClass('btbl-invalid');
+		} catch (err) {
+			$err.prop('hidden', false);
+			$ta.addClass('btbl-invalid');
+		}
+	});
+
+	// R15/R45: show the Refresh-preview button only while the builder differs from the
+	// state the preview currently reflects; hide it again when edits are reverted.
+	var $builderForm = $('#btbl-table-builder').closest('form');
+	if (!$builderForm.length) { $builderForm = $('#post'); }
+	var previewedState = $builderForm.length ? $builderForm.serialize() : '';
+	function syncRefreshPreviewVisibility() {
+		if (!$builderForm.length) { return; }
+		var dirty = $builderForm.serialize() !== previewedState;
+		$('.btbl-preview-toolbar').prop('hidden', !dirty);
+	}
+	$(document).on('change input', '#btbl-table-builder :input', syncRefreshPreviewVisibility);
+
+	// R15: refresh the table preview against the current (unsaved) builder state.
+	$(document).on('click', '#btbl-refresh-preview', function(e) {
+		e.preventDefault();
+		var $btn = $(this);
+		var $target = $('#btbl-preview-target');
+		if (!$target.length) { return; }
+		var serialized = $builderForm.length ? $builderForm.serialize() : '';
+		var data = serialized + '&action=btbl_refresh_preview';
+		$btn.prop('disabled', true);
+		$.post(window.ajaxurl, data).done(function(resp) {
+			if (resp && resp.success && resp.data && typeof resp.data.html === 'string') {
+				$target.html(resp.data.html);
+				previewedState = serialized; // preview now reflects this state
+				syncRefreshPreviewVisibility(); // -> hides the button until the next edit
+			}
+		}).always(function() {
+			$btn.prop('disabled', false);
+		});
+	});
 });

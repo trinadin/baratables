@@ -35,6 +35,13 @@
 
 	if ($.fn.dataTable && $.fn.dataTable.ext) {
 		$.fn.dataTable.ext.type.detect.unshift(function(d) {
+			var text = btblExtractText(d);
+			// Bare numbers/decimals are NOT dates — Date.parse() accepts "3.2", "12", "184000",
+			// etc., which would mis-detect numeric columns and sort them by bogus timestamps.
+			// Real dates carry a separator or month name, so let those fall through to Date.parse.
+			if (text && /^[+-]?\d+(\.\d+)?$/.test(text)) {
+				return null;
+			}
 			var parsed = btblParseDate(d);
 			return parsed !== null ? 'btbl-date' : null;
 		});
@@ -392,7 +399,9 @@
 					type: 'pie',
 					name: label,
 					data: pieData,
-					emphasis: { focus: 'data' }
+					// ECharts pie emphasis.focus accepts 'none' | 'self' | 'series'; the invalid
+					// 'data' was silently ignored, so hovering never faded the other slices.
+					emphasis: { focus: 'self' }
 				}];
 			} else {
 				option.xAxis = { type: 'category', data: prepared.categories };
@@ -523,48 +532,10 @@
 		}
 
 		var tableOptions = config.tableOptions || {};
-		var resolvedOptions = $.extend(true, {
-			paging: true,
-			lengthChange: true,
-			searchBox: true,
-			ordering: true,
-			colReorder: false,
-			info: true,
-			stripe: true,
-			rowBorder: true,
-			cellBorder: false,
-			hover: true,
-			orderColumn: true,
-			compact: false,
-			buttons: [],
-			pageLength: 25,
-			searchText: '',
-			infoText: '',
-			infoEmpty: '',
-			infoFiltered: '',
-			searchPlaceholder: '',
-			lengthMenuPrefix: 'Show',
-			lengthMenuSuffix: 'entries',
-			pagingNumbers: true,
-			pagingFirstLast: true,
-			pagingPreviousNext: true,
-			paginateFirst: '',
-			paginatePrevious: '',
-			paginateNext: '',
-			paginateLast: '',
-			searchColumns: true,
-			searchColumnsLabel: '',
-			searchColumnsHeading: '',
-			buttonTextCopy: '',
-			buttonTextCsv: '',
-			buttonTextPrint: '',
-			buttonTextColvis: '',
-			buttonTextPagelength: '',
-			layoutTopStart: ['pagelength', 'buttons'],
-			layoutTopEnd: ['search'],
-			layoutBottomStart: ['info'],
-			layoutBottomEnd: ['paging']
-		}, tableOptions);
+		// tableOptions is the complete set resolved by PHP (merge_table_options always starts
+		// from the full defaults), so duplicating those defaults here would be dead code that
+		// can only drift out of sync. Clone the PHP-resolved set directly.
+		var resolvedOptions = $.extend(true, {}, tableOptions);
 		['layoutTopStart', 'layoutTopEnd', 'layoutBottomStart', 'layoutBottomEnd'].forEach(function(key) {
 			if (Object.prototype.hasOwnProperty.call(tableOptions, key)) {
 				resolvedOptions[key] = Array.isArray(tableOptions[key]) ? tableOptions[key].slice() : [];
@@ -895,7 +866,7 @@
 				if (colSettings.bSearchable === false || nonSearchableSet[idx]) {
 					return;
 				}
-				var headerHtml = $.trim($(this.header()).html() || colSettings.sTitle || '');
+				var headerHtml = ($(this.header()).html() || colSettings.sTitle || '').trim();
 				var defaultLabel = 'Column ' + (idx + 1);
 				if (!headerHtml) {
 					headerHtml = defaultLabel;
@@ -1013,10 +984,16 @@
 					$(document).on('click', handleDocumentClick);
 				}
 
+				var searchDebounce;
 				$searchInput.on('input', function() {
 					searchState.term = $searchInput.val() || '';
-					table.search(searchState.term).draw();
-					syncStateToUrl();
+					// Debounce the draw so a table with an attached chart does not fire a full
+					// notMerge chart re-render on every keystroke (matches DataTables' searchDelay).
+					clearTimeout(searchDebounce);
+					searchDebounce = setTimeout(function() {
+						table.search(searchState.term).draw();
+						syncStateToUrl();
+					}, 250);
 				});
 
 				table.on('search.dt', function(event, settings) {

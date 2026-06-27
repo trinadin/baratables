@@ -44,22 +44,39 @@ class BaraTables_Admin_Pages {
 				<input type="hidden" name="btbl_action" value="<?php echo esc_attr($form_action); ?>" />
 			<?php endif; ?>
 			<input type="hidden" name="btbl_active_tab" id="btbl_active_tab" value="<?php echo esc_attr($active_tab); ?>" />
-			<?php if ($editing_defn) : ?>
-				<input type="hidden" name="btbl_table_id" value="<?php echo esc_attr($editing_defn['id'] ?? ''); ?>" />
-			<?php endif; ?>
-			<?php BaraTables_Admin_Page_Utils::render_title_section(
+			<?php
+			$id_editor_html = '';
+			if ($editing_defn) {
+				ob_start();
+				BaraTables_Admin_Page_Utils::render_id_editor('btbl_table_id', (string) $table_id, __('Table ID', 'baratables'), '[bara_table]');
+				$id_editor_html = (string) ob_get_clean();
+			}
+			BaraTables_Admin_Page_Utils::render_title_section(
 				__('Table name', 'baratables'),
 				'btbl_name',
 				$title_value,
 				$shortcode,
-				$include_title
-			); ?>
+				$include_title,
+				$id_editor_html
+			);
+			?>
+			<?php BaraTables_Help::render_toggle(); ?>
+			<?php if (!$editing_defn && BaraTables_Help::is_first_table()) : ?>
+				<div class="notice notice-info inline btbl-intro-callout btbl-help-text">
+					<p>
+						<strong><?php esc_html_e('New table:', 'baratables'); ?></strong>
+						<?php esc_html_e('1. Pick a data source on the Source tab.', 'baratables'); ?>
+						<?php esc_html_e('2. Choose at least one column on Columns &amp; Filters.', 'baratables'); ?>
+						<?php esc_html_e('3. Publish.', 'baratables'); ?>
+					</p>
+				</div>
+			<?php endif; ?>
 			<div class="btbl-tab-wrapper">
-				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper">
-					<a href="#btbl-tab-general" class="<?php echo esc_attr($nav_class('btbl-tab-general')); ?>" data-target="btbl-tab-general"><?php esc_html_e('Source', 'baratables'); ?></a>
-					<a href="#btbl-tab-columns" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & Filters', 'baratables'); ?></a>
-					<a href="#btbl-tab-table" class="<?php echo esc_attr($nav_class('btbl-tab-table')); ?>" data-target="btbl-tab-table"><?php esc_html_e('Options', 'baratables'); ?></a>
-					<a href="#btbl-tab-advanced" class="<?php echo esc_attr($nav_class('btbl-tab-advanced')); ?>" data-target="btbl-tab-advanced"><?php esc_html_e('Advanced', 'baratables'); ?></a>
+				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist">
+					<a href="#btbl-tab-general" id="btbl-tab-general-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-general' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-general')); ?>" data-target="btbl-tab-general"><?php esc_html_e('Source', 'baratables'); ?></a>
+					<a href="#btbl-tab-columns" id="btbl-tab-columns-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-columns' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & Filters', 'baratables'); ?></a>
+					<a href="#btbl-tab-table" id="btbl-tab-table-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-table' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-table')); ?>" data-target="btbl-tab-table"><?php esc_html_e('Options', 'baratables'); ?></a>
+					<a href="#btbl-tab-advanced" id="btbl-tab-advanced-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-advanced' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-advanced')); ?>" data-target="btbl-tab-advanced"><?php esc_html_e('Advanced', 'baratables'); ?></a>
 				</h2>
 
 				<?php
@@ -79,6 +96,20 @@ class BaraTables_Admin_Pages {
 		<?php if ($wrap_form) : ?>
 			</form>
 		<?php endif;
+	}
+
+	/** Render just the Columns & Filters panel (used by the no-reload field refresh). */
+	public function render_columns_panel(array $context, ?array $editing_defn): string {
+		ob_start();
+		$this->tab_columns->render($context, $editing_defn);
+		return (string) ob_get_clean();
+	}
+
+	/** Render just the Source panel (used by the no-reload field refresh). */
+	public function render_source_panel(array $context, ?array $editing_defn, string $page_slug): string {
+		ob_start();
+		$this->tab_general->render($context, $editing_defn, $page_slug);
+		return (string) ob_get_clean();
 	}
 
 	public function render_preview_panel(array $definition, array $rows): void {
@@ -209,7 +240,7 @@ class BaraTables_Admin_Pages {
 									}
 									?>
 									<th<?php echo !empty($header_class) ? ' class="' . esc_attr(implode(' ', $header_class)) . '"' : ''; ?>>
-										<?php echo !empty($col['hide_title']) ? '&nbsp;' : wp_kses((string) ($col['label'] ?? ''), $allowed_inline); ?>
+										<?php echo !empty($col['hide_title']) ? '&nbsp;' : wp_kses($this->service->display_column_label($col, (int) $idx, (string) ($definition['source_type'] ?? '')), $allowed_inline); ?>
 									</th>
 								<?php endforeach; ?>
 							</tr>

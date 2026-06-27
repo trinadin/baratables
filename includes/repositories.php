@@ -125,6 +125,14 @@ abstract class BaraTables_Base_Repository {
 			'fields'         => 'ids',
 		]);
 
+		// With fields => 'ids', WP_Query skips update_post_caches(), so the per-id
+		// get_post()/get_post_meta() in the mapper would each be an individual query
+		// (1 + 2N). Prime the post + meta caches in one bulk pass so the mapper reads
+		// from cache. Term cache is not needed by the mapper.
+		if (!empty($query->posts)) {
+			_prime_post_caches($query->posts, false, true);
+		}
+
 		$items = [];
 		foreach ($query->posts as $post_id) {
 			$item = $mapper((int) $post_id, $include_trash);

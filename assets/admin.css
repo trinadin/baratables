@@ -45,6 +45,22 @@
 	grid-gap: 16px;
 }
 
+/* Columns & Filters: split a column group's boxes into two INDEPENDENT stacks on desktop, so a
+   single column never spans the full width and expanding one box's options doesn't push or gap
+   the column beside it (each stack flows on its own — no shared grid-row height, no rebalancing).
+   Below this breakpoint the stacks fall back to a single natural column. */
+@media (min-width: 783px) {
+	.btbl-column-cols {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		/* Column-gap matches the boxes' vertical gap (.btbl-checkbox margin-bottom: 8px) so the
+		   horizontal and vertical spacing between boxes is equal. Row-gap stays 0 — the boxes
+		   supply their own vertical rhythm. */
+		gap: 0 8px;
+		align-items: start;
+	}
+}
+
 .btbl-control-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -555,16 +571,66 @@
 	color: #5a6675;
 }
 
+/* Every .btbl-shortcode box is click-to-copy — give them all the same affordance. */
 .btbl-shortcode {
 	cursor: pointer;
 	position: relative;
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 6px;
+	border-radius: 3px;
+	transition: background-color 0.12s ease;
+}
+
+.btbl-shortcode::before {
+	font-family: dashicons;
+	content: "\f105"; /* dashicons-admin-page (copy) */
+	margin-right: 4px;
+	opacity: 0.7;
+}
+
+.btbl-shortcode:hover,
+.btbl-shortcode:focus-visible {
+	background: #e7f1fb;
+}
+
+.btbl-shortcode:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 1px;
+}
+
+/* On copy: the icon morphs to a green check, and a floating badge fades in above
+   the box (absolute — no layout shift / no text appended to the end). */
+.btbl-shortcode.is-copied::before {
+	content: "\f147"; /* dashicons-yes */
+	color: #00a32a;
+	opacity: 1;
+}
+
+.btbl-shortcode::after {
+	content: attr(data-copied-label);
+	position: absolute;
+	left: 50%;
+	bottom: 100%;
+	margin-bottom: 4px;
+	transform: translate(-50%, 3px);
+	background: #1d2327;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.7;
+	padding: 1px 8px;
+	border-radius: 4px;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease, transform 0.15s ease;
+	z-index: 10;
 }
 
 .btbl-shortcode.is-copied::after {
-	content: 'Copied';
-	margin-left: 6px;
-	color: #2271b1;
-	font-weight: 600;
+	opacity: 1;
+	transform: translate(-50%, 0);
 }
 
 .btbl-tab-wrapper {
@@ -722,13 +788,38 @@
 	border: 1px solid var(--btbl-border-medium);
 	border-radius: 3px;
 	background: var(--btbl-bg-muted);
-	cursor: move;
+	cursor: grab;
 	user-select: none;
+	transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* R34: make the drag affordance obvious before the cursor lands. */
+.btbl-sortable-list li:hover {
+	border-color: #2271b1;
+}
+
+.btbl-sortable-list li:active {
+	cursor: grabbing;
+}
+
+.btbl-sortable-list li:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 1px;
 }
 
 .btbl-sortable-list li.is-drag-over {
 	border-color: #2271b1;
 	background: #e7f3ff;
+}
+
+/* R3/R4: full-width inline field hints inside the column gear. */
+.btbl-field-hint {
+	flex-basis: 100%;
+	margin: 2px 0 0;
+}
+
+.btbl-field-hint code {
+	font-size: 12px;
 }
 
 .btbl-order-separator {
@@ -761,12 +852,21 @@
 	color: #2271b1;
 	text-decoration: none;
 	line-height: 1;
+	padding: 4px;
+	min-width: 28px;
+	min-height: 28px;
+	border-radius: 3px;
 }
 
 .btbl-chart-preview-trigger:hover,
 .btbl-chart-preview-trigger:focus {
 	color: #135e96;
-	outline: none;
+}
+
+/* R24: restore a visible focus ring (was outline:none). */
+.btbl-chart-preview-trigger:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
 }
 
 .btbl-chart-modal {
@@ -819,6 +919,18 @@
 	line-height: 1;
 	color: #000;
 	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 6px;
+	min-width: 32px;
+	min-height: 32px;
+	border-radius: 3px;
+}
+
+.btbl-chart-modal__close:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
 }
 
 .btbl-chart-type-chooser {
@@ -888,4 +1000,325 @@
 	font-weight: 600;
 	font-size: 13px;
 	color: #1f2933;
+}
+
+/* Manual data grid — QoL (R12 row actions, R26 stale state, R39 scroll/sticky) */
+.btbl-custom-grid {
+	max-height: 440px;
+	overflow: auto;
+}
+/* Auto layout + per-cell min-widths so many columns overflow and scroll
+   horizontally, instead of squishing every input into a tiny box. */
+.btbl-custom-grid table.widefat {
+	table-layout: auto;
+	width: auto;
+	min-width: 100%;
+}
+.btbl-custom-grid tbody td input[type="text"] {
+	min-width: 120px;
+	width: 100%;
+	box-sizing: border-box;
+}
+.btbl-custom-grid thead th {
+	position: sticky;
+	top: 0;
+	background: #fff;
+	z-index: 2;
+	white-space: nowrap;
+}
+/* Freeze the row-number gutter (left) and the action column (right) so they
+   stay anchored while scrolling horizontally. */
+.btbl-custom-grid .btbl-grid-corner,
+.btbl-custom-grid .btbl-grid-rownum {
+	position: sticky;
+	left: 0;
+	background: #fff;
+	z-index: 3;
+	width: 1%;
+	white-space: nowrap;
+	text-align: center;
+	color: #a7aaad;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+	-webkit-user-select: none;
+	user-select: none;
+}
+.btbl-custom-grid .btbl-row-actions,
+.btbl-custom-grid .btbl-row-actions-head {
+	position: sticky;
+	right: 0;
+	background: #fff;
+	z-index: 3;
+}
+/* Corner cells (top + side) sit above both sticky axes. */
+.btbl-custom-grid thead .btbl-grid-corner,
+.btbl-custom-grid thead .btbl-row-actions-head {
+	z-index: 4;
+}
+/* Keep the frozen rails matching the zebra striping. */
+.btbl-custom-grid tbody tr:nth-child(odd) .btbl-grid-rownum,
+.btbl-custom-grid tbody tr:nth-child(odd) .btbl-row-actions {
+	background: #f6f7f7;
+}
+/* Icon-only refresh/reset buttons: a clean, borderless icon button (WP-native hover feel) rather
+   than a boxed .button. The selector outranks `.wp-core-ui .button` (0,2,0) so these win. */
+.wp-core-ui .button.btbl-icon-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	min-height: 32px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: transparent;
+	box-shadow: none;
+	color: #2271b1;
+	cursor: pointer;
+	transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.wp-core-ui .button.btbl-icon-button:hover,
+.wp-core-ui .button.btbl-icon-button:focus {
+	background: #f0f0f1;
+	border-color: #c3c4c7;
+	color: #135e96;
+	box-shadow: none;
+}
+.wp-core-ui .button.btbl-icon-button:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 1px;
+}
+.wp-core-ui .button.btbl-icon-button:active {
+	background: #e0e0e1;
+}
+/* Center the glyph itself: WP's `.wp-core-ui .button .dashicons` (0,3,0) forces line-height:38px +
+   vertical-align:top, dropping the glyph low in the box. Outrank it (0,4,0) and flex-center. */
+.wp-core-ui .button.btbl-icon-button .dashicons {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	margin: 0;
+	font-size: 20px;
+	line-height: 1;
+	vertical-align: middle;
+}
+/* Both WP's .button and the inline-flex above outrank the UA [hidden] rule, so re-assert hiding
+   for the gated icon buttons (grid / query / reset) at higher specificity than the flex rule. */
+.wp-core-ui .button.btbl-icon-button[hidden] {
+	display: none;
+}
+.btbl-row-actions {
+	white-space: nowrap;
+	width: 1%;
+	text-align: right;
+	vertical-align: middle;
+}
+.btbl-row-actions .button-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	margin: 0 1px;
+	border-radius: 4px;
+	color: #50575e;
+	text-decoration: none;
+	cursor: pointer;
+	vertical-align: middle;
+}
+.btbl-row-actions .button-link .dashicons {
+	width: 15px;
+	height: 15px;
+	font-size: 15px;
+	line-height: 1;
+}
+/* Visually separate the reorder group from the edit group. */
+.btbl-row-actions .btbl-row-insert {
+	margin-left: 8px;
+}
+.btbl-row-actions .button-link[disabled] {
+	opacity: 0.35;
+	cursor: default;
+	pointer-events: none;
+}
+.btbl-row-actions .button-link:hover,
+.btbl-row-actions .button-link:focus-visible {
+	color: #135e96;
+	background: #f0f0f1;
+}
+.btbl-row-actions .btbl-row-delete:hover,
+.btbl-row-actions .btbl-row-delete:focus-visible {
+	color: #d63638;
+	background: #fcf0f1;
+}
+
+/* R22: sub-section headings inside the column gear. */
+.btbl-gear-section-heading {
+	margin: 12px 0 4px;
+	font-weight: 600;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #646970;
+	border-bottom: 1px solid var(--btbl-line, #e0e0e0);
+	padding-bottom: 3px;
+}
+.btbl-field-options-body .btbl-gear-section-heading:first-child {
+	margin-top: 0;
+}
+
+/* R6: JSON validation feedback on the Value overrides field. */
+textarea.btbl-invalid {
+	border-color: #d63638;
+	box-shadow: 0 0 0 1px #d63638;
+}
+.btbl-json-error {
+	color: #d63638;
+	font-weight: 600;
+	margin: 4px 0 0;
+}
+
+/* R27: empty layout palette placeholder + clearer disabled chip. */
+.btbl-palette-placeholder {
+	color: #646970;
+	font-size: 12px;
+	font-style: italic;
+}
+.btbl-layout-palette-drop:has(.btbl-layout-chip) .btbl-palette-placeholder {
+	display: none;
+}
+/* The placeholder carries `.description`'s bottom margin (.btbl-control .description: 10px), which
+   leaves dead space at the bottom of the palette drop zone. Drop it inside the palette. */
+.btbl-layout-drop.btbl-layout-palette-drop .btbl-palette-placeholder {
+	margin-bottom: 0;
+}
+.btbl-layout-chip.is-disabled {
+	cursor: not-allowed;
+}
+
+/* Audit follow-up: "Show/Hide help text" preference. */
+/* Collapsible shortcode-ID editor (WordPress slug-editor pattern): "Edit ID" by default,
+   the inline input + hint only on demand — keeps the builder header uncluttered. */
+/* The id editor sits inline, to the right of the shortcode box (both in .btbl-shortcode-row). */
+.btbl-shortcode-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+}
+/* The metabox variant is a <div> (the id editor is block-level and cannot
+   live inside a <p>), so restore the vertical rhythm a paragraph would give. */
+.btbl-shortcode-row-inline {
+	margin: 1em 0;
+}
+.btbl-id-editor {
+	margin: 0;
+}
+/* While editing the ID, the editor takes the place of the shortcode display (hide the
+   "Shortcode: [...]" label + box) so it replaces that area instead of sitting beside it. */
+.btbl-shortcode-row.is-editing-id > strong,
+.btbl-shortcode-row.is-editing-id > .btbl-shortcode-permalink {
+	display: none;
+}
+.btbl-shortcode-row.is-editing-id .btbl-id-edit-panel {
+	margin-top: 0;
+}
+.btbl-id-edit-toggle:not([hidden]) {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0;
+	font-size: 12px;
+	color: #2271b1;
+	text-decoration: none;
+	cursor: pointer;
+}
+.btbl-id-edit-toggle:hover,
+.btbl-id-edit-toggle:focus-visible {
+	color: #135e96;
+}
+.btbl-id-edit-toggle .dashicons {
+	font-size: 15px;
+	width: 15px;
+	height: 15px;
+}
+.btbl-id-edit-panel:not([hidden]) {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 4px;
+}
+.btbl-id-edit-label {
+	font-weight: 600;
+}
+.btbl-id-input {
+	font-family: Menlo, Consolas, Monaco, monospace;
+	min-width: 240px;
+	max-width: 100%;
+}
+.btbl-id-edit-hint {
+	flex-basis: 100%;
+	margin: 2px 0 0;
+}
+/* Help toggle: an icon button pinned to the top-right corner of the builder metabox
+   (positioned against WP's already-relative .inside). When help is hidden the icon is
+   muted and crossed out to signal "off". */
+.btbl-help-toggle {
+	position: absolute;
+	top: 0;
+	right: 12px;
+	z-index: 2;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: #2271b1;
+	border-radius: 4px;
+	cursor: pointer;
+}
+.btbl-help-toggle:hover,
+.btbl-help-toggle:focus-visible {
+	background: #f0f0f1;
+	color: #135e96;
+}
+.btbl-help-toggle .dashicons {
+	font-size: 20px;
+	width: 20px;
+	height: 20px;
+	line-height: 1;
+}
+body.btbl-help-hidden .btbl-help-toggle {
+	color: #787c82;
+}
+body.btbl-help-hidden .btbl-help-toggle::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 22px;
+	height: 2px;
+	margin: -1px 0 0 -11px;
+	background: currentColor;
+	transform: rotate(-45deg);
+	border-radius: 2px;
+	pointer-events: none;
+}
+body.btbl-help-hidden .btbl-help-text {
+	display: none !important;
+}
+
+/* "Hide help text" hides ALL the gray helper/description prose across the builder,
+   including the explanations inside each column's gear. */
+body.btbl-help-hidden .btbl-admin .description,
+body.btbl-help-hidden .btbl-admin .btbl-field-hint {
+	display: none !important;
 }

@@ -337,6 +337,7 @@ class BaraTables_Admin_Form_Context {
 		$selected_filter_values = $column_state['selected_filter_values'];
 		$selected_format_date = $column_state['selected_format_date'];
 		$selected_custom_labels = $column_state['selected_custom_labels'];
+		$selected_auto_labels = $column_state['selected_auto_labels'] ?? [];
 		$selected_filter_labels = $column_state['selected_filter_labels'];
 		$selected_filter_type_priority = $column_state['selected_filter_type_priority'];
 		$selected_filter_strict = $column_state['selected_filter_strict'];
@@ -369,6 +370,7 @@ class BaraTables_Admin_Form_Context {
 			'selected_filter_type_priority' => $selected_filter_type_priority,
 			'selected_filter_strict' => $selected_filter_strict,
 			'selected_custom_labels' => $selected_custom_labels,
+			'selected_auto_labels' => $selected_auto_labels,
 			'selected_taxonomy' => $selected_taxonomy,
 			'selected_tax_terms' => $selected_tax_terms,
 			'custom_query_pretty' => $custom_query_pretty,
@@ -506,7 +508,7 @@ class BaraTables_Admin_Tab_General {
 							<label class="btbl-small-heading" for="btbl_custom_grid"><?php esc_html_e('Custom data', 'baratables'); ?></label>
 							<p class="description"><?php esc_html_e('Adjust column/row counts and click Update grid to resize before saving.', 'baratables'); ?></p>
 						</div>
-						<button type="button" class="button" id="btbl_custom_grid_refresh"><?php esc_html_e('Update grid size', 'baratables'); ?></button>
+						<button type="button" class="button btbl-icon-button" id="btbl_custom_grid_refresh" aria-label="<?php echo esc_attr__('Update grid size', 'baratables'); ?>" title="<?php echo esc_attr__('Update grid size', 'baratables'); ?>"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>
 					</div>
 					<?php $allowed_inline = BaraTables_Service::allowed_inline_html(); ?>
 					<div
@@ -518,15 +520,22 @@ class BaraTables_Admin_Tab_General {
 						data-row-label="<?php echo esc_attr(__('Row %d', 'baratables')); ?>"
 						<?php // translators: %d is the column number. ?>
 						data-column-label="<?php echo esc_attr(__('Column %d', 'baratables')); ?>"
-						data-heading-label="<?php echo esc_attr(__('Column', 'baratables')); ?>"
+						data-heading-label="#"
+						data-label-move-up="<?php echo esc_attr__('Move row up', 'baratables'); ?>"
+						data-label-move-down="<?php echo esc_attr__('Move row down', 'baratables'); ?>"
+						data-label-insert="<?php echo esc_attr__('Insert row below', 'baratables'); ?>"
+						data-label-duplicate="<?php echo esc_attr__('Duplicate row', 'baratables'); ?>"
+						data-label-delete="<?php echo esc_attr__('Delete row', 'baratables'); ?>"
+						<?php // translators: %d is the number of filled cells that would be removed. ?>
+						data-confirm-shrink="<?php echo esc_attr__('Reducing the grid will remove %d filled cell(s). Continue?', 'baratables'); ?>"
 					>
 						<table class="widefat fixed striped">
 							<thead>
 								<tr>
-									<th scope="col"><?php esc_html_e('Column', 'baratables'); ?></th>
+									<th scope="col" class="btbl-grid-corner">#</th>
 									<?php for ($c = 0; $c < $custom_cols_count; $c++) : ?>
 										<?php // translators: %d is the column number. ?>
-										<?php $col_label = $custom_columns[$c] ?? sprintf(__('Column %d', 'baratables'), $c + 1); ?>
+										<?php $col_label = ($custom_columns[$c] ?? '') !== '' ? $custom_columns[$c] : sprintf(__('Column %d', 'baratables'), $c + 1); ?>
 										<th scope="col"><?php echo wp_kses($col_label, $allowed_inline); ?></th>
 									<?php endfor; ?>
 								</tr>
@@ -536,10 +545,10 @@ class BaraTables_Admin_Tab_General {
 									<?php $row_values = $custom_rows[$r] ?? array_fill(0, $custom_cols_count, ''); ?>
 									<tr>
 										<?php // translators: %d is the row number. ?>
-										<th scope="row"><?php echo esc_html(sprintf(__('Row %d', 'baratables'), $r + 1)); ?></th>
+										<th scope="row" class="btbl-grid-rownum" aria-label="<?php echo esc_attr(sprintf(__('Row %d', 'baratables'), $r + 1)); ?>"><?php echo esc_html((string) ($r + 1)); ?></th>
 										<?php for ($c = 0; $c < $custom_cols_count; $c++) : ?>
 											<td>
-												<input type="text" name="btbl_custom_data[<?php echo esc_attr($r); ?>][<?php echo esc_attr($c); ?>]" value="<?php echo esc_attr($row_values[$c] ?? ''); ?>" />
+												<input type="text" name="btbl_custom_data[<?php echo esc_attr($r); ?>][<?php echo esc_attr($c); ?>]" value="<?php echo esc_attr($row_values[$c] ?? ''); ?>" title="<?php echo esc_attr($row_values[$c] ?? ''); ?>" />
 											</td>
 										<?php endfor; ?>
 									</tr>
@@ -685,7 +694,7 @@ class BaraTables_Admin_Tab_General {
 							<label class="btbl-small-heading" for="btbl_custom_query_json"><?php esc_html_e('Custom WP_Query args (JSON)', 'baratables'); ?></label>
 							<p class="description"><?php esc_html_e('Define WP_Query args in JSON. Only public post types and published posts are queried, and result size is capped.', 'baratables'); ?></p>
 						</div>
-						<button type="button" class="button" id="btbl_custom_query_refresh"><?php esc_html_e('Load columns', 'baratables'); ?></button>
+						<button type="button" class="button btbl-icon-button" id="btbl_custom_query_refresh" hidden aria-label="<?php echo esc_attr__('Load columns', 'baratables'); ?>" title="<?php echo esc_attr__('Load columns', 'baratables'); ?>"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>
 					</div>
 					<textarea name="btbl_custom_query_json" id="btbl_custom_query_json" class="large-text code" rows="6" placeholder='{"post_type":["post","product"],"posts_per_page":50,"meta_key":"price","meta_query":[{"key":"price","value":10,"compare":">="}],"orderby":{"meta_value_num":"DESC"},"tax_query":[{"taxonomy":"category","field":"slug","terms":["news","events"],"operator":"IN"}]}' spellcheck="false"><?php echo esc_textarea($custom_query_raw !== '' ? $custom_query_raw : $custom_query_pretty); ?></textarea>
 				</div>
@@ -751,6 +760,7 @@ class BaraTables_Admin_Tab_Columns {
 		$selected_filter_type_priority = $context['selected_filter_type_priority'] ?? [];
 		$selected_filter_strict = $context['selected_filter_strict'] ?? [];
 		$selected_custom_labels = $context['selected_custom_labels'] ?? [];
+		$selected_auto_labels = $context['selected_auto_labels'] ?? [];
 		$selected_hide_titles = $context['selected_hide_titles'] ?? [];
 		$selected_searchable = $context['selected_searchable'] ?? [];
 		$selected_hidden_columns = $context['selected_hidden_columns'] ?? [];
@@ -776,6 +786,7 @@ class BaraTables_Admin_Tab_Columns {
 			'selected_filter_sort' => $selected_filter_sort,
 			'selected_filter_values' => $selected_filter_values,
 			'selected_custom_labels' => $selected_custom_labels,
+			'selected_auto_labels' => $selected_auto_labels,
 			'selected_filter_labels' => $selected_filter_labels,
 			'selected_filter_type_priority' => $selected_filter_type_priority,
 			'selected_filter_strict' => $selected_filter_strict,
@@ -805,7 +816,7 @@ class BaraTables_Admin_Tab_Columns {
 							$this->render_simple_column_group(
 								$display_columns,
 								__('CSV columns', 'baratables'),
-								__('No columns detected yet. Save after choosing a CSV to load its headers.', 'baratables'),
+								__('No columns yet. Choose a CSV file in the Source tab and its headers load automatically.', 'baratables'),
 								'core:',
 								$column_option_state,
 								$selected_columns
@@ -907,12 +918,12 @@ class BaraTables_Admin_Tab_Columns {
 			<div class="btbl-selected-order">
 				<strong class="btbl-small-heading"><?php esc_html_e('Selected column order', 'baratables'); ?></strong>
 				<p class="description"><?php esc_html_e('Drag to change the display order of selected columns.', 'baratables'); ?></p>
-				<ul id="btbl-column-order-list" class="btbl-sortable-list" aria-label="<?php esc_attr_e('Selected columns order', 'baratables'); ?>"></ul>
+				<ul id="btbl-column-order-list" class="btbl-sortable-list" aria-label="<?php esc_attr_e('Selected column order', 'baratables'); ?>"></ul>
 				<input type="hidden" name="btbl_column_order" id="btbl_column_order" value="<?php echo esc_attr(implode(',', $selected_columns)); ?>" />
 				<hr class="btbl-order-separator" />
 				<strong class="btbl-small-heading"><?php esc_html_e('Selected filter order', 'baratables'); ?></strong>
 				<p class="description"><?php esc_html_e('Drag to change the display order of selected filter controls.', 'baratables'); ?></p>
-				<ul id="btbl-filter-order-list" class="btbl-sortable-list" aria-label="<?php esc_attr_e('Selected filters order', 'baratables'); ?>"></ul>
+				<ul id="btbl-filter-order-list" class="btbl-sortable-list" aria-label="<?php esc_attr_e('Selected filter order', 'baratables'); ?>"></ul>
 				<input type="hidden" name="btbl_filter_order" id="btbl_filter_order" value="<?php echo esc_attr(implode(',', $filter_order)); ?>" />
 			</div>
 			</div>
@@ -928,16 +939,35 @@ class BaraTables_Admin_Tab_Columns {
 				</div>
 				<?php return; ?>
 			<?php endif; ?>
-			<?php foreach ($columns as $col) : ?>
-				<?php
+			<?php
+			$boxes = [];
+			foreach ($columns as $col) {
 				$slug_prefix = isset($col['source']) && $col['source'] !== 'core' ? sanitize_key($col['source']) . ':' : $default_prefix;
 				$slug = $slug_prefix . $col['key'];
 				$label_display = $col['label'] ?? $col['key'];
 				$state = $base_state;
 				$state['checked'] = in_array($slug, $selected_columns, true);
+				ob_start();
 				$this->render_column_option($slug, $label_display, $label_display, $state);
-				?>
-			<?php endforeach; ?>
+				$boxes[] = (string) ob_get_clean();
+			}
+			// Two independent column-major stacks (laid side by side on desktop via admin.css):
+			// DOM order stays the natural order so the single-column/mobile view reads top-down,
+			// while each desktop stack flows on its own — expanding one never gaps the other.
+			$mid = (int) ceil(count($boxes) / 2);
+			?>
+			<div class="btbl-column-cols">
+				<div class="btbl-column-col">
+					<?php foreach (array_slice($boxes, 0, $mid) as $box) {
+						echo $box; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_column_option() escapes its own output.
+					} ?>
+				</div>
+				<div class="btbl-column-col">
+					<?php foreach (array_slice($boxes, $mid) as $box) {
+						echo $box; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_column_option() escapes its own output.
+					} ?>
+				</div>
+			</div>
 		</div>
 		<?php
 	}
@@ -953,6 +983,7 @@ class BaraTables_Admin_Tab_Columns {
 		$selected_dropdown_search = $state['selected_dropdown_search'] ?? [];
 		$selected_filter_sort = $state['selected_filter_sort'] ?? [];
 		$selected_custom_labels = $state['selected_custom_labels'] ?? [];
+		$selected_auto_labels = $state['selected_auto_labels'] ?? [];
 		$selected_filter_labels = $state['selected_filter_labels'] ?? [];
 		$selected_filter_type_priority = $state['selected_filter_type_priority'] ?? [];
 		$selected_filter_strict = $state['selected_filter_strict'] ?? [];
@@ -968,12 +999,13 @@ class BaraTables_Admin_Tab_Columns {
 		$selected_date_format = $state['selected_date_format'] ?? [];
 		$is_checked = !empty($state['checked']);
 
-		$custom_label_value = $selected_custom_labels[$slug] ?? $default_label;
+		// The heading field holds the user's custom name, or is left empty (with the default
+		// shown as a placeholder) when the column is auto-labeled — so a blank submit means
+		// "use the default" and is captured as auto_label at save.
+		$is_auto_label = !empty($selected_auto_labels[$slug]);
+		$custom_label_value = $is_auto_label ? '' : ($selected_custom_labels[$slug] ?? '');
 		$filter_label_value = array_key_exists($slug, $selected_filter_labels) ? $selected_filter_labels[$slug] : $default_label;
 		$hide_title_checked = !empty($selected_hide_titles[$slug]);
-		if ($hide_title_checked) {
-			$custom_label_value = '';
-		}
 		$hidden_checked = !empty($selected_hidden_columns[$slug]);
 		$searchable_checked = array_key_exists($slug, $selected_searchable) ? !empty($selected_searchable[$slug]) : true;
 		$current_filter = $selected_filters[$slug] ?? 'none';
@@ -1083,16 +1115,23 @@ class BaraTables_Admin_Tab_Columns {
 				</span>
 			<span class="btbl-field-controls">
 				<div class="btbl-field-options-body <?php echo $should_open_options ? 'is-open' : ''; ?>">
+						<p class="btbl-gear-section-heading"><?php esc_html_e('Column', 'baratables'); ?></p>
 					<div class="btbl-options-row btbl-options-inline">
 						<div class="btbl-inline">
 							<span class="btbl-small-label"><?php esc_html_e('Reference', 'baratables'); ?></span>
-							<code class="btbl-shortcode btbl-field-ref" data-shortcode="<?php echo esc_attr($slug_attr); ?>" tabindex="0" role="button"><?php echo esc_html($slug_attr); ?></code>
+							<code class="btbl-shortcode btbl-field-ref" data-shortcode="<?php echo esc_attr($slug_attr); ?>" data-copied-label="<?php echo esc_attr__('Copied', 'baratables'); ?>" tabindex="0" role="button" title="<?php echo esc_attr(sprintf(/* translators: %s is the column reference slug. */ __('Copy column reference: %s', 'baratables'), $slug_attr)); ?>" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the column reference slug. */ __('Copy column reference: %s', 'baratables'), $slug_attr)); ?>"><?php echo esc_html($slug_attr); ?></code>
 						</div>
 					</div>
 					<div class="btbl-options-row btbl-options-inline">
 						<label class="btbl-inline">
 							<span class="btbl-small-label"><?php esc_html_e('Column heading', 'baratables'); ?></span>
-							<input type="text" name="btbl_custom_labels[<?php echo esc_attr($slug_attr); ?>]" value="<?php echo esc_attr($custom_label_value); ?>" data-default-label="<?php echo esc_attr($default_label); ?>" />
+							<input type="text" name="btbl_custom_labels[<?php echo esc_attr($slug_attr); ?>]" value="<?php echo esc_attr($custom_label_value); ?>" placeholder="<?php echo esc_attr($default_label); ?>" data-default-label="<?php echo esc_attr($default_label); ?>" />
+						</label>
+					</div>
+					<div class="btbl-options-row btbl-options-inline">
+						<label class="btbl-inline">
+							<input type="checkbox" class="btbl-hide-title" name="btbl_hide_title[<?php echo esc_attr($slug_attr); ?>]" value="1" <?php checked($hide_title_checked); ?> />
+							<?php esc_html_e('Hide heading', 'baratables'); ?>
 						</label>
 					</div>
 					<div class="btbl-options-row btbl-options-inline">
@@ -1106,6 +1145,7 @@ class BaraTables_Admin_Tab_Columns {
 							<input type="checkbox" class="btbl-searchable-toggle" name="btbl_searchable[<?php echo esc_attr($slug_attr); ?>]" value="1" <?php checked($searchable_checked); ?> />
 							<?php esc_html_e('Searchable', 'baratables'); ?>
 						</label>
+						<p class="description btbl-field-hint"><?php esc_html_e('Include this column when visitors type in the table search box.', 'baratables'); ?></p>
 					</div>
 					<div class="btbl-options-row btbl-options-inline">
 						<label class="btbl-inline">
@@ -1113,6 +1153,7 @@ class BaraTables_Admin_Tab_Columns {
 							<input type="checkbox" class="btbl-sortable-toggle" name="btbl_sortable[<?php echo esc_attr($slug_attr); ?>]" value="1" <?php checked($sortable_checked); ?> />
 							<?php esc_html_e('Sortable', 'baratables'); ?>
 						</label>
+						<p class="description btbl-field-hint"><?php esc_html_e('Let visitors click the column header to sort by this column.', 'baratables'); ?></p>
 					</div>
 					<?php if ($allow_sort) : ?>
 					<div class="btbl-options-row btbl-options-inline">
@@ -1146,6 +1187,7 @@ class BaraTables_Admin_Tab_Columns {
 							<input type="text" class="btbl-date-format-input" name="btbl_date_format[<?php echo esc_attr($slug_attr); ?>]" value="<?php echo esc_attr($date_format_val); ?>" placeholder="<?php echo esc_attr(get_option('date_format')); ?>" />
 						</label>
 					</div>
+					<p class="btbl-gear-section-heading"><?php esc_html_e('Filter', 'baratables'); ?></p>
 					<div class="btbl-options-row">
 						<label class="btbl-inline">
 							<span class="btbl-small-label"><?php esc_html_e('Filter type', 'baratables'); ?></span>
@@ -1182,6 +1224,10 @@ class BaraTables_Admin_Tab_Columns {
 							<span class="btbl-small-label"><?php esc_html_e('Custom filter values', 'baratables'); ?></span>
 							<textarea name="btbl_filter_values[<?php echo esc_attr($slug_attr); ?>]" rows="3" placeholder="<?php esc_attr_e('Label => search1, search2', 'baratables'); ?>"><?php echo esc_textarea($filter_values_text); ?></textarea>
 						</label>
+						<p class="description btbl-field-hint">
+							<?php esc_html_e('One mapping per line — visible label on the left, comma-separated value(s) it matches on the right. e.g.', 'baratables'); ?>
+							<code><?php echo esc_html('Available => in stock, available'); ?></code>
+						</p>
 					</div>
 					<div class="btbl-options-row btbl-filter-strict-row <?php echo $current_filter !== 'none' ? '' : 'is-hidden'; ?>">
 						<label class="btbl-inline">
@@ -1199,8 +1245,9 @@ class BaraTables_Admin_Tab_Columns {
 					<div class="btbl-options-row">
 						<label class="btbl-inline">
 							<input type="checkbox" name="btbl_dropdown_search[<?php echo esc_attr($slug_attr); ?>]" value="1" <?php checked($dropdown_search_checked); ?> />
-							<?php esc_html_e('Enable search', 'baratables'); ?>
+							<?php esc_html_e('Filter search box', 'baratables'); ?>
 						</label>
+						<p class="description btbl-field-hint"><?php esc_html_e('Show a search box inside this filter&#8217;s dropdown (useful when a filter has many options).', 'baratables'); ?></p>
 					</div>
 				</div>
 			</span>
@@ -1288,8 +1335,8 @@ class BaraTables_Admin_Tab_Table {
 			'pagelength' => __('Page length', 'baratables'),
 			'buttons' => __('Buttons', 'baratables'),
 			'search' => __('Search', 'baratables'),
-			'info' => __('Summary', 'baratables'),
-			'paging' => __('Paging', 'baratables'),
+			'info' => __('Result summary', 'baratables'),
+			'paging' => __('Pagination', 'baratables'),
 		];
 		$layout_zones = [
 			'layoutTopStart' => __('Top left', 'baratables'),
@@ -1331,7 +1378,7 @@ class BaraTables_Admin_Tab_Table {
 		<div id="btbl-tab-table" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-table-label">
 				<div class="btbl-control">
 					<strong class="btbl-small-heading"><?php esc_html_e('Table controls', 'baratables'); ?></strong>
-					<p class="description"><?php esc_html_e('Toggle the most common DataTables options. Defaults match the standard DataTables experience.', 'baratables'); ?></p>
+					<p class="description"><?php esc_html_e('Turn the most common table controls on or off.', 'baratables'); ?></p>
 						<div class="btbl-flag-grid btbl-table-flags">
 						<?php foreach ($flag_keys as $flag_key) : ?>
 							<?php $config = $option_schema[$flag_key]; ?>
@@ -1467,6 +1514,9 @@ class BaraTables_Admin_Tab_Table {
 															<?php echo $placeholder !== '' ? 'placeholder="' . esc_attr($placeholder) . '"' : ''; ?>
 														/>
 													</label>
+													<?php if ($inline_key === 'infoFiltered') : ?>
+														<p class="description btbl-field-hint"><?php esc_html_e('Tokens: _START_ first row shown, _END_ last row shown, _TOTAL_ total rows, _MAX_ rows before filtering.', 'baratables'); ?></p>
+													<?php endif; ?>
 												<?php endif; ?>
 											</div>
 										<?php endforeach; ?>
@@ -1480,11 +1530,11 @@ class BaraTables_Admin_Tab_Table {
 					<div class="btbl-layout-header">
 						<div class="btbl-header-stack">
 							<strong class="btbl-small-heading"><?php esc_html_e('Table layout', 'baratables'); ?></strong>
-							<p class="description"><?php esc_html_e('Drag the elements into each zone to position DataTables controls.', 'baratables'); ?></p>
+							<p class="description btbl-help-text"><?php esc_html_e('Drag each control into the corner of the table where it should appear. An element only appears if its matching control is enabled above.', 'baratables'); ?></p>
 						</div>
-						<button type="button" class="button btbl-layout-reset"><?php esc_html_e('Reset layout', 'baratables'); ?></button>
+						<button type="button" class="button btbl-icon-button btbl-layout-reset" hidden aria-label="<?php echo esc_attr__('Reset layout', 'baratables'); ?>" title="<?php echo esc_attr__('Reset layout: move all elements back to their default zones (does not change Table controls or styles).', 'baratables'); ?>"><span class="dashicons dashicons-image-rotate" aria-hidden="true"></span></button>
 					</div>
-					<div class="btbl-layout-grid">
+					<div class="btbl-layout-grid" data-disabled-hint="<?php echo esc_attr__('Enable the matching control above to use this element.', 'baratables'); ?>">
 						<?php foreach ($layout_zones as $zone_key => $zone_label) : ?>
 							<div class="btbl-layout-zone">
 								<div class="btbl-layout-zone-label"><?php echo esc_html($zone_label); ?></div>
@@ -1507,6 +1557,7 @@ class BaraTables_Admin_Tab_Table {
 					<div class="btbl-layout-zone btbl-layout-palette">
 						<div class="btbl-layout-zone-label"><?php esc_html_e('Available elements', 'baratables'); ?></div>
 						<div class="btbl-layout-drop btbl-layout-palette-drop" data-zone="palette">
+							<span class="btbl-palette-placeholder description"><?php esc_html_e('Drag an element here to remove it from the table layout.', 'baratables'); ?></span>
 							<?php foreach ($layout_unused as $feature) : ?>
 								<button type="button" class="btbl-layout-chip" draggable="true" data-feature="<?php echo esc_attr($feature); ?>">
 									<?php echo esc_html($layout_features[$feature] ?? $feature); ?>
@@ -1518,7 +1569,7 @@ class BaraTables_Admin_Tab_Table {
 				<?php if (!empty($style_keys)) : ?>
 					<div class="btbl-control">
 						<strong class="btbl-small-heading"><?php esc_html_e('Style features', 'baratables'); ?></strong>
-						<p class="description"><?php esc_html_e('Toggle built-in DataTables style classes like borders, stripes, and hover states.', 'baratables'); ?></p>
+						<p class="description"><?php esc_html_e('Toggle built-in styles like borders, stripes, and hover highlighting.', 'baratables'); ?></p>
 						<div class="btbl-flag-grid btbl-table-flags">
 							<?php foreach ($style_keys as $style_key) : ?>
 							<?php $config = $option_schema[$style_key]; ?>
@@ -1634,12 +1685,23 @@ class BaraTables_Admin_Tab_Advanced {
 			</div>
 			<div class="btbl-control">
 				<label class="btbl-small-heading" for="btbl_value_overrides_json"><?php esc_html_e('Value overrides (JSON)', 'baratables'); ?></label>
-				<p class="description"><?php esc_html_e('Array of rules applied after values are resolved. Each rule: column slug (or "*" for all), search string or regex (set regex=true), and replace. Merge tags in replace support any core or meta field via {{core:post_title}} or {{meta:your_key}}.', 'baratables'); ?></p>
-				<textarea name="btbl_value_overrides_json" id="btbl_value_overrides_json" class="large-text code" rows="6" placeholder='[{"column":"core:post_content","search":"http","replace":"<a href="{{core:permalink}}"><span class="dashicons dashicons-admin-links"></span></a>"},{"column":"*","regex":true,"search":"#link:(.*?)#","replace":"$1"}]' spellcheck="false"><?php echo esc_textarea($value_overrides_raw !== '' ? $value_overrides_raw : $value_overrides_pretty); ?></textarea>
+				<p class="description btbl-help-text"><?php esc_html_e('Array of rules applied after values are resolved. Each rule: column slug (or "*" for all), search string or regex (set regex=true, patterns need delimiters e.g. #pattern#), and replace. Merge tags in replace support any core or meta field via {{core:post_title}} or {{meta:your_key}}. Find a column slug under its gear on the Columns &amp; Filters tab.', 'baratables'); ?></p>
+				<textarea name="btbl_value_overrides_json" id="btbl_value_overrides_json" class="large-text code" rows="6" placeholder='[{"column":"core:post_content","search":"http","replace":"<a href=\"{{core:permalink}}\"><span class=\"dashicons dashicons-admin-links\"></span></a>"},{"column":"*","regex":true,"search":"#link:(.*?)#","replace":"$1"}]' spellcheck="false"><?php echo esc_textarea($value_overrides_raw !== '' ? $value_overrides_raw : $value_overrides_pretty); ?></textarea>
+				<p class="btbl-json-error" id="btbl_value_overrides_error" role="alert" hidden><?php esc_html_e('This is not valid JSON — the rules will not be saved until you fix it.', 'baratables'); ?></p>
 			</div>
 			<div class="btbl-control btbl-access-control">
 				<strong class="btbl-small-heading"><?php esc_html_e('Access control', 'baratables'); ?></strong>
-				<p class="description"><?php esc_html_e('Filter rows based on tokens from the logged-in user. Configure which row meta/column holds allowed tokens and which user meta holds the user tokens. Leave blank to disable.', 'baratables'); ?></p>
+				<p class="description btbl-help-text"><?php esc_html_e('Filter rows based on tokens from the logged-in user. Configure which row meta/column holds allowed tokens and which user meta holds the user tokens. Leave blank to disable.', 'baratables'); ?></p>
+				<?php
+				// R31 (just-in-time): only warn when the user-token field is set but the matching
+				// row-token field for this source is empty — the exact misconfiguration it describes.
+				$row_token_set = ($source_type === 'wp_query' && $access_post_meta !== '')
+					|| ($source_type === 'csv' && $access_csv_column !== '')
+					|| ($source_type === 'external_db' && $access_external_column !== '');
+				if ($access_user_meta !== '' && !$row_token_set) :
+				?>
+					<p class="description"><em><?php esc_html_e('Row-level access only takes effect once you also set the row-token field below for this source. Without it, all rows are shown.', 'baratables'); ?></em></p>
+				<?php endif; ?>
 				<div class="btbl-control-grid btbl-access-grid">
 					<div class="btbl-control">
 						<label class="btbl-small-heading" for="btbl_access_user_meta"><?php esc_html_e('User meta key (tokens)', 'baratables'); ?></label>
@@ -1699,9 +1761,19 @@ class BaraTables_Admin_Tab_Chart {
 			];
 			?>
 		<div id="btbl-tab-chart" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-chart-label">
+			<?php $dropped_columns = $context['dropped_columns'] ?? []; ?>
+			<?php if (!empty($dropped_columns)) : ?>
+				<div class="notice notice-warning inline btbl-dropped-columns">
+					<p><?php echo esc_html(sprintf(
+						/* translators: %s is a comma-separated list of column references. */
+						__('Some saved chart columns no longer exist on this table and were cleared: %s. Pick replacements below, then update the chart.', 'baratables'),
+						implode(', ', $dropped_columns)
+					)); ?></p>
+				</div>
+			<?php endif; ?>
 			<div class="btbl-control">
 				<label class="btbl-small-heading" for="btbl_chart_table"><?php esc_html_e('Table', 'baratables'); ?></label>
-				<select name="btbl_chart_table" id="btbl_chart_table" data-page="<?php echo esc_attr($page_slug); ?>" required>
+				<select name="btbl_chart_table" id="btbl_chart_table" data-page="<?php echo esc_attr($page_slug); ?>" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices (X-axis and series) for this chart. Continue?', 'baratables'); ?>" required>
 					<option value=""><?php esc_html_e('Select table', 'baratables'); ?></option>
 					<?php foreach ($table_choices as $id => $label) : ?>
 						<option value="<?php echo esc_attr($id); ?>" <?php selected($selected_table, $id); ?>><?php echo esc_html($label); ?></option>
@@ -1736,6 +1808,7 @@ class BaraTables_Admin_Tab_Chart {
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_height"><?php esc_html_e('Chart height (px)', 'baratables'); ?></label>
 					<input type="number" min="120" max="2000" name="btbl_chart_height" id="btbl_chart_height" class="small-text" value="<?php echo esc_attr((int) ($chart_options['height'] ?? 360)); ?>" />
+					<p class="description btbl-help-text"><?php esc_html_e('Recommended 300–500px.', 'baratables'); ?></p>
 				</div>
 			</div>
 			<div class="btbl-control-grid btbl-chart-grid btbl-chart-standard">
@@ -1750,13 +1823,16 @@ class BaraTables_Admin_Tab_Chart {
 					<p class="description"><?php esc_html_e('Used for categories/labels (Pie uses this for slice labels).', 'baratables'); ?></p>
 				</div>
 				<div class="btbl-control">
-					<label class="btbl-small-heading" for="btbl_chart_series"><?php esc_html_e('Series columns', 'baratables'); ?></label>
-					<select name="btbl_chart_series[]" id="btbl_chart_series" multiple required>
+					<span class="btbl-small-heading"><?php esc_html_e('Series columns', 'baratables'); ?></span>
+					<div id="btbl_chart_series" class="btbl-chart-series-list" role="group" aria-label="<?php echo esc_attr__('Series columns', 'baratables'); ?>">
 						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected(in_array($slug, (array) ($chart_options['series'] ?? []), true)); ?>><?php echo esc_html($label); ?></option>
+							<label class="btbl-inline btbl-chart-series-option" data-slug="<?php echo esc_attr($slug); ?>">
+								<input type="checkbox" name="btbl_chart_series[]" value="<?php echo esc_attr($slug); ?>" <?php checked(in_array($slug, (array) ($chart_options['series'] ?? []), true)); ?> />
+								<?php echo esc_html($label); ?>
+							</label>
 						<?php endforeach; ?>
-					</select>
-					<p class="description"><?php esc_html_e('Select one or more numeric columns to plot. Pie uses the first series selected.', 'baratables'); ?></p>
+					</div>
+					<p class="description btbl-help-text"><?php esc_html_e('Columns to plot; non-numeric values are treated as 0. Pie uses the first selected column.', 'baratables'); ?></p>
 				</div>
 			</div>
 			<div class="btbl-control-grid btbl-chart-grid btbl-chart-gantt">
@@ -1823,7 +1899,7 @@ class BaraTables_Admin_Tab_Chart {
 					<a href="#" class="btbl-chart-modal__close" aria-label="<?php esc_attr_e('Close chart type chooser', 'baratables'); ?>">&times;</a>
 				</div>
 				<div class="btbl-chart-modal__body">
-					<div class="btbl-chart-type-chooser" role="list" aria-label="<?php esc_attr_e('Chart type', 'baratables'); ?>">
+					<div class="btbl-chart-type-chooser" role="group" aria-label="<?php esc_attr_e('Chart type', 'baratables'); ?>">
 						<?php
 						$current_type = $chart_options['type'] ?? 'bar';
 							$type_labels = [
@@ -1844,7 +1920,7 @@ class BaraTables_Admin_Tab_Chart {
 								}
 								$is_active = $slug === $current_type;
 								?>
-							<button type="button" class="btbl-chart-type-card<?php echo $is_active ? ' is-active' : ''; ?>" data-type="<?php echo esc_attr($slug); ?>" role="listitem" aria-pressed="<?php echo $is_active ? 'true' : 'false'; ?>">
+							<button type="button" class="btbl-chart-type-card<?php echo $is_active ? ' is-active' : ''; ?>" data-type="<?php echo esc_attr($slug); ?>" aria-pressed="<?php echo $is_active ? 'true' : 'false'; ?>">
 									<span class="btbl-chart-type-thumb<?php echo $image_url ? '' : ' is-placeholder'; ?>"<?php echo $image_url ? ' style="background-image:url(' . esc_url($image_url) . ');"' : ''; ?>>
 										<?php if (!$image_url) : ?>
 											<span class="btbl-chart-type-thumb-fallback" style="background-image:url('<?php echo esc_attr($placeholder_svg); ?>');"></span>

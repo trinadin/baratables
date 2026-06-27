@@ -84,17 +84,9 @@ class BaraTables_Admin_Action_Handler {
 		$external_port_raw = $p::raw('btbl_external_port');
 		$active_tab = $p::key('btbl_active_tab');
 
-		foreach ($custom_labels_raw as $slug => $label) {
-			$clean_slug = sanitize_text_field($slug);
-			if ($clean_slug === '') {
-				continue;
-			}
-			$label_value = is_array($label) ? implode(' ', array_map('strval', $label)) : (string) $label;
-			$label_value = trim(wp_strip_all_tags($label_value));
-			if ($label_value === '') {
-				$hide_titles_raw[$clean_slug] = 1;
-			}
-		}
+		// A blank heading now means "use the column's default" (captured as auto_label),
+		// NOT "hide the header" — hiding is controlled by the explicit btbl_hide_title
+		// checkbox, so the two are independent.
 
 		$post_types = $this->service->sanitize_post_types($post_types_raw, $source_type);
 		$post_type = reset($post_types) ?: 'post';
@@ -228,8 +220,21 @@ class BaraTables_Admin_Action_Handler {
 			$defn['status'] = 'publish';
 		}
 
+		$request_columns = $request['columns'];
+		// R1: a brand-new WP Query table saved with no columns gets a default Title column,
+		// so the most common first action (pick a source -> Publish) yields a working table.
+		// Gated to genuinely new tables (no prior definition) so deselecting every column on
+		// an existing table still saves as empty.
+		if (
+			empty($request_columns)
+			&& $request['source_type'] === BaraTables_Source_Type::WP_QUERY
+			&& empty($definition)
+		) {
+			$request_columns = ['core:post_title'];
+		}
+
 		$defn['columns'] = $this->service->build_columns(
-			$request['columns'],
+			$request_columns,
 			$request['filter_types'],
 			$request['filter_sorts'],
 			$request['filter_type_priority'],

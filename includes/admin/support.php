@@ -35,11 +35,226 @@ class BaraTables_Post_Input {
 }
 
 
+/**
+ * Queues admin notices across the post-save redirect using a short-lived,
+ * per-user transient. Used to tell the user when a save produced something
+ * that will not render (e.g. a table with no columns, a chart with no table).
+ */
+class BaraTables_Admin_Notice {
+	private const TRANSIENT_PREFIX = 'btbl_admin_notice_';
+	private const ALLOWED_TYPES = ['success', 'warning', 'error', 'info'];
+
+	public static function queue(string $message, string $type = 'warning'): void {
+		if ($message === '') {
+			return;
+		}
+		$user_id = get_current_user_id();
+		if ($user_id <= 0) {
+			return;
+		}
+		$key = self::TRANSIENT_PREFIX . $user_id;
+		$notices = get_transient($key);
+		if (!is_array($notices)) {
+			$notices = [];
+		}
+		$notices[] = [
+			'message' => $message,
+			'type' => in_array($type, self::ALLOWED_TYPES, true) ? $type : 'warning',
+		];
+		set_transient($key, $notices, MINUTE_IN_SECONDS);
+	}
+
+	public static function render(): void {
+		$user_id = get_current_user_id();
+		if ($user_id <= 0) {
+			return;
+		}
+		$key = self::TRANSIENT_PREFIX . $user_id;
+		$notices = get_transient($key);
+		if (!is_array($notices) || empty($notices)) {
+			return;
+		}
+		delete_transient($key);
+		foreach ($notices as $notice) {
+			$type = in_array($notice['type'] ?? 'warning', self::ALLOWED_TYPES, true) ? $notice['type'] : 'warning';
+			printf(
+				'<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
+				esc_attr($type),
+				wp_kses_post((string) ($notice['message'] ?? ''))
+			);
+		}
+	}
+}
+
+
+/**
+ * Per-user "Show help text" preference. Lets a power user who has built many
+ * tables opt out of the always-visible orientation hints (marked .btbl-help-text)
+ * without affecting first-time users (default: help shown). Conditional notices,
+ * collapsed-gear hints, tooltips and confirms are intentionally NOT governed.
+ */
+class BaraTables_Help {
+	private const META_KEY = 'btbl_hide_help';
+	private const NONCE = 'btbl_help_toggle';
+
+	public static function hidden(): bool {
+		$user_id = get_current_user_id();
+		return $user_id > 0 && (bool) get_user_meta($user_id, self::META_KEY, true);
+	}
+
+	public static function body_class(string $classes): string {
+		return self::hidden() ? trim($classes . ' btbl-help-hidden') : $classes;
+	}
+
+	public static function render_toggle(): void {
+		$hidden = self::hidden();
+		$label = $hidden ? __('Show help text', 'baratables') : __('Hide help text', 'baratables');
+		printf(
+			'<button type="button" class="btbl-help-toggle" id="btbl-help-toggle" data-nonce="%1$s" data-hide-label="%2$s" data-show-label="%3$s" title="%4$s" aria-label="%4$s"><span class="dashicons dashicons-editor-help" aria-hidden="true"></span></button>',
+			esc_attr(wp_create_nonce(self::NONCE)),
+			esc_attr__('Hide help text', 'baratables'),
+			esc_attr__('Show help text', 'baratables'),
+			esc_attr($label)
+		);
+	}
+
+	public static function ajax_toggle(): void {
+		if (!current_user_can('manage_options')) {
+			wp_send_json_error(['message' => 'forbidden'], 403);
+		}
+		check_ajax_referer(self::NONCE, '_wpnonce');
+		$user_id = get_current_user_id();
+		$hide = isset($_POST['hide']) && sanitize_text_field(wp_unslash($_POST['hide'])) === '1';
+		if ($hide) {
+			update_user_meta($user_id, self::META_KEY, 1);
+		} else {
+			delete_user_meta($user_id, self::META_KEY);
+		}
+		wp_send_json_success(['hidden' => $hide]);
+	}
+
+	/** True only on a brand-new site/account that has no saved tables yet (R30 first-run gate). */
+	public static function is_first_table(): bool {
+		$counts = wp_count_posts(BaraTables_Repository::CPT);
+		$existing = (int) ($counts->publish ?? 0) + (int) ($counts->draft ?? 0)
+			+ (int) ($counts->private ?? 0) + (int) ($counts->future ?? 0) + (int) ($counts->pending ?? 0);
+		return $existing === 0;
+	}
+}
+
+
+/**
+ * R7: adds a "Duplicate" row action to the Tables and Charts lists. Copies the
+ * post + its definition meta into a new draft with a freshly-minted slug/id so
+ * the clone's shortcode never collides with the original.
+ */
+class BaraTables_Admin_Duplicator {
+	public function register(): void {
+		add_filter('post_row_actions', [$this, 'add_action'], 10, 2);
+		add_action('admin_action_btbl_duplicate', [$this, 'handle']);
+	}
+
+	private function cpt_map(): array {
+		return [
+			BaraTables_Repository::CPT => [
+				'meta_key' => BaraTables_Repository::META_KEY,
+				'meta_slug' => BaraTables_Repository::META_SLUG,
+			],
+			BaraTables_Chart_Repository::CPT => [
+				'meta_key' => BaraTables_Chart_Repository::META_KEY,
+				'meta_slug' => BaraTables_Chart_Repository::META_SLUG,
+			],
+		];
+	}
+
+	public function add_action(array $actions, WP_Post $post): array {
+		if (!isset($this->cpt_map()[$post->post_type]) || !current_user_can('edit_post', $post->ID)) {
+			return $actions;
+		}
+		$url = wp_nonce_url(
+			admin_url('admin.php?action=btbl_duplicate&post=' . (int) $post->ID),
+			'btbl_duplicate_' . $post->ID
+		);
+		$actions['btbl_duplicate'] = '<a href="' . esc_url($url) . '">' . esc_html__('Duplicate', 'baratables') . '</a>';
+		return $actions;
+	}
+
+	public function handle(): void {
+		$post_id = isset($_GET['post']) ? (int) $_GET['post'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce checked below.
+		if ($post_id <= 0) {
+			wp_die(esc_html__('Invalid duplicate request.', 'baratables'));
+		}
+		check_admin_referer('btbl_duplicate_' . $post_id);
+
+		$post = get_post($post_id);
+		$map = $this->cpt_map();
+		if (!$post instanceof WP_Post || !isset($map[$post->post_type])) {
+			wp_die(esc_html__('Invalid duplicate request.', 'baratables'));
+		}
+		if (!current_user_can('edit_post', $post_id)) {
+			wp_die(esc_html__('You are not allowed to duplicate this item.', 'baratables'));
+		}
+
+		$new_id = $this->duplicate_post($post_id);
+		if (is_wp_error($new_id)) {
+			wp_die(esc_html($new_id->get_error_message()));
+		}
+
+		wp_safe_redirect(admin_url('post.php?post=' . (int) $new_id . '&action=edit'));
+		exit;
+	}
+
+	/**
+	 * Copy a Table/Chart post + its definition into a new draft with a fresh slug/id.
+	 *
+	 * @return int|WP_Error New post ID on success.
+	 */
+	public function duplicate_post(int $post_id) {
+		$post = get_post($post_id);
+		$map = $this->cpt_map();
+		if (!$post instanceof WP_Post || !isset($map[$post->post_type])) {
+			return new WP_Error('btbl_invalid_duplicate', __('Invalid duplicate request.', 'baratables'));
+		}
+		$conf = $map[$post->post_type];
+		$definition = get_post_meta($post_id, $conf['meta_key'], true);
+		$definition = is_array($definition) ? $definition : [];
+
+		/* translators: %s is the original item title. */
+		$new_title = sprintf(__('%s (copy)', 'baratables'), $post->post_title);
+		$new_id = wp_insert_post([
+			'post_type' => $post->post_type,
+			'post_status' => 'draft',
+			'post_title' => $new_title,
+		], true);
+		if (is_wp_error($new_id)) {
+			return $new_id;
+		}
+
+		// Mint a unique slug/id so the clone's shortcode differs from the original.
+		$base = sanitize_title($new_title) ?: ('btbl-copy-' . $new_id);
+		$new_slug = wp_unique_post_slug($base, (int) $new_id, 'draft', $post->post_type, 0);
+		wp_update_post(['ID' => (int) $new_id, 'post_name' => $new_slug]);
+
+		$definition['id'] = $new_slug;
+		$definition['name'] = $new_title;
+		$definition['status'] = 'draft';
+		update_post_meta((int) $new_id, $conf['meta_key'], $definition);
+		update_post_meta((int) $new_id, $conf['meta_slug'], $new_slug);
+
+		return (int) $new_id;
+	}
+}
+
+
 class BaraTables_Admin_Page_Utils {
 	public static function render_shortcode_cell(string $shortcode): string {
+		// R9: accessible click-to-copy — the label includes the shortcode so list rows
+		// stay distinguishable to screen readers, and "Copied" is localized via a data attribute.
 		return sprintf(
-			'<code class="btbl-shortcode" data-shortcode="%s" tabindex="0" role="button">%s</code>',
+			'<code class="btbl-shortcode btbl-shortcode--copy" data-shortcode="%1$s" data-copied-label="%2$s" tabindex="0" role="button" title="%3$s" aria-label="%3$s">%4$s</code>',
 			esc_attr($shortcode),
+			esc_attr__('Copied', 'baratables'),
+			esc_attr(sprintf(/* translators: %s is the shortcode. */ __('Copy shortcode: %s', 'baratables'), $shortcode)),
 			esc_html($shortcode)
 		);
 	}
@@ -52,7 +267,35 @@ class BaraTables_Admin_Page_Utils {
 			. '<span class="btbl-shortcode-permalink">' . self::render_shortcode_cell($shortcode) . '</span>';
 	}
 
-	public static function render_title_section(string $label, string $field_name, string $title_value, string $shortcode, bool $include_title): void {
+	/**
+	 * Collapsible shortcode-ID editor (WordPress slug-editor pattern): the id is hidden behind
+	 * an "Edit ID" link so it doesn't clutter the header, and the inline editor (input + the
+	 * help hint) appears only on demand. Shared by the table and chart builders. The caller
+	 * decides when to render it (only when editing an existing record).
+	 */
+	public static function render_id_editor(string $field_name, string $id_value, string $label, string $embed_tag): void {
+		?>
+		<div class="btbl-id-editor">
+			<button type="button" class="button-link btbl-id-edit-toggle">
+				<span class="dashicons dashicons-edit" aria-hidden="true"></span><?php esc_html_e('Edit ID', 'baratables'); ?>
+			</button>
+			<div class="btbl-id-edit-panel" hidden>
+				<span class="btbl-id-edit-label"><?php echo esc_html($label); ?></span>
+				<input type="text" name="<?php echo esc_attr($field_name); ?>" id="<?php echo esc_attr($field_name); ?>" class="btbl-id-input" value="<?php echo esc_attr($id_value); ?>" autocomplete="off" autocapitalize="off" spellcheck="false" />
+				<button type="button" class="button button-small btbl-id-edit-ok"><?php esc_html_e('OK', 'baratables'); ?></button>
+				<button type="button" class="button-link btbl-id-edit-cancel"><?php esc_html_e('Cancel', 'baratables'); ?></button>
+				<p class="description btbl-id-edit-hint">
+					<?php
+					/* translators: %s is the shortcode tag, e.g. [bara_table]. */
+					printf(esc_html__('Lowercase letters, numbers, and hyphens. Any %s you have already pasted into a page will need updating by hand.', 'baratables'), esc_html($embed_tag));
+					?>
+				</p>
+			</div>
+		</div>
+		<?php
+	}
+
+	public static function render_title_section(string $label, string $field_name, string $title_value, string $shortcode, bool $include_title, string $after_shortcode = ''): void {
 		if ($include_title) : ?>
 			<div id="titlediv">
 				<div id="titlewrap">
@@ -61,15 +304,16 @@ class BaraTables_Admin_Page_Utils {
 				</div>
 				<?php if ($shortcode !== '') : ?>
 					<div class="inside">
-						<div id="edit-slug-box" class="hide-if-no-js">
+						<div id="edit-slug-box" class="hide-if-no-js btbl-shortcode-row">
 							<?php echo self::render_shortcode_display($shortcode); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_shortcode_display(). ?>
+							<?php echo $after_shortcode; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_id_editor() escapes its own output. ?>
 						</div>
 					</div>
 				<?php endif; ?>
 			</div>
 		<?php else :
 			if ($shortcode !== '') : ?>
-				<p><?php echo self::render_shortcode_display($shortcode); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_shortcode_display(). ?></p>
+				<div class="btbl-shortcode-row btbl-shortcode-row-inline"><?php echo self::render_shortcode_display($shortcode); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_shortcode_display(). ?><?php echo $after_shortcode; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_id_editor() escapes its own output. ?></div>
 			<?php endif;
 		endif;
 	}
@@ -414,13 +658,24 @@ class BaraTables_Admin_List_Columns {
 					echo '&mdash;';
 					return;
 				}
-				$labels = array_map(static function ($col) {
-					return esc_html($col['label'] ?? '');
-				}, $definition['columns']);
-				$labels = array_filter($labels, static function ($label) {
+				$labels = array_filter(array_map(static function ($col) {
+					return (string) ($col['label'] ?? '');
+				}, $definition['columns']), static function ($label) {
 					return $label !== '';
 				});
-				echo $labels ? esc_html(implode(', ', $labels)) : '&mdash;';
+				if (empty($labels)) {
+					echo '&mdash;';
+					return;
+				}
+				$output = implode(', ', $labels);
+				// R43: at-a-glance row count for manual tables.
+				$source = $definition['source_type'] ?? '';
+				if (in_array($source, ['custom_data', 'custom'], true) && !empty($definition['custom_data']['rows'])) {
+					$count = count($definition['custom_data']['rows']);
+					/* translators: %d is the number of data rows. */
+					$output .= ' ' . sprintf(_n('(%d row)', '(%d rows)', $count, 'baratables'), $count);
+				}
+				echo esc_html($output);
 			},
 			'shortcode' => static function (array $definition, int $post_id): void {
 				$id = isset($definition['id']) ? (string) $definition['id'] : (string) get_post_field('post_name', $post_id);
@@ -471,7 +726,15 @@ class BaraTables_Chart_List_Columns {
 					echo '&mdash;';
 					return;
 				}
-				echo esc_html($table['name'] ?? ($table['id'] ?? ''));
+				$name = (string) ($table['name'] ?? ($table['id'] ?? ''));
+				// R14: link straight to the source table's editor.
+				$post_id = !empty($table['id']) ? (new BaraTables_Repository())->get_post_id_by_slug((string) $table['id']) : 0;
+				$edit_link = $post_id ? get_edit_post_link($post_id) : '';
+				if ($edit_link) {
+					printf('<a href="%s">%s</a>', esc_url($edit_link), esc_html($name));
+				} else {
+					echo esc_html($name);
+				}
 			},
 			'chart_type' => static function (array $chart): void {
 				$type = isset($chart['chart']['type']) ? sanitize_key($chart['chart']['type']) : '';
@@ -486,6 +749,17 @@ class BaraTables_Chart_List_Columns {
 					'pie' => __('Pie', 'baratables'),
 					'gantt' => __('Gantt', 'baratables'),
 				];
+				// R42: a scannable Dashicon alongside the text label.
+				$type_icons = [
+					'bar' => 'chart-bar',
+					'line' => 'chart-line',
+					'area' => 'chart-area',
+					'pie' => 'chart-pie',
+					'gantt' => 'calendar-alt',
+				];
+				if (isset($type_icons[$type])) {
+					printf('<span class="dashicons dashicons-%s" aria-hidden="true" style="vertical-align:text-bottom;"></span> ', esc_attr($type_icons[$type]));
+				}
 				echo esc_html($type_labels[$type] ?? ucwords($type));
 			},
 			'chart_fields' => function (array $chart): void {

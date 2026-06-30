@@ -157,10 +157,12 @@ class BaraTables_Admin_Duplicator {
 	private function cpt_map(): array {
 		return [
 			BaraTables_Repository::CPT => [
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Config map key, not a WP_Query argument.
 				'meta_key' => BaraTables_Repository::META_KEY,
 				'meta_slug' => BaraTables_Repository::META_SLUG,
 			],
 			BaraTables_Chart_Repository::CPT => [
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Config map key, not a WP_Query argument.
 				'meta_key' => BaraTables_Chart_Repository::META_KEY,
 				'meta_slug' => BaraTables_Chart_Repository::META_SLUG,
 			],

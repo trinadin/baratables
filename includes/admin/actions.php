@@ -202,7 +202,6 @@ class BaraTables_Admin_Action_Handler {
 				'rows' => $custom_rows,
 				'slugs' => $custom_slugs,
 			],
-			'searchable_raw' => $searchable_raw,
 		];
 	}
 
@@ -295,23 +294,10 @@ class BaraTables_Admin_Action_Handler {
 		$defn['table_options'] = $request['table_options'];
 		$defn['filter_order'] = $request['filter_order'];
 
-		if ($is_update) {
-			if (!empty($request['searchable_raw'])) {
-				$searchable_clean = [];
-				foreach ((array) $request['searchable_raw'] as $slug => $val) {
-					if (!is_scalar($slug)) {
-						continue;
-					}
-					$clean_slug = sanitize_text_field((string) $slug);
-					if ($clean_slug !== '') {
-						$searchable_clean[$clean_slug] = !empty($val) ? 1 : 0;
-					}
-				}
-				$defn['searchable_raw'] = $searchable_clean;
-			} else {
-				unset($defn['searchable_raw']);
-			}
-		}
+		// searchable_raw was dead state: nothing ever read the top-level map (per-column
+		// $col['searchable'] is the source of truth). Never write it, and strip any copy
+		// carried over from a table saved by an older version.
+		unset($defn['searchable_raw']);
 
 		if (!empty($request['taxonomy_filter'])) {
 			$defn['taxonomy_filter'] = $request['taxonomy_filter'];

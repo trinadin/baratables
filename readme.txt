@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.2
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,6 +13,8 @@ Create searchable, sortable WordPress tables and charts from CSV files, manual r
 == Description ==
 
 BaraTables helps you turn site data into interactive tables and charts directly in WordPress. Build from manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publish the result with a shortcode.
+
+Already have tables elsewhere? Import a JSON, XML, or CSV export from another table plugin or a spreadsheet, and BaraTables rebuilds it for you.
 
 Tables can include search, sorting, pagination, filters, export buttons, column visibility controls, and custom control layouts. Charts can be created from any BaraTables table and displayed separately with their own shortcode.
 
@@ -28,7 +30,7 @@ BaraTables uses clean, theme-friendly frontend styles by default. It is designed
 * Create bar, line, area, pie, and Gantt charts with ECharts
 * Customize table controls, labels, layout, and display options
 * Start with light frontend styles that are easy to override with CSS
-* Import compatible table definitions from JSON
+* Import an existing table from another plugin or a spreadsheet (JSON, XML, or CSV)
 
 == Installation ==
 
@@ -68,52 +70,51 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 == Changelog ==
 
+= 1.1.1 =
+Fixes:
+* Columns set to "Format as date" now display the formatted date (e.g. "Mar 18, 2026") on every data source (manual data, CSV, and external database), matching how date columns from a WordPress query already behaved.
+* Date columns no longer turn a plain number, such as a year or a count, into a 1970-era date.
+* A [bara_table] or [bara_chart] shortcode used without an id no longer causes an error on WordPress 6.2 through 6.4; it shows a "not found" message instead.
+* Importing a file that has only a header row, or no rows, now creates an empty table instead of adding blank placeholder rows.
+* Front-end table controls (the export buttons, the column-visibility menu, and the "Search in" control) and the CSV file picker now follow the site language instead of always showing English.
+
+Security:
+* Hardened the table editor's "Column heading" field against script injection (XSS).
+
 = 1.1.0 =
 New:
-* Editable Table ID: rename a table's shortcode ID after it is created (handy for fixing a typo). Charts linked to the table are updated automatically, and a notice reminds you to update any [bara_table] shortcodes already placed in your content.
-* Editable Chart ID: the same rename ability for charts, with a reminder to update any [bara_chart] shortcodes already placed in your content.
+* Import a table from another table plugin or a spreadsheet: upload a JSON or XML table export, or a CSV file, and BaraTables creates a matching table for you.
+* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after it is created. Linked charts update automatically, and a notice reminds you to update any [bara_table] / [bara_chart] shortcodes already placed in your content.
 * Reorder manual-data rows directly in the editor with up and down controls.
 * Manual-table column headers are now translation-ready and follow the site language.
-* Import a table from another table plugin or a spreadsheet: upload a JSON or XML table export, or a CSV file, and BaraTables creates a matching table for you.
 
 Improvements:
 * Wide manual-data tables now scroll horizontally while keeping the row number and row controls in view.
-* Smoother admin experience: clearer first-time guidance, a Show/Hide help text preference, improved click-to-copy for shortcodes and IDs, and fewer page reloads when configuring a WP Query source.
-* The Table ID / Chart ID now tucks behind an "Edit ID" link (like WordPress's permalink editor), keeping the builder header clean.
-* On Columns & Filters, the column boxes now lay out two-up on desktop, so a single column no longer stretches across the full width.
 * Paste tabular data straight from a spreadsheet into the manual-data grid.
-* Editing a column's heading now updates its label in the column list and the selected-order pills instantly, without a refresh.
+* Smoother admin experience: one-click copy for shortcodes and IDs, a Show/Hide help text preference, and fewer page reloads while configuring a source.
 
 Fixes:
-* Removed a deprecated jQuery call (jQuery.trim) that logged a browser console warning.
-* Corrected date columns that used far-future Unix timestamps.
-* Fixed date/time format conversion when importing a table from another plugin (e.g. 24-hour "HH" and short-month "MMM" no longer convert incorrectly).
-* CSV tables with row-level access control now enforce it even when no display columns are selected.
-* The admin column picker now shows translation-ready default column names, matching the rendered table.
 * Numeric columns now sort numerically instead of being mis-read as dates (e.g. values like 3.15, 3.2, 3.9 sort in numeric order).
-* Hardened the table/chart builder AJAX endpoints to require administrator access, matching the rest of the plugin.
-* Gantt charts no longer show a spurious "no data series selected" warning when saved.
-* Reordering columns now correctly enables the Refresh Preview button.
-* Switching the data source away from and back to CSV no longer clears the columns loaded for the selected file.
-* Additional input-sanitization hardening across the admin and import request handlers.
+* Fixed date columns that mis-displayed far-future dates.
+* Security: hardened admin request handling and input validation.
 
 = 1.0.1 =
 * Improved date formatting controls for WordPress date columns, including support for the site's default date format.
-* Hardened frontend table and chart configuration output.
-* Improved internal table and chart lookups for better admin performance.
-* Switched generated chart IDs to WordPress-native UUIDs.
-* Cleaned the release package for WordPress.org distribution.
+* Security: hardened frontend table and chart configuration output.
 
 = 1.0.0 =
 * Initial release.
 
 == Upgrade Notice ==
 
+= 1.1.1 =
+"Format as date" now works on every data source, small numbers no longer render as 1970-era dates, front-end controls follow the site language, and attribute-less shortcodes no longer error on older WordPress, plus a security fix for the table editor's column-heading field.
+
 = 1.1.0 =
 Feature release: import tables from other plugins or spreadsheets, editable Table and Chart IDs, manual-row reordering, and translation-ready headers, plus admin polish, fixes, and security hardening.
 
 = 1.0.1 =
-Maintenance release with improved date formatting controls, safer frontend output, and small admin performance improvements.
+Maintenance release with improved date formatting controls and safer frontend output.
 
 = 1.0.0 =
 Initial release.

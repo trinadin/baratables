@@ -471,7 +471,7 @@ class BaraTables_Admin_Tab_General {
 					<p class="description"><?php esc_html_e('Select or upload a CSV from the Media Library.', 'baratables'); ?></p>
 					<div class="btbl-media-row">
 						<input type="text" name="btbl_csv_attachment_id" id="btbl_csv_attachment_id" class="small-text" value="<?php echo esc_attr((int) $csv_attachment_id); ?>" readonly />
-						<button type="button" class="button btbl-media-select" data-target="#btbl_csv_attachment_id"><?php esc_html_e('Choose file', 'baratables'); ?></button>
+						<button type="button" class="button btbl-media-select" data-target="#btbl_csv_attachment_id" data-frame-title="<?php echo esc_attr__('Select CSV file', 'baratables'); ?>" data-frame-button="<?php echo esc_attr__('Use CSV', 'baratables'); ?>"><?php esc_html_e('Choose file', 'baratables'); ?></button>
 						<button type="button" class="button btbl-media-clear" data-target="#btbl_csv_attachment_id" <?php echo empty($csv_attachment_id) ? 'style="display:none;"' : ''; ?>><?php esc_html_e('Clear', 'baratables'); ?></button>
 					</div>
 				</div>

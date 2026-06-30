@@ -568,6 +568,8 @@ jQuery(function($) {
 	$(document).on('click', '.btbl-media-select', function(e) {
 		e.preventDefault();
 		var targetSelector = $(this).data('target');
+		var frameTitle = $(this).data('frame-title') || 'Select CSV file';
+		var frameButton = $(this).data('frame-button') || 'Use CSV';
 		var $target = $(targetSelector);
 		if (!$target.length) {
 			return;
@@ -582,8 +584,8 @@ jQuery(function($) {
 			mediaFrame.off('select');
 		}
 		mediaFrame = wp.media({
-			title: 'Select CSV file',
-			button: { text: 'Use CSV' },
+			title: frameTitle,
+			button: { text: frameButton },
 			library: { type: ['text/csv', 'text/plain', 'application/vnd.ms-excel'] },
 			multiple: false,
 		});
@@ -1011,7 +1013,12 @@ jQuery(function($) {
 				markCustomQueryLoaded(raw); // columns now match this query -> re-hide the button
 			}
 		}).always(function() {
-			if (seq === fieldRefreshSeq) { $customQueryRefresh.prop('disabled', false); }
+			// Always re-enable the button — fieldRefreshSeq is shared with the source/CSV refreshes,
+			// so a sibling refresh started while this request was in flight would otherwise leave
+			// seq !== fieldRefreshSeq and strand the button disabled until a full page reload. The
+			// stale-response guard stays on the .done() fragment swap above (line ~1010); only the
+			// button-enable is unconditional.
+			$customQueryRefresh.prop('disabled', false);
 		});
 	}
 
@@ -1693,7 +1700,12 @@ jQuery(function($) {
 		$box.find('.btbl-field-name').first().text(label);
 		// Keep the checkbox's data-label (read by getSelectedColumnsMap) in sync — both the
 		// attribute and jQuery's cached .data() — so any rebuilt pills use the new heading too.
-		$checkbox.attr('data-label', label).data('label', label);
+		// The order/filter pill list is rebuilt with jQuery .html(), and the server emits this
+		// attribute as wp_kses'd inline HTML; so HTML-escape USER-TYPED text here (the typed
+		// branch) before storing it, otherwise typing markup into a heading would execute it on
+		// the next pill rebuild. The empty-field fallback is a server default label — left as-is.
+		var labelForData = typed !== '' ? $('<div/>').text(typed).html() : label;
+		$checkbox.attr('data-label', labelForData).data('label', labelForData);
 		$('#btbl-column-order-list li[data-slug="' + slug + '"], #btbl-filter-order-list li[data-slug="' + slug + '"]').text(label);
 	});
 

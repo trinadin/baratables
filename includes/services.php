@@ -362,7 +362,6 @@ class BaraTables_Service {
 		'gantt_group' => '',
 		'gantt_progress' => '',
 	];
-	public const AUTO_LABEL_MIGRATION_OPTION = 'btbl_auto_label_migrated';
 	private const MAX_QUERY_ROWS = 500;
 	private const MAX_CSV_BYTES = 5242880;
 	private const MAX_CSV_LINE_LENGTH = 1048576;
@@ -586,6 +585,31 @@ class BaraTables_Service {
 			? $definition['chart']
 			: [];
 		return $this->merge_chart_options($saved, $definition['columns'] ?? []);
+	}
+
+	/**
+	 * Fill empty front-end control labels with their translated defaults before the options are
+	 * serialized for the renderer. The stored/editor value stays '' (so the editor shows a blank
+	 * field with the default as a placeholder); only the front-end payload gets the localized
+	 * string, so non-English sites no longer fall back to the hardcoded English text in JS.
+	 * The source strings match the JS fallbacks exactly, so en_US output is unchanged.
+	 */
+	public function localize_frontend_table_labels(array $options): array {
+		$label_defaults = [
+			'searchColumnsLabel'   => __('Columns', 'baratables'),
+			'searchColumnsHeading' => __('Search in', 'baratables'),
+			'buttonTextCopy'       => __('Copy', 'baratables'),
+			'buttonTextCsv'        => __('Export CSV', 'baratables'),
+			'buttonTextPrint'      => __('Print', 'baratables'),
+			'buttonTextColvis'     => __('Column visibility', 'baratables'),
+			'buttonTextPagelength' => __('Page length', 'baratables'),
+		];
+		foreach ($label_defaults as $key => $default) {
+			if (!isset($options[$key]) || $options[$key] === '') {
+				$options[$key] = $default;
+			}
+		}
+		return $options;
 	}
 
 	public function get_default_table_options(): array {
@@ -1118,9 +1142,12 @@ class BaraTables_Service {
 			if (!is_array($rule)) {
 				continue;
 			}
-			$column = isset($rule['column']) ? sanitize_text_field($rule['column']) : '';
-			$search = isset($rule['search']) ? (string) $rule['search'] : '';
-			$replace = isset($rule['replace']) ? (string) $rule['replace'] : '';
+			// value_overrides is a raw-JSON textarea; a malformed rule can carry an array where a
+			// string is expected. Guard with is_scalar (as the rest of this file does) so an array
+			// search/replace skips the rule cleanly instead of emitting an "Array to string" warning.
+			$column = (isset($rule['column']) && is_scalar($rule['column'])) ? sanitize_text_field((string) $rule['column']) : '';
+			$search = (isset($rule['search']) && is_scalar($rule['search'])) ? (string) $rule['search'] : '';
+			$replace = (isset($rule['replace']) && is_scalar($rule['replace'])) ? (string) $rule['replace'] : '';
 			$regex = !empty($rule['regex']);
 			if ($column === '' || $search === '') {
 				continue;
@@ -1474,8 +1501,7 @@ class BaraTables_Service {
 	 *
 	 * Auto-ness comes solely from the explicit `auto_label` flag (set at save when the user
 	 * leaves a manual column's heading blank) or a genuinely empty label — never from
-	 * pattern-matching the label text. A one-time migration (migrate_auto_labels) stamps the
-	 * flag onto tables saved before it existed, so every rendered column is flag-driven.
+	 * pattern-matching the label text.
 	 *
 	 * On en_US "Column %d" returns the identical string, so English tables render unchanged;
 	 * user-named labels and non-manual sources are never touched.
@@ -1504,13 +1530,14 @@ class BaraTables_Service {
 		}
 		// Include 'trash' (which get_posts excludes under 'any'): a trashed chart that is
 		// later restored must still point at the renamed table, not a dead id.
+		// get_posts() already defaults suppress_filters to true, so this internal maintenance
+		// lookup is not altered by third-party query filters without setting it explicitly.
 		$ids = get_posts([
 			'post_type' => BaraTables_Chart_Repository::CPT,
 			'post_status' => ['publish', 'draft', 'pending', 'future', 'private', 'trash'],
 			'numberposts' => -1,
 			'fields' => 'ids',
 			'no_found_rows' => true,
-			'suppress_filters' => true,
 		]);
 		$updated = 0;
 		foreach ($ids as $id) {
@@ -1525,59 +1552,6 @@ class BaraTables_Service {
 		return $updated;
 	}
 
-	/**
-	 * One-time upgrade: stamp the explicit auto_label flag onto manual columns saved before
-	 * the flag existed, so the renderer never has to interpret the legacy "Column N" string.
-	 * Idempotent and gated by an option; safe to call on every admin load.
-	 */
-	public function migrate_auto_labels(): void {
-		if (get_option(self::AUTO_LABEL_MIGRATION_OPTION)) {
-			return;
-		}
-		$ids = get_posts([
-			'post_type' => BaraTables_Repository::CPT,
-			'post_status' => 'any',
-			'numberposts' => -1, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page -- One-time migration must visit every table once.
-			'fields' => 'ids',
-			'no_found_rows' => true,
-		]);
-		foreach ($ids as $id) {
-			$defn = get_post_meta((int) $id, BaraTables_Repository::META_KEY, true);
-			if (!is_array($defn) || empty($defn['columns']) || !is_array($defn['columns'])) {
-				continue;
-			}
-			$changed = false;
-			foreach ($defn['columns'] as &$col) {
-				if (!is_array($col) || array_key_exists('auto_label', $col)) {
-					continue;
-				}
-				$col['auto_label'] = $this->legacy_column_is_auto($col);
-				$changed = true;
-			}
-			unset($col);
-			if ($changed) {
-				update_post_meta((int) $id, BaraTables_Repository::META_KEY, $defn);
-			}
-		}
-		update_option(self::AUTO_LABEL_MIGRATION_OPTION, 1, false);
-	}
-
-	/**
-	 * Legacy interpretation used ONLY by the one-time migration: a pre-flag manual column is
-	 * auto when its stored label is blank or equals its positional "Column N" default. This
-	 * is the single place the old string is read — render and save are purely flag-driven.
-	 */
-	private function legacy_column_is_auto(array $col): bool {
-		if (($col['source'] ?? '') !== 'custom') {
-			return false;
-		}
-		$key = (string) ($col['key'] ?? '');
-		if (!preg_match('/^col_(\d+)$/', $key, $m)) {
-			return false;
-		}
-		$label = (string) ($col['label'] ?? '');
-		return $label === '' || $label === sprintf('Column %d', (int) $m[1]);
-	}
 
 	public function build_custom_display_columns(array $labels): array {
 		$labels = array_values($labels);
@@ -1879,6 +1853,20 @@ class BaraTables_Service {
 		$overrides = isset($definition['value_overrides']) && is_array($definition['value_overrides'])
 			? $definition['value_overrides']
 			: [];
+		// Date formatting lives on $definition['columns'] (the configured columns carrying the
+		// "Format as date" toggle), keyed by slug. The wp_query path applies it via resolve_value();
+		// mirror that here so manual-data date columns format too. slug => date_format string.
+		$date_format_map = [];
+		$definition_columns = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
+		foreach ($definition_columns as $col) {
+			if (!is_array($col) || empty($col['format_date'])) {
+				continue;
+			}
+			$slug = $this->resolve_column_slug($col);
+			if ($slug !== '') {
+				$date_format_map[$slug] = isset($col['date_format']) ? (string) $col['date_format'] : '';
+			}
+		}
 		$this->last_inferred_columns = $column_defs;
 		$column_count = count($column_defs);
 		if ($column_count === 0) {
@@ -1892,6 +1880,14 @@ class BaraTables_Service {
 			for ($i = 0; $i < $column_count; $i++) {
 				$value = $values[$i] ?? '';
 				$normalized[] = is_scalar($value) ? (string) $value : '';
+			}
+			if (!empty($date_format_map)) {
+				foreach ($column_slugs as $idx => $slug) {
+					if ($slug === '' || !array_key_exists($slug, $date_format_map)) {
+						continue;
+					}
+					$normalized[$idx] = $this->format_date_value($normalized[$idx] ?? '', $date_format_map[$slug]);
+				}
 			}
 			if (!empty($overrides)) {
 				$row_tokens = [];
@@ -2009,6 +2005,7 @@ class BaraTables_Service {
 
 		if (!empty($definition['columns'])) {
 			$rows = $this->reorder_rows_by_slug_map($rows, $definition['columns'], $csv_index_map);
+			$rows = $this->apply_ordered_date_formats($rows, $this->build_ordered_date_formats($definition['columns']));
 		}
 
 		return $rows;
@@ -2135,7 +2132,8 @@ class BaraTables_Service {
 			);
 		}
 
-		return $this->reorder_external_rows_by_slug_map($eligible_rows, $columns_for_mapping, $map);
+		$ordered = $this->reorder_external_rows_by_slug_map($eligible_rows, $columns_for_mapping, $map);
+		return $this->apply_ordered_date_formats($ordered, $this->build_ordered_date_formats($columns_for_mapping));
 	}
 
 	private function get_external_row_value(array $row, string $column, $missing_value = '') {
@@ -2467,13 +2465,18 @@ class BaraTables_Service {
 						return $part !== '';
 					});
 					foreach ($parts as $part) {
-						$filter['options'][$part] = $this->normalize_filter_option([
-							'label' => $part,
-							'value' => $part,
-							'search_terms' => [$part],
-						]);
+						// Options are keyed by value, so duplicates collapse to one slot. Normalize
+						// only the first occurrence of each distinct value — over the 500-row ceiling a
+						// low-cardinality column otherwise rebuilds the same option once per row.
+						if (!isset($filter['options'][$part])) {
+							$filter['options'][$part] = $this->normalize_filter_option([
+								'label' => $part,
+								'value' => $part,
+								'search_terms' => [$part],
+							]);
+						}
 					}
-				} else {
+				} elseif (!isset($filter['options'][$value])) {
 					$filter['options'][$value] = $this->normalize_filter_option([
 						'label' => $value,
 						'value' => $value,
@@ -2494,14 +2497,22 @@ class BaraTables_Service {
 				? $this->normalize_data_type_priority_list($filter['data_type_priority'])
 				: [];
 
-			if (!empty($filter['options'])) {
-				foreach ($filter['options'] as $idx => &$option) {
-					$option['_btbl_index'] = $idx;
-				}
-				unset($option);
+			$should_sort = !($sortOrder === 'custom' && empty($type_priority));
+			if (!$should_sort || empty($filter['options'])) {
+				continue;
 			}
 
-			$should_sort = !($sortOrder === 'custom' && empty($type_priority));
+			// Decorate each option once with its sort keys — the detected type and (for dates) the
+			// parsed timestamp. detect_option_type()/parse_date_option() are regex/strtotime-heavy and
+			// depend only on the option itself, so computing them once here instead of inside the
+			// O(U log U) usort comparator keeps the front-end render off a redundant-regex hot path.
+			foreach ($filter['options'] as $idx => &$option) {
+				$option['_btbl_index'] = $idx;
+				$option['_btbl_type'] = $this->detect_option_type($option);
+				$option['_btbl_time'] = $option['_btbl_type'] === 'date' ? $this->parse_date_option($this->option_label($option)) : null;
+			}
+			unset($option);
+
 			$type_rank = [];
 			$type_direction = [];
 			foreach ($type_priority as $idx => $config) {
@@ -2518,31 +2529,31 @@ class BaraTables_Service {
 			$default_type_rank = count($type_rank);
 			$fallback_direction = $sortOrder === 'desc' ? 'desc' : 'asc';
 
-			if ($should_sort) {
-				usort($filter['options'], function ($a, $b) use ($sortOrder, $type_rank, $default_type_rank, $type_direction, $fallback_direction) {
-					$typeA = $this->detect_option_type($a);
-					$typeB = $this->detect_option_type($b);
+			usort($filter['options'], function ($a, $b) use ($sortOrder, $type_rank, $default_type_rank, $type_direction, $fallback_direction) {
+				$typeA = $a['_btbl_type'];
+				$typeB = $b['_btbl_type'];
 
-					$rankA = $type_rank[$typeA] ?? $default_type_rank;
-					$rankB = $type_rank[$typeB] ?? $default_type_rank;
-					if ($rankA !== $rankB) {
-						return $rankA <=> $rankB;
+				$rankA = $type_rank[$typeA] ?? $default_type_rank;
+				$rankB = $type_rank[$typeB] ?? $default_type_rank;
+				if ($rankA !== $rankB) {
+					return $rankA <=> $rankB;
+				}
+
+				$direction = $fallback_direction;
+				if ($sortOrder === 'custom' && $typeA === $typeB) {
+					$direction = $type_direction[$typeA] ?? 'asc';
+				}
+
+				if ($typeA === 'date' && $typeB === 'date') {
+					$timeA = $a['_btbl_time'];
+					$timeB = $b['_btbl_time'];
+					if ($timeA !== $timeB) {
+						return $direction === 'desc' ? ($timeB <=> $timeA) : ($timeA <=> $timeB);
 					}
-
+				} else {
 					$labelA = $this->option_label($a);
 					$labelB = $this->option_label($b);
-					$direction = $fallback_direction;
-					if ($sortOrder === 'custom' && $typeA === $typeB) {
-						$direction = $type_direction[$typeA] ?? 'asc';
-					}
-
-					if ($typeA === 'date' && $typeB === 'date') {
-						$timeA = $this->parse_date_option($labelA);
-						$timeB = $this->parse_date_option($labelB);
-						if ($timeA !== $timeB) {
-							return $direction === 'desc' ? ($timeB <=> $timeA) : ($timeA <=> $timeB);
-						}
-					} elseif ($direction === 'desc') {
+					if ($direction === 'desc') {
 						$cmp = strnatcasecmp((string) $labelB, (string) $labelA);
 						if ($cmp !== 0) {
 							return $cmp;
@@ -2553,15 +2564,13 @@ class BaraTables_Service {
 							return $cmp;
 						}
 					}
+				}
 
-					$idxA = isset($a['_btbl_index']) ? (int) $a['_btbl_index'] : 0;
-					$idxB = isset($b['_btbl_index']) ? (int) $b['_btbl_index'] : 0;
-					return $idxA <=> $idxB;
-				});
-			}
+				return ((int) $a['_btbl_index']) <=> ((int) $b['_btbl_index']);
+			});
 
 			foreach ($filter['options'] as &$option) {
-				unset($option['_btbl_index']);
+				unset($option['_btbl_index'], $option['_btbl_type'], $option['_btbl_time']);
 			}
 			unset($option);
 		}
@@ -2897,6 +2906,53 @@ class BaraTables_Service {
 		return wp_kses_post((string) $value);
 	}
 
+	/**
+	 * Build a list of date_format strings aligned to a column list's order: one entry per
+	 * column, a string when that column has the "Format as date" toggle on, or null when it
+	 * does not. Returns [] when no column is date-formatted so callers can skip cheaply.
+	 *
+	 * Used by the CSV and external-DB paths, whose rows are emitted already ordered to match
+	 * the column list, so the index-aligned list maps straight onto each row's cells. (The
+	 * custom-data path applies formatting earlier, before its value-override stage, so it keeps
+	 * its own slug-keyed builder.)
+	 */
+	private function build_ordered_date_formats(array $columns): array {
+		$has_any = false;
+		$formats = [];
+		foreach (array_values($columns) as $col) {
+			if (is_array($col) && !empty($col['format_date'])) {
+				$formats[] = isset($col['date_format']) ? (string) $col['date_format'] : '';
+				$has_any = true;
+			} else {
+				$formats[] = null;
+			}
+		}
+		return $has_any ? $formats : [];
+	}
+
+	/**
+	 * Apply an index-aligned date_format list (from build_ordered_date_formats) to rows that are
+	 * already ordered to match the same column list. Cells whose format entry is null are left as-is.
+	 */
+	private function apply_ordered_date_formats(array $rows, array $formats): array {
+		if (empty($formats)) {
+			return $rows;
+		}
+		foreach ($rows as &$row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			foreach ($formats as $idx => $format) {
+				if ($format === null || !array_key_exists($idx, $row)) {
+					continue;
+				}
+				$row[$idx] = $this->format_date_value((string) $row[$idx], $format);
+			}
+		}
+		unset($row);
+		return $rows;
+	}
+
 	private function format_date_value($value, string $format): string {
 		$format = $format !== '' ? $format : get_option('date_format');
 		if ($value === '' || $format === '') {
@@ -2912,6 +2968,13 @@ class BaraTables_Service {
 			// for a post-2033 date is no longer misread as milliseconds.
 			if ($intVal > 100000000000) {
 				$intVal = (int) ($intVal / 1000);
+			}
+			// Without a lower bound, a small integer (a year like 2024, an age, a count,
+			// an ID) would be read as epoch seconds and render as a 1970-era date. Only
+			// treat integers large enough to be a plausible real timestamp (|n| >= 1e8,
+			// ~year 1973) as epoch; leave smaller numbers as their raw value.
+			if (abs($intVal) < 100000000) {
+				return (string) $value;
 			}
 			$timestamp = $intVal;
 		} else {
@@ -3313,6 +3376,33 @@ class BaraTables_Service {
 		return array_merge(['relation' => 'AND'], $tax_queries);
 	}
 
+	/**
+	 * WP_Query OR-group that admits every "public"/token-less post so the authoritative per-row
+	 * post_passes_access_policy() can see it: the access meta is absent, an empty string, or an
+	 * empty serialized array (a blank multi-select stored as array() => 'a:0:{}'). Without the
+	 * 'a:0:{}' arm, such a post is excluded by the pre-filter before the per-row check runs, so a
+	 * row the access model considers public is silently hidden.
+	 */
+	private function public_token_meta_clause(string $meta_key): array {
+		return [
+			'relation' => 'OR',
+			[
+				'key' => $meta_key,
+				'compare' => 'NOT EXISTS',
+			],
+			[
+				'key' => $meta_key,
+				'value' => '',
+				'compare' => '=',
+			],
+			[
+				'key' => $meta_key,
+				'value' => 'a:0:{}',
+				'compare' => '=',
+			],
+		];
+	}
+
 	private function build_access_meta_query(string $meta_key, array $access_policy) {
 		$meta_key = sanitize_text_field($meta_key);
 		if ($meta_key === '') {
@@ -3329,18 +3419,7 @@ class BaraTables_Service {
 			}
 			if ($logged_out_policy === 'public_only') {
 				return [
-					[
-						'relation' => 'OR',
-						[
-							'key' => $meta_key,
-							'compare' => 'NOT EXISTS',
-						],
-						[
-							'key' => $meta_key,
-							'value' => '',
-							'compare' => '=',
-						],
-					],
+					$this->public_token_meta_clause($meta_key),
 				];
 			}
 			return [];
@@ -3369,18 +3448,7 @@ class BaraTables_Service {
 		if (empty($clauses)) {
 			if ($allow_public) {
 				return [
-					[
-						'relation' => 'OR',
-						[
-							'key' => $meta_key,
-							'compare' => 'NOT EXISTS',
-						],
-						[
-							'key' => $meta_key,
-							'value' => '',
-							'compare' => '=',
-						],
-					],
+					$this->public_token_meta_clause($meta_key),
 				];
 			}
 			return 'none';
@@ -3392,18 +3460,7 @@ class BaraTables_Service {
 			'relation' => 'OR',
 		];
 		if ($allow_public) {
-			$meta_query[] = [
-				'relation' => 'OR',
-				[
-					'key' => $meta_key,
-					'compare' => 'NOT EXISTS',
-				],
-				[
-					'key' => $meta_key,
-					'value' => '',
-					'compare' => '=',
-				],
-			];
+			$meta_query[] = $this->public_token_meta_clause($meta_key);
 		}
 		$meta_query[] = $or_group;
 		return $meta_query;

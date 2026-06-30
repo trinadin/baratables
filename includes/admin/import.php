@@ -129,7 +129,10 @@ class BaraTables_Import_Builder {
 
 		$dataset = $service->build_custom_dataset($labels, $rows_in, $rows_count, $cols_count);
 		$clean_labels = $dataset['columns'];
-		$clean_rows = $dataset['rows'];
+		// A header-only / empty source has no body rows; build_custom_dataset would otherwise
+		// synthesize the new-table default of 5 blank rows. Import it as an empty (header-only)
+		// table instead, so the preview row count is accurate and the user isn't handed phantom rows.
+		$clean_rows = count($rows_in) === 0 ? [] : $dataset['rows'];
 
 		$columns = [];
 		for ($i = 0; $i < $cols_count; $i++) {

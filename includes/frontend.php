@@ -30,7 +30,10 @@ class BaraTables_Frontend {
 		$this->assets_registered = true;
 	}
 
-	public function render_shortcode(array $atts): string {
+	public function render_shortcode($atts): string {
+		// WordPress < 6.5 passes shortcode_parse_atts('') as an empty STRING (not an
+		// array) for an attribute-less [bara_table]; an `array` type hint would fatal
+		// there. shortcode_atts() inside build_table_context() casts to array like core.
 		$context = $this->build_table_context($atts);
 		if (!$context) {
 			return '<p>' . esc_html__('Table not found.', 'baratables') . '</p>';
@@ -47,7 +50,9 @@ class BaraTables_Frontend {
 		return $this->render_table_view($context['definition'], $context['rows'], $chart_options, false, $instance_id, true);
 	}
 
-	public function render_chart_shortcode(array $atts): string {
+	public function render_chart_shortcode($atts): string {
+		// See render_shortcode(): pre-6.5 core may pass a string for an attribute-less
+		// [bara_chart]; shortcode_atts() casts to array, so accept an untyped $atts.
 		$atts = shortcode_atts(['id' => ''], $atts, 'bara_chart');
 		$context = $this->chart_service->get_render_context($atts['id']);
 		if (!$context) {
@@ -117,7 +122,7 @@ class BaraTables_Frontend {
 		}
 	}
 
-	private function build_table_context(array $atts): ?array {
+	private function build_table_context($atts): ?array {
 		$atts = shortcode_atts(['id' => ''], $atts, 'bara_table');
 		$definition = $this->service->find_definition($atts['id'], true);
 		if (!$definition) {
@@ -272,7 +277,7 @@ class BaraTables_Frontend {
 			}
 		}
 		$default_sort = $this->service->get_default_sort_order($definition);
-		$table_options = $this->service->get_table_options($definition);
+		$table_options = $this->service->localize_frontend_table_labels($this->service->get_table_options($definition));
 		$wrapper_compact_class = !empty($table_options['compact']) ? ' is-compact' : '';
 		$table_classes = ['btbl-table'];
 		foreach (BaraTables_Service::TABLE_STYLE_CLASS_MAP as $option_key => $class_name) {

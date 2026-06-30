@@ -40,7 +40,6 @@ class BaraTables {
 
 		add_action('init', [$this->admin, 'register_cpt']);
 		add_action('init', [$this->chart_admin, 'register_cpt']);
-		add_action('admin_init', [$this->service, 'migrate_auto_labels']);
 		add_action('admin_menu', [$this, 'cleanup_admin_menu'], 20);
 		add_filter('parent_file', [$this, 'highlight_tables_parent_menu']);
 		add_filter('submenu_file', [$this, 'highlight_tables_submenu'], 10, 2);

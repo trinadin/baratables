@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.2
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,9 +25,10 @@ BaraTables uses clean, theme-friendly frontend styles by default. It is designed
 * Build tables from WordPress content, CSV files, manual data, or external MySQL/MariaDB databases
 * Add search, sorting, pagination, and column filters
 * Use dropdown, multi-select, checkbox, and radio-style filters
-* Export table data to CSV, copy it, or print it
+* Export table data to CSV or Excel, copy it, or print it
 * Reorder columns and control column visibility
-* Create bar, line, area, pie, and Gantt charts with ECharts
+* Remember table state between visits, and control scrolling, column sizing, and row loading limits
+* Create bar, horizontal bar, line, area, pie, donut, scatter, bubble, funnel, and Gantt charts with ECharts
 * Customize table controls, labels, layout, and display options
 * Start with light frontend styles that are easy to override with CSS
 * Import an existing table from another plugin or a spreadsheet (JSON, XML, or CSV)
@@ -45,6 +46,10 @@ BaraTables uses clean, theme-friendly frontend styles by default. It is designed
 
 CSV files from the media library, manual data entry via the admin editor, WordPress content, and external MySQL/MariaDB databases.
 
+= How many rows can a table load? =
+
+Each table loads up to 1,000 rows by default. The Options tab lets administrators choose a limit from 1 to 10,000 rows. The limit applies to tables and charts across every data source.
+
 = How do I add a chart? =
 
 Create a table first, then go to Charts and create a new chart linked to that table. Use `[bara_chart id="your-chart-slug"]` to embed it.
@@ -59,16 +64,33 @@ Yes. BaraTables keeps its frontend design intentionally light so your theme can 
 
 = Where can I see examples? =
 
-Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance.
+Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance, or use the Live Preview button on the WordPress.org plugin page for a temporary interactive demo.
 
 == Screenshots ==
 
 1. Frontend chart generated from a BaraTables table.
-2. Frontend table with search, filters, export buttons, column visibility, sorting, and pagination.
-3. Table builder column and filter controls inside the WordPress admin.
-4. Chart builder connected to a BaraTables table with chart type, axis, series, and height settings.
+2. Frontend table with search, filters, CSV and Excel export, column visibility, sorting, and pagination.
+3. Table Options tab with saved state, scrolling, row limits, layout, styling, and export controls.
+4. Chart builder and chart-type gallery with all supported chart types.
 
 == Changelog ==
+
+= 1.2.1 =
+New:
+* Export a table to Excel with a new table button option.
+* Five new chart types: horizontal bar, donut, scatter, bubble, and funnel, each with a preview in the chart-type gallery.
+* Remember table state: a table can keep its sorting, search, page, and page length across visits.
+* New table controls for horizontal scrolling, vertical scroll height, and column auto-sizing.
+* Configurable row loading limit per table (default 1,000 rows, up to 10,000), plus safeguards that keep very large manual grids responsive.
+
+Fixes:
+* The withdrawn 1.2.0 build was created from an outdated copy of the plugin and unintentionally removed fixes and features from 1.1.0 and 1.1.1. 1.2.1 restores all of them; if you installed 1.2.0, update as soon as possible.
+
+Security:
+* Restores the 1.1.1 access-control fix that the withdrawn 1.2.0 build undid: logged-in users without matching access tokens can no longer see restricted rows in CSV and external-database tables.
+
+= 1.2.0 =
+* Added Excel export, new chart types, and table state, scrolling, and row-limit controls. This build was withdrawn shortly after release: it was created from an outdated copy of the plugin and removed earlier fixes. Use 1.2.1 instead.
 
 = 1.1.1 =
 Fixes:
@@ -107,6 +129,9 @@ Fixes:
 
 == Upgrade Notice ==
 
+= 1.2.1 =
+Adds Excel export, five new chart types, saved table state, and scrolling and row-limit controls. Also restores 1.1.x fixes (including a security fix) that the withdrawn 1.2.0 build removed - update immediately if you briefly had 1.2.0.
+
 = 1.1.1 =
 "Format as date" now works on every data source, small numbers no longer render as 1970-era dates, front-end controls follow the site language, and attribute-less shortcodes no longer error on older WordPress, plus a security fix for the table editor's column-heading field.
 
@@ -127,7 +152,8 @@ This plugin bundles the following libraries and admin thumbnail assets:
 * DataTables Buttons v3.2.6 - MIT License
 * DataTables ColReorder v2.1.2 - MIT License
 * [Select2](https://select2.org/) v4.1.0-rc.0 - MIT License
-* [ECharts](https://echarts.apache.org/) v6.0.0 - Apache License 2.0
+* [JSZip](https://stuk.github.io/jszip/) v3.10.1 - MIT License
+* [ECharts](https://echarts.apache.org/) v6.1.0 - Apache License 2.0
 
 Source code and uncompressed distribution files for the bundled compressed assets are available here:
 
@@ -140,9 +166,9 @@ Source code and uncompressed distribution files for the bundled compressed asset
 * Select2 v4.1.0-rc.0 source: https://github.com/select2/select2/tree/4.1.0-rc.0
 * Select2 v4.1.0-rc.0 uncompressed JavaScript: https://raw.githubusercontent.com/select2/select2/4.1.0-rc.0/dist/js/select2.js
 * Select2 v4.1.0-rc.0 uncompressed CSS: https://raw.githubusercontent.com/select2/select2/4.1.0-rc.0/dist/css/select2.css
-* ECharts v6.0.0 source: https://github.com/apache/echarts/tree/6.0.0
-* ECharts v6.0.0 uncompressed JavaScript: https://raw.githubusercontent.com/apache/echarts/6.0.0/dist/echarts.js
+* JSZip v3.10.1 source: https://github.com/Stuk/jszip/tree/v3.10.1
+* JSZip v3.10.1 uncompressed JavaScript: https://raw.githubusercontent.com/Stuk/jszip/v3.10.1/dist/jszip.js
+* ECharts v6.1.0 source: https://github.com/apache/echarts/tree/6.1.0
+* ECharts v6.1.0 uncompressed JavaScript: https://raw.githubusercontent.com/apache/echarts/6.1.0/dist/echarts.js
 * Apache ECharts example thumbnail source files: https://echarts.apache.org/examples/data/thumb/
 * Apache ECharts examples source: https://github.com/apache/echarts-examples
-
-Additional third-party license and notice text is included in assets/vendor/THIRD-PARTY-LICENSES.txt.

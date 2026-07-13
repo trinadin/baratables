@@ -122,6 +122,15 @@
 		return isNaN(num) ? 0 : num;
 	}
 
+	function btblParseOptionalNumber(value) {
+		var text = btblExtractText(value);
+		if (text === '') {
+			return null;
+		}
+		var num = parseFloat(text.replace(/[^0-9.+\-eE]/g, ''));
+		return isNaN(num) ? null : num;
+	}
+
 	function initChart(chartConfig, tableInstance, tableId, slugToIndex) {
 		if (!chartConfig || !chartConfig.enabled || !window.echarts) {
 			return null;
@@ -383,29 +392,88 @@
 				return;
 			}
 			var isArea = type === 'area';
-			var seriesType = isArea ? 'line' : type;
+			var isHorizontalBar = type === 'horizontal_bar';
+			var isPieLike = type === 'pie' || type === 'donut' || type === 'funnel';
+			var isPointChart = type === 'scatter' || type === 'bubble';
+			var seriesType = isArea ? 'line' : (isHorizontalBar ? 'bar' : type);
 			var option = {
-				tooltip: { trigger: type === 'pie' ? 'item' : 'axis' },
+				tooltip: { trigger: (isPieLike || isPointChart) ? 'item' : 'axis' },
 				legend: {},
 			};
 
-			if (type === 'pie') {
+			if (isPieLike) {
 				var seriesSlug = prepared.seriesSlugs[0];
 				var label = columnsMeta[seriesSlug] || seriesSlug;
 				var pieData = prepared.categories.map(function(cat, idx) {
 					return { name: cat, value: prepared.data[seriesSlug][idx] };
 				});
-				option.series = [{
-					type: 'pie',
-					name: label,
-					data: pieData,
-					// ECharts pie emphasis.focus accepts 'none' | 'self' | 'series'; the invalid
-					// 'data' was silently ignored, so hovering never faded the other slices.
-					emphasis: { focus: 'self' }
-				}];
-			} else {
-				option.xAxis = { type: 'category', data: prepared.categories };
+				// ECharts emphasis.focus accepts 'none' | 'self' | 'series'; the invalid
+				// 'data' was silently ignored, so hovering never faded the other slices.
+				if (type === 'funnel') {
+					option.series = [{
+						type: 'funnel',
+						name: label,
+						data: pieData,
+						emphasis: { focus: 'self' }
+					}];
+				} else {
+					option.series = [{
+						type: 'pie',
+						name: label,
+						radius: type === 'donut' ? ['45%', '70%'] : undefined,
+						data: pieData,
+						emphasis: { focus: 'self' }
+					}];
+				}
+			} else if (isPointChart) {
+				option.xAxis = { type: 'value', name: columnsMeta[prepared.xSlug] || prepared.xSlug };
 				option.yAxis = { type: 'value' };
+				if (type === 'bubble') {
+					var ySlug = prepared.seriesSlugs[0];
+					var sizeSlug = prepared.seriesSlugs[1] || '';
+					var bubbleData = [];
+					prepared.categories.forEach(function(cat, idx) {
+						var xVal = btblParseOptionalNumber(cat);
+						if (xVal === null) {
+							return;
+						}
+						var yVal = prepared.data[ySlug][idx];
+						var sizeVal = sizeSlug ? prepared.data[sizeSlug][idx] : 0;
+						bubbleData.push([xVal, yVal, sizeVal, cat]);
+					});
+					option.series = [{
+						type: 'scatter',
+						name: columnsMeta[ySlug] || ySlug,
+						data: bubbleData,
+						symbolSize: function(value) {
+							var size = Array.isArray(value) ? Math.abs(Number(value[2]) || 0) : 0;
+							return size > 0 ? Math.min(50, Math.max(8, Math.sqrt(size) * 4)) : 14;
+						}
+					}];
+				} else {
+					option.series = prepared.seriesSlugs.map(function(slug) {
+						var pointData = [];
+						prepared.categories.forEach(function(cat, idx) {
+							var xVal = btblParseOptionalNumber(cat);
+							if (xVal !== null) {
+								pointData.push([xVal, prepared.data[slug][idx], cat]);
+							}
+						});
+						return {
+							type: 'scatter',
+							name: columnsMeta[slug] || slug,
+							data: pointData
+						};
+					});
+				}
+			} else {
+				if (isHorizontalBar) {
+					option.xAxis = { type: 'value' };
+					option.yAxis = { type: 'category', data: prepared.categories };
+				} else {
+					option.xAxis = { type: 'category', data: prepared.categories };
+					option.yAxis = { type: 'value' };
+				}
 				option.series = prepared.seriesSlugs.map(function(slug) {
 					return {
 						type: seriesType,
@@ -640,6 +708,10 @@
 		if (!pageLength || pageLength < 1) {
 			pageLength = 25;
 		}
+		var scrollY = parseInt(resolvedOptions.scrollY, 10);
+		if (isNaN(scrollY) || scrollY < 0) {
+			scrollY = 0;
+		}
 
 		var columnDefs = [];
 		if (Array.isArray(config.hiddenColumns) && config.hiddenColumns.length) {
@@ -686,6 +758,7 @@
 			var buttonRegistry = {
 				copy:       { extend: 'copyHtml5',  defaultText: 'Copy',              optionKey: 'buttonTextCopy' },
 				csv:        { extend: 'csvHtml5',   defaultText: 'Export CSV',         optionKey: 'buttonTextCsv' },
+				excel:      { extend: 'excelHtml5', defaultText: 'Export Excel',       optionKey: 'buttonTextExcel' },
 				print:      { extend: 'print',      defaultText: 'Print',              optionKey: 'buttonTextPrint' },
 				colvis:     { extend: 'colvis',     defaultText: 'Column visibility',  optionKey: 'buttonTextColvis' },
 				pagelength: { extend: 'pageLength', defaultText: 'Page length',        optionKey: 'buttonTextPagelength' }
@@ -793,6 +866,9 @@
 			paging: resolvedOptions.paging !== false,
 			ordering: resolvedOptions.ordering !== false,
 			colReorder: resolvedOptions.colReorder === true,
+			stateSave: resolvedOptions.stateSave === true,
+			autoWidth: resolvedOptions.autoWidth !== false,
+			scrollX: resolvedOptions.scrollX === true,
 			info: resolvedOptions.info !== false,
 			lengthChange: resolvedOptions.lengthChange !== false,
 			buttons: buttonDefs,
@@ -804,6 +880,10 @@
 				smart: true
 			}
 		};
+		if (scrollY > 0) {
+			tableConfig.scrollY = scrollY + 'px';
+			tableConfig.scrollCollapse = resolvedOptions.scrollCollapse !== false;
+		}
 		if (supportsLayout) {
 			tableConfig.layout = layoutConfig;
 		} else {
@@ -1380,7 +1460,7 @@
 		syncStateToUrl();
 		});
 
-				table.draw();
+				table.draw(false);
 			toggleEmptyState();
 			updateFilterStateClass();
 			var chartInstance = initChart(config.chart, table, tableId, slugToIndex);

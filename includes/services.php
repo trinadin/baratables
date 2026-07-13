@@ -137,6 +137,34 @@ class BaraTables_Service {
 			'default' => false,
 			'label' => null,
 		],
+		'stateSave' => [
+			'type' => 'checkbox',
+			'default' => false,
+			'label' => null,
+		],
+		'autoWidth' => [
+			'type' => 'checkbox',
+			'default' => true,
+			'label' => null,
+		],
+		'scrollX' => [
+			'type' => 'checkbox',
+			'default' => false,
+			'label' => null,
+		],
+		'scrollY' => [
+			'type' => 'number',
+			'default' => 0,
+			'min' => 0,
+			'max' => 2000,
+			'label' => null,
+			'description' => null,
+		],
+		'scrollCollapse' => [
+			'type' => 'checkbox',
+			'default' => true,
+			'label' => null,
+		],
 		'stripe' => [
 			'type' => 'checkbox',
 			'default' => true,
@@ -172,6 +200,14 @@ class BaraTables_Service {
 			'default' => 25,
 			'min' => 1,
 			'max' => 500,
+			'label' => null,
+			'description' => null,
+		],
+		'rowLimit' => [
+			'type' => 'number',
+			'default' => 1000,
+			'min' => 1,
+			'max' => 10000,
 			'label' => null,
 			'description' => null,
 		],
@@ -241,6 +277,7 @@ class BaraTables_Service {
 			'choices' => [
 				'copy' => null,
 				'csv' => null,
+				'excel' => null,
 				'print' => null,
 				'colvis' => null,
 				'pagelength' => null,
@@ -255,6 +292,12 @@ class BaraTables_Service {
 			'description' => null,
 		],
 		'buttonTextCsv' => [
+			'type' => 'text_html',
+			'default' => '',
+			'label' => null,
+			'description' => null,
+		],
+		'buttonTextExcel' => [
 			'type' => 'text_html',
 			'default' => '',
 			'label' => null,
@@ -372,6 +415,9 @@ class BaraTables_Service {
 		'application/vnd.ms-excel',
 		'text/comma-separated-values',
 	];
+	public const MAX_CUSTOM_COLUMNS = 100;
+	public const MAX_CUSTOM_ROWS = 1000;
+	public const MAX_CUSTOM_CELLS = 5000;
 	private ?array $last_inferred_columns = null;
 	private BaraTables_Repository $repo;
 
@@ -600,6 +646,7 @@ class BaraTables_Service {
 			'searchColumnsHeading' => __('Search in', 'baratables'),
 			'buttonTextCopy'       => __('Copy', 'baratables'),
 			'buttonTextCsv'        => __('Export CSV', 'baratables'),
+			'buttonTextExcel'      => __('Export Excel', 'baratables'),
 			'buttonTextPrint'      => __('Print', 'baratables'),
 			'buttonTextColvis'     => __('Column visibility', 'baratables'),
 			'buttonTextPagelength' => __('Page length', 'baratables'),
@@ -687,7 +734,7 @@ class BaraTables_Service {
 			$slug_map[$slug] = true;
 		}
 
-		if (!empty($options_raw['type']) && in_array($options_raw['type'], ['bar', 'line', 'area', 'pie', 'gantt'], true)) {
+		if (!empty($options_raw['type']) && in_array($options_raw['type'], ['bar', 'horizontal_bar', 'line', 'area', 'pie', 'donut', 'scatter', 'bubble', 'funnel', 'gantt'], true)) {
 			$options['type'] = $options_raw['type'];
 		}
 		if (!empty($options_raw['stack'])) {
@@ -1446,14 +1493,12 @@ class BaraTables_Service {
 
 	public function build_custom_dataset(array $column_labels_raw, $rows_raw, int $rows_count = 0, int $cols_count = 0): array {
 		$rows_raw = is_array($rows_raw) ? $rows_raw : [];
-		$max_cols = 50;
-		$max_rows = 500;
 
 		$column_count = $cols_count > 0 ? $cols_count : count($column_labels_raw);
 		if ($column_count <= 0) {
 			$column_count = 3;
 		}
-		$column_count = min($column_count, $max_cols);
+		$column_count = min($column_count, self::MAX_CUSTOM_COLUMNS);
 
 		$columns = [];
 		for ($i = 0; $i < $column_count; $i++) {
@@ -1468,7 +1513,8 @@ class BaraTables_Service {
 		if ($target_rows <= 0) {
 			$target_rows = 5;
 		}
-		$target_rows = min($target_rows, $max_rows);
+		$target_rows = min($target_rows, self::MAX_CUSTOM_ROWS);
+		$target_rows = min($target_rows, max(1, intdiv(self::MAX_CUSTOM_CELLS, $column_count)));
 
 		$rows = [];
 		for ($r = 0; $r < $target_rows; $r++) {
@@ -1743,7 +1789,9 @@ class BaraTables_Service {
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
 		$access = isset($definition['access_control']) && is_array($definition['access_control']) ? $definition['access_control'] : [];
 		$access_policy = $this->build_access_policy($access);
-		$row_limit = $limit > 0 ? min($limit, self::MAX_QUERY_ROWS) : self::MAX_QUERY_ROWS;
+		$table_options = $this->get_table_options($definition);
+		$configured_limit = max(1, (int) ($table_options['rowLimit'] ?? self::TABLE_OPTION_SCHEMA['rowLimit']['default']));
+		$row_limit = $limit > 0 ? min($limit, $configured_limit) : $configured_limit;
 
 		if (BaraTables_Source_Type::is_custom_data($definition['source_type'])) {
 			return $this->get_rows_from_custom($definition, $row_limit);
@@ -2090,7 +2138,7 @@ class BaraTables_Service {
 		if ($charset !== '') {
 			$ext_db->set_charset($ext_db->dbh, $charset);
 		}
-		$per_page = $limit > 0 ? min($limit, self::MAX_QUERY_ROWS) : self::MAX_QUERY_ROWS;
+		$per_page = $limit > 0 ? $limit : (int) self::TABLE_OPTION_SCHEMA['rowLimit']['default'];
 		$table = $this->sanitize_external_identifier((string) $table);
 		if ($table === '' || !method_exists($ext_db, 'has_cap') || !$ext_db->has_cap('identifier_placeholders')) {
 			return [];
@@ -2351,6 +2399,11 @@ class BaraTables_Service {
 		$schema['filtersTitleText']['label'] = __('Filters title text', 'baratables');
 		$schema['ordering']['label'] = __('Allow column sorting', 'baratables');
 		$schema['colReorder']['label'] = __('Allow column reordering', 'baratables');
+		$schema['stateSave']['label'] = __('Remember table state', 'baratables');
+		$schema['autoWidth']['label'] = __('Auto-size columns', 'baratables');
+		$schema['scrollX']['label'] = __('Enable horizontal scrolling', 'baratables');
+		$schema['scrollY']['label'] = __('Vertical scroll height (px)', 'baratables');
+		$schema['scrollCollapse']['label'] = __('Collapse vertical scroll when shorter', 'baratables');
 		$schema['stripe']['label'] = __('Show zebra stripes', 'baratables');
 		$schema['rowBorder']['label'] = __('Show row borders', 'baratables');
 		$schema['cellBorder']['label'] = __('Show cell borders', 'baratables');
@@ -2358,6 +2411,8 @@ class BaraTables_Service {
 		$schema['orderColumn']['label'] = __('Highlight sorted column', 'baratables');
 		$schema['compact']['label'] = __('Compact density', 'baratables');
 		$schema['pageLength']['label'] = __('Rows per page', 'baratables');
+		$schema['rowLimit']['label'] = __('Maximum rows to load', 'baratables');
+		$schema['rowLimit']['description'] = __('Limits rows fetched and rendered for this table. Use CSV or server-side data handling for larger datasets.', 'baratables');
 		$schema['lengthMenuPrefix']['label'] = __('Selector prefix', 'baratables');
 		$schema['lengthMenuSuffix']['label'] = __('Selector suffix', 'baratables');
 		$schema['paginateFirst']['label'] = __('Pagination label: First', 'baratables');
@@ -2374,12 +2429,14 @@ class BaraTables_Service {
 		$schema['buttons']['choices'] = [
 			'copy' => __('Copy', 'baratables'),
 			'csv' => __('Export CSV', 'baratables'),
+			'excel' => __('Export Excel', 'baratables'),
 			'print' => __('Print', 'baratables'),
 			'colvis' => __('Column visibility', 'baratables'),
 			'pagelength' => __('Page length button', 'baratables'),
 		];
 		$schema['buttonTextCopy']['label'] = __('Copy button text', 'baratables');
 		$schema['buttonTextCsv']['label'] = __('CSV button text', 'baratables');
+		$schema['buttonTextExcel']['label'] = __('Excel button text', 'baratables');
 		$schema['buttonTextPrint']['label'] = __('Print button text', 'baratables');
 		$schema['buttonTextColvis']['label'] = __('Column visibility button text', 'baratables');
 		$schema['buttonTextPagelength']['label'] = __('Page length button text', 'baratables');

@@ -493,12 +493,12 @@ class BaraTables_Admin_Tab_General {
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_custom_columns_count"><?php esc_html_e('Number of columns', 'baratables'); ?></label>
 					<p class="description"><?php esc_html_e('Set how many columns your custom data should have.', 'baratables'); ?></p>
-					<input type="number" name="btbl_custom_columns_count" id="btbl_custom_columns_count" class="small-text" min="1" max="50" value="<?php echo esc_attr((int) $custom_cols_count); ?>" />
+					<input type="number" name="btbl_custom_columns_count" id="btbl_custom_columns_count" class="small-text" min="1" max="<?php echo esc_attr(BaraTables_Service::MAX_CUSTOM_COLUMNS); ?>" value="<?php echo esc_attr((int) $custom_cols_count); ?>" />
 				</div>
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_custom_rows_count"><?php esc_html_e('Number of rows', 'baratables'); ?></label>
 					<p class="description"><?php esc_html_e('Enter how many rows of data you want to manage.', 'baratables'); ?></p>
-					<input type="number" name="btbl_custom_rows_count" id="btbl_custom_rows_count" class="small-text" min="1" max="500" value="<?php echo esc_attr((int) $custom_rows_count); ?>" />
+					<input type="number" name="btbl_custom_rows_count" id="btbl_custom_rows_count" class="small-text" min="1" max="<?php echo esc_attr(BaraTables_Service::MAX_CUSTOM_ROWS); ?>" value="<?php echo esc_attr((int) $custom_rows_count); ?>" />
 				</div>
 			</div>
 			<div class="btbl-control-grid<?php echo esc_attr($source_hidden_class('custom_data')); ?>" data-btbl-source="custom_data">
@@ -506,7 +506,21 @@ class BaraTables_Admin_Tab_General {
 					<div class="btbl-control-header">
 						<div class="btbl-header-stack">
 							<label class="btbl-small-heading" for="btbl_custom_grid"><?php esc_html_e('Custom data', 'baratables'); ?></label>
-							<p class="description"><?php esc_html_e('Adjust column/row counts and click Update grid to resize before saving.', 'baratables'); ?></p>
+							<p class="description">
+								<?php
+								echo esc_html(sprintf(
+									/* translators: %d is the maximum number of editable custom-data cells. */
+									__('Adjust column/row counts and click Update grid to resize before saving. Custom grids support up to %d cells.', 'baratables'),
+									BaraTables_Service::MAX_CUSTOM_CELLS
+								));
+								?>
+							</p>
+							<p
+								class="description btbl-custom-grid-limit is-hidden"
+								aria-live="polite"
+								<?php /* translators: %1$d is the column count, %2$d is the row count, %3$d is the maximum number of cells. */ ?>
+								data-message="<?php echo esc_attr__('Grid size adjusted to %1$d columns and %2$d rows (maximum %3$d cells).', 'baratables'); ?>"
+							></p>
 						</div>
 						<button type="button" class="button btbl-icon-button" id="btbl_custom_grid_refresh" aria-label="<?php echo esc_attr__('Update grid size', 'baratables'); ?>" title="<?php echo esc_attr__('Update grid size', 'baratables'); ?>"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>
 					</div>
@@ -516,6 +530,9 @@ class BaraTables_Admin_Tab_General {
 						class="btbl-custom-grid"
 						data-cols="<?php echo esc_attr((int) $custom_cols_count); ?>"
 						data-rows="<?php echo esc_attr((int) $custom_rows_count); ?>"
+						data-max-cols="<?php echo esc_attr(BaraTables_Service::MAX_CUSTOM_COLUMNS); ?>"
+						data-max-rows="<?php echo esc_attr(BaraTables_Service::MAX_CUSTOM_ROWS); ?>"
+						data-max-cells="<?php echo esc_attr(BaraTables_Service::MAX_CUSTOM_CELLS); ?>"
 						<?php // translators: %d is the row number. ?>
 						data-row-label="<?php echo esc_attr(__('Row %d', 'baratables')); ?>"
 						<?php // translators: %d is the column number. ?>
@@ -1298,7 +1315,7 @@ class BaraTables_Admin_Tab_Table {
 			return array_key_exists($key, $option_schema);
 		}));
 
-		$embedded_flags = ['lengthChange', 'searchColumns', 'pagingNumbers', 'pagingFirstLast', 'pagingPreviousNext'];
+		$embedded_flags = ['lengthChange', 'searchColumns', 'pagingNumbers', 'pagingFirstLast', 'pagingPreviousNext', 'scrollCollapse'];
 		$flag_keys = array_values(array_filter($flag_keys, static function ($key) use ($embedded_flags, $style_keys) {
 			return !in_array($key, $embedded_flags, true) && !in_array($key, $style_keys, true);
 		}));
@@ -1330,6 +1347,10 @@ class BaraTables_Admin_Tab_Table {
 				static fn($key) => in_array($key, $text_keys, true)
 			)),
 			'filtersTitle' => array_filter($text_keys, static fn($key) => $key === 'filtersTitleText'),
+			'scrollX' => array_values(array_filter(
+				['scrollY', 'scrollCollapse'],
+				static fn($key) => in_array($key, array_merge($number_keys, $embedded_flags), true)
+			)),
 		];
 		$layout_features = [
 			'pagelength' => __('Page length', 'baratables'),
@@ -1374,6 +1395,7 @@ class BaraTables_Admin_Tab_Table {
 		$layout_unused = array_values(array_filter($layout_allowed, static function ($item) use ($layout_used) {
 			return !isset($layout_used[$item]);
 		}));
+		$row_limit_config = $option_schema['rowLimit'] ?? null;
 		?>
 		<div id="btbl-tab-table" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-table-label">
 				<div class="btbl-control">
@@ -1526,6 +1548,21 @@ class BaraTables_Admin_Tab_Table {
 						<?php endforeach; ?>
 					</div>
 				</div>
+				<?php if ($row_limit_config) : ?>
+					<div class="btbl-control">
+						<label class="btbl-small-heading" for="btbl_rowLimit"><?php echo esc_html($row_limit_config['label']); ?></label>
+						<p class="description"><?php echo esc_html($row_limit_config['description'] ?? ''); ?></p>
+						<input
+							type="number"
+							class="small-text"
+							name="btbl_table_options[rowLimit]"
+							id="btbl_rowLimit"
+							min="<?php echo esc_attr((int) ($row_limit_config['min'] ?? 1)); ?>"
+							max="<?php echo esc_attr((int) ($row_limit_config['max'] ?? 10000)); ?>"
+							value="<?php echo esc_attr((int) ($table_options['rowLimit'] ?? $row_limit_config['default'])); ?>"
+						/>
+					</div>
+				<?php endif; ?>
 				<div class="btbl-control btbl-layout-builder" data-defaults="<?php echo esc_attr(wp_json_encode($layout_defaults)); ?>">
 					<div class="btbl-layout-header">
 						<div class="btbl-header-stack">
@@ -1594,6 +1631,7 @@ class BaraTables_Admin_Tab_Table {
 				$button_text_keys = [
 					'copy' => 'buttonTextCopy',
 					'csv' => 'buttonTextCsv',
+					'excel' => 'buttonTextExcel',
 					'print' => 'buttonTextPrint',
 					'colvis' => 'buttonTextColvis',
 					'pagelength' => 'buttonTextPagelength',
@@ -1753,11 +1791,16 @@ class BaraTables_Admin_Tab_Chart {
 			$plugin_url = plugin_dir_url($plugin_file);
 			$placeholder_svg = 'data:image/svg+xml,' . rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f7f8fa"/><rect x="32" y="36" width="28" height="128" fill="#d7dde5"/><rect x="78" y="76" width="28" height="88" fill="#d7dde5"/><rect x="124" y="52" width="28" height="112" fill="#d7dde5"/><rect x="170" y="92" width="28" height="72" fill="#d7dde5"/><rect x="216" y="116" width="28" height="48" fill="#d7dde5"/><rect x="262" y="64" width="28" height="96" fill="#d7dde5"/><text x="160" y="186" text-anchor="middle" font-size="14" fill="#94a3b8" font-family="Arial, sans-serif">Preview coming soon</text></svg>');
 			$chart_type_images = [
-				'bar'   => 'bar-simple.webp',
-				'line'  => 'line-simple.webp',
-				'area'  => 'area-basic.webp',
-				'pie'   => 'pie-simple.webp',
-				'gantt' => 'custom-gantt-flight.webp',
+				'bar'            => 'bar-simple.webp',
+				'horizontal_bar' => 'bar-y-category.webp',
+				'line'           => 'line-simple.webp',
+				'area'           => 'area-basic.webp',
+				'pie'            => 'pie-simple.webp',
+				'donut'          => 'pie-doughnut.webp',
+				'scatter'        => 'scatter-simple.webp',
+				'bubble'         => 'bubble-gradient.webp',
+				'funnel'         => 'funnel.webp',
+				'gantt'          => 'custom-gantt-flight.webp',
 			];
 			?>
 		<div id="btbl-tab-chart" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-chart-label">
@@ -1799,9 +1842,14 @@ class BaraTables_Admin_Tab_Chart {
 					</div>
 					<select name="btbl_chart_type" id="btbl_chart_type" class="btbl-chart-type-select">
 						<option value="bar" <?php selected($chart_options['type'], 'bar'); ?>><?php esc_html_e('Bar', 'baratables'); ?></option>
+						<option value="horizontal_bar" <?php selected($chart_options['type'], 'horizontal_bar'); ?>><?php esc_html_e('Horizontal Bar', 'baratables'); ?></option>
 						<option value="line" <?php selected($chart_options['type'], 'line'); ?>><?php esc_html_e('Line', 'baratables'); ?></option>
 						<option value="area" <?php selected($chart_options['type'], 'area'); ?>><?php esc_html_e('Area', 'baratables'); ?></option>
 						<option value="pie" <?php selected($chart_options['type'], 'pie'); ?>><?php esc_html_e('Pie', 'baratables'); ?></option>
+						<option value="donut" <?php selected($chart_options['type'], 'donut'); ?>><?php esc_html_e('Donut', 'baratables'); ?></option>
+						<option value="scatter" <?php selected($chart_options['type'], 'scatter'); ?>><?php esc_html_e('Scatter', 'baratables'); ?></option>
+						<option value="bubble" <?php selected($chart_options['type'], 'bubble'); ?>><?php esc_html_e('Bubble', 'baratables'); ?></option>
+						<option value="funnel" <?php selected($chart_options['type'], 'funnel'); ?>><?php esc_html_e('Funnel', 'baratables'); ?></option>
 						<option value="gantt" <?php selected($chart_options['type'], 'gantt'); ?>><?php esc_html_e('Gantt', 'baratables'); ?></option>
 					</select>
 				</div>
@@ -1904,9 +1952,14 @@ class BaraTables_Admin_Tab_Chart {
 						$current_type = $chart_options['type'] ?? 'bar';
 							$type_labels = [
 								'bar' => __('Bar', 'baratables'),
+								'horizontal_bar' => __('Horizontal Bar', 'baratables'),
 								'line' => __('Line', 'baratables'),
 								'area' => __('Area', 'baratables'),
 								'pie' => __('Pie', 'baratables'),
+								'donut' => __('Donut', 'baratables'),
+								'scatter' => __('Scatter', 'baratables'),
+								'bubble' => __('Bubble', 'baratables'),
+								'funnel' => __('Funnel', 'baratables'),
 								'gantt' => __('Gantt', 'baratables'),
 							];
 							foreach ($type_labels as $slug => $label) :

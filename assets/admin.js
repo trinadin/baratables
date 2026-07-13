@@ -683,6 +683,7 @@ jQuery(function($) {
 	var $customGrid = $('#btbl_custom_grid');
 	var $customColsInput = $('#btbl_custom_columns_count');
 	var $customRowsInput = $('#btbl_custom_rows_count');
+	var $customLimitMessage = $('.btbl-custom-grid-limit');
 	var $customRefresh = $('#btbl_custom_grid_refresh');
 	var $customQueryRefresh = $('#btbl_custom_query_refresh');
 	var $customQueryInput = $('#btbl_custom_query_json');
@@ -698,9 +699,24 @@ jQuery(function($) {
 	function getCustomCounts() {
 		var cols = $customGrid.data('cols') || 1;
 		var rows = $customGrid.data('rows') || 1;
+		var maxCols = parseInt($customGrid.data('maxCols'), 10) || 100;
+		var maxRows = parseInt($customGrid.data('maxRows'), 10) || 1000;
+		var maxCells = parseInt($customGrid.data('maxCells'), 10) || 5000;
+		var requestedCols = clampNumber($customColsInput.val() || cols, 1, maxCols);
+		var requestedRows = clampNumber($customRowsInput.val() || rows, 1, maxRows);
+		var cappedRows = Math.min(requestedRows, Math.max(1, Math.floor(maxCells / requestedCols)));
+		var wasAdjusted = cappedRows !== requestedRows;
+		if ($customLimitMessage.length) {
+			var template = $customLimitMessage.data('message') || '';
+			var message = template
+				.replace('%1$d', requestedCols)
+				.replace('%2$d', cappedRows)
+				.replace('%3$d', maxCells);
+			$customLimitMessage.text(wasAdjusted ? message : '').toggleClass('is-hidden', !wasAdjusted);
+		}
 		return {
-			cols: clampNumber($customColsInput.val() || cols, 1, 50),
-			rows: clampNumber($customRowsInput.val() || rows, 1, 500),
+			cols: requestedCols,
+			rows: cappedRows,
 		};
 	}
 

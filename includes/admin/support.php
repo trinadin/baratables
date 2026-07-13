@@ -746,9 +746,14 @@ class BaraTables_Chart_List_Columns {
 				}
 				$type_labels = [
 					'bar' => __('Bar', 'baratables'),
+					'horizontal_bar' => __('Horizontal Bar', 'baratables'),
 					'line' => __('Line', 'baratables'),
 					'area' => __('Area', 'baratables'),
 					'pie' => __('Pie', 'baratables'),
+					'donut' => __('Donut', 'baratables'),
+					'scatter' => __('Scatter', 'baratables'),
+					'bubble' => __('Bubble', 'baratables'),
+					'funnel' => __('Funnel', 'baratables'),
 					'gantt' => __('Gantt', 'baratables'),
 				];
 				// R42: a scannable Dashicon alongside the text label.

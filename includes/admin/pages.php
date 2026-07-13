@@ -177,6 +177,7 @@ class BaraTables_Admin_Pages {
 		$button_labels = [
 			'copy' => __('Copy', 'baratables'),
 			'csv' => __('CSV', 'baratables'),
+			'excel' => __('Excel', 'baratables'),
 			'print' => __('Print', 'baratables'),
 			'colvis' => __('Columns', 'baratables'),
 			'pagelength' => __('Page length', 'baratables'),
@@ -184,6 +185,7 @@ class BaraTables_Admin_Pages {
 		$button_text_map = [
 			'copy' => (string) ($table_options['buttonTextCopy'] ?? ''),
 			'csv' => (string) ($table_options['buttonTextCsv'] ?? ''),
+			'excel' => (string) ($table_options['buttonTextExcel'] ?? ''),
 			'print' => (string) ($table_options['buttonTextPrint'] ?? ''),
 			'colvis' => (string) ($table_options['buttonTextColvis'] ?? ''),
 			'pagelength' => (string) ($table_options['buttonTextPagelength'] ?? ''),

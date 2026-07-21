@@ -1,0 +1,37 @@
+# Ignore rules for the BaraTables plugin repo.
+#
+# These live here, tracked, rather than only in .git/info/exclude -- that file is local to one
+# clone and is never shared, so a fresh clone had NO rules at all. bin/release-svn.sh runs
+# `git add -A` before tagging, which on such a clone would sweep .DS_Store, editor folders and
+# build junk straight into the plugin repo and from there into a public release.
+
+# --- macOS / Windows / editor noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.codex/
+
+# --- Dependency + build dirs ---
+node_modules/
+
+# ANCHORED ON PURPOSE. A bare "vendor/" is unanchored and git matches it at ANY depth, which
+# silently swallowed assets/vendor/ -- the bundled DataTables, ECharts, JSZip and Select2 files
+# the plugin enqueues at runtime. Every published GitHub tag through v1.2.1 is missing them and
+# is not an installable plugin as a result. This plugin has no build step and no dependency
+# manifest, so those files cannot be regenerated: they MUST stay tracked. The leading slash
+# limits this to a Composer vendor/ directory at the plugin root, which is all that was intended.
+/vendor/
+
+# --- Packaged output ---
+*.zip
+*.tar.gz
+
+# --- Test + tooling artifacts ---
+local-tests/
+.phpunit.result.cache
+coverage/
+
+# --- Agent instruction files (kept in the parent dev repo, not shipped) ---
+CLAUDE.md
+AGENTS.md

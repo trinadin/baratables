@@ -10,7 +10,7 @@
 .btbl-admin .btbl-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-	grid-gap: 16px;
+	gap: 16px;
 }
 
 .btbl-admin .card {
@@ -42,7 +42,7 @@
 .btbl-admin .btbl-columns {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	grid-gap: 16px;
+	gap: 16px;
 }
 
 /* Columns & Filters: split a column group's boxes into two INDEPENDENT stacks on desktop, so a
@@ -83,8 +83,27 @@
 	margin-top: 12px;
 }
 
-.btbl-control .description {
+/* Help text sits BELOW its control, matching wp-admin's own convention. It previously only had a
+   bottom margin (written for descriptions placed above the field), so every description that
+   followed a control fell back to the browser's 2px paragraph margin and crowded the control.
+   line-height is pinned because it was inheriting 1.5 in some contexts and 1.4 in others. */
+.btbl-control .description,
+.btbl-options-row .description,
+.btbl-control-header + .description {
 	display: block;
+	margin-top: 8px;
+	margin-bottom: 0;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* A description that still leads its block (a section intro, or copy that explains an interaction
+   before you perform it -- the drag-to-reorder lists) keeps the original spacing below it. */
+.btbl-control > .description:first-child,
+.btbl-control .btbl-small-heading + .description,
+/* stylelint-disable-next-line no-descending-specificity -- same declaration block as the selector it is compared against */
+.btbl-header-stack .description {
+	margin-top: 2px;
 	margin-bottom: 10px;
 }
 
@@ -95,23 +114,6 @@
 .btbl-control textarea {
 	width: 100%;
 	max-width: 100%;
-}
-
-.btbl-control-inline {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-}
-
-.btbl-control .btbl-control-inline {
-	margin-top: 12px;
-}
-
-@media (min-width: 640px) {
-	.btbl-control-inline {
-		flex-direction: row;
-		align-items: center;
-	}
 }
 
 .btbl-taxonomy-filter .btbl-tax-terms-group:not(:first-child) {
@@ -155,6 +157,7 @@
 	outline-offset: 2px;
 }
 
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-tax-terms-group {
 	border: 1px solid #d0d7de;
 	border-radius: 10px;
@@ -235,6 +238,7 @@
 	gap: 10px;
 	align-items: start;
 }
+/* stylelint-disable-next-line no-descending-specificity -- earlier rule sets the identical value (12px) */
 .btbl-flag-grid + .btbl-control-grid {
 	margin-top: 12px;
 }
@@ -316,9 +320,11 @@
 	outline-offset: 2px;
 }
 
+/* Must follow .btbl-layout-chip:active (same specificity) so a disabled chip keeps
+   `not-allowed` while being clicked, rather than falling back to `grabbing`. */
 .btbl-layout-chip.is-disabled {
 	opacity: 0.5;
-	cursor: grab;
+	cursor: not-allowed;
 }
 
 .btbl-layout-palette {
@@ -339,6 +345,7 @@
 	background-color: var(--btbl-bg-muted);
 }
 
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-flag-card {
 	display: block;
 }
@@ -386,6 +393,7 @@
     display: none;
 }
 
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-admin .btbl-checkbox {
 	display: block;
 	margin-bottom: 8px;
@@ -416,15 +424,21 @@
 	display: none;
 }
 
+/* Checkbox and its wording on one line. Matches .btbl-inline's weight so the label does not
+   read as a sub-heading of the control above it. */
+.btbl-checkbox-inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: normal;
+}
+
 .btbl-filter-values-row textarea {
 	width: 100%;
 	min-height: 70px;
 	resize: vertical;
 }
 
-.btbl-filter-values-row .description {
-	margin-top: 6px;
-}
 
 .btbl-options-row:not(.is-disabled) label.btbl-inline:not(.is-disabled),
 .btbl-options-inline:not(.is-disabled) label.btbl-inline:not(.is-disabled) {
@@ -531,7 +545,9 @@
 	border-top: 1px solid #e2e4e7;
 }
 
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-preview-table.cell-border th,
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-preview-table.cell-border td {
 	border: 1px solid var(--btbl-border-light);
 }
@@ -540,7 +556,9 @@
 	background: #eef5ff;
 }
 
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-preview-table.compact th,
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-preview-table.compact td {
 	padding: 4px 8px;
 }
@@ -565,6 +583,7 @@
 	content: "\25BC";
 }
 
+/* stylelint-disable-next-line no-descending-specificity -- the contextual override at :507 is intentional and wins on specificity */
 .btbl-preview-info {
 	margin-top: 8px;
 	font-size: 12px;
@@ -583,6 +602,10 @@
 }
 
 .btbl-shortcode::before {
+	/* No generic fallback on purpose: this renders a single glyph from the dashicons icon font by
+	   codepoint. Falling back to a text family would draw an unrelated letter rather than nothing,
+	   which is worse. WordPress core declares this font the same way. */
+	/* stylelint-disable-next-line font-family-no-missing-generic-family-keyword -- icon font, glyph by codepoint. */
 	font-family: dashicons;
 	content: "\f105"; /* dashicons-admin-page (copy) */
 	margin-right: 4px;
@@ -738,28 +761,7 @@
 	align-items: center;
 }
 
-.btbl-filter-separator {
-	border: 0;
-	height: 1px;
-	background: #e0e0e0;
-	margin: 10px -6px 8px;
-}
-
-.btbl-filter-controls {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	align-items: center;
-}
-
-.btbl-filter-heading {
-	font-size: 11px;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.02em;
-	color: #555;
-}
-
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-small-label {
 	display: block;
 	font-size: 11px;
@@ -1019,6 +1021,7 @@
 	width: 100%;
 	box-sizing: border-box;
 }
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-custom-grid thead th {
 	position: sticky;
 	top: 0;
@@ -1110,6 +1113,7 @@
 .wp-core-ui .button.btbl-icon-button[hidden] {
 	display: none;
 }
+/* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
 .btbl-row-actions {
 	white-space: nowrap;
 	width: 1%;
@@ -1130,6 +1134,7 @@
 	cursor: pointer;
 	vertical-align: middle;
 }
+/* stylelint-disable-next-line no-descending-specificity -- cannot match the same element (.button-link is never .button.btbl-icon-button) */
 .btbl-row-actions .button-link .dashicons {
 	width: 15px;
 	height: 15px;
@@ -1191,15 +1196,6 @@ textarea.btbl-invalid {
 .btbl-layout-palette-drop:has(.btbl-layout-chip) .btbl-palette-placeholder {
 	display: none;
 }
-/* The placeholder carries `.description`'s bottom margin (.btbl-control .description: 10px), which
-   leaves dead space at the bottom of the palette drop zone. Drop it inside the palette. */
-.btbl-layout-drop.btbl-layout-palette-drop .btbl-palette-placeholder {
-	margin-bottom: 0;
-}
-.btbl-layout-chip.is-disabled {
-	cursor: not-allowed;
-}
-
 /* Audit follow-up: "Show/Hide help text" preference. */
 /* Collapsible shortcode-ID editor (WordPress slug-editor pattern): "Edit ID" by default,
    the inline input + hint only on demand — keeps the builder header uncluttered. */
@@ -1241,11 +1237,13 @@ textarea.btbl-invalid {
 .btbl-id-edit-toggle:focus-visible {
 	color: #135e96;
 }
+/* stylelint-disable-next-line no-descending-specificity -- cannot match the same element (.button-link is never .button.btbl-icon-button) */
 .btbl-id-edit-toggle .dashicons {
 	font-size: 15px;
 	width: 15px;
 	height: 15px;
 }
+/* stylelint-disable-next-line no-descending-specificity -- the .is-editing-id override at :1201 is intentional and wins on specificity */
 .btbl-id-edit-panel:not([hidden]) {
 	display: flex;
 	align-items: center;
@@ -1290,6 +1288,7 @@ textarea.btbl-invalid {
 	background: #f0f0f1;
 	color: #135e96;
 }
+/* stylelint-disable-next-line no-descending-specificity -- cannot match the same element (bare class, never .button.btbl-icon-button) */
 .btbl-help-toggle .dashicons {
 	font-size: 20px;
 	width: 20px;

@@ -39,7 +39,7 @@ class BaraTables_Frontend {
 			return '<p>' . esc_html__('Table not found.', 'baratables') . '</p>';
 		}
 
-		$this->enqueue_frontend_assets(true, false);
+		$this->enqueue_frontend_assets(true, false, $this->get_table_asset_features($context['definition']));
 
 		if (empty($context['definition']['columns'])) {
 			return '<p>' . esc_html__('No columns selected for this table.', 'baratables') . '</p>';
@@ -84,10 +84,10 @@ class BaraTables_Frontend {
 		$render_table = false;
 		$instance_base = (string) ($chart_definition['id'] ?? $definition['id'] ?? $atts['id'] ?? 'chart');
 		$instance_id = $this->get_render_instance_id('chart-' . $instance_base);
-		$chart_post_id = $this->chart_service->get_chart_post_id($chart_definition['id'] ?? $atts['id']);
-		$admin_edit_url = $chart_post_id ? get_edit_post_link($chart_post_id, '') : null;
-
-		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, $render_table, $admin_edit_url);
+		// No edit link on the chart-only render: render_table_view only surfaces it on the table
+		// path ($render_table), so computing get_chart_post_id()/get_edit_post_link() here was a
+		// dead query on every chart view, for every visitor.
+		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, $render_table);
 	}
 
 	private function get_render_instance_id(string $base): string {
@@ -95,30 +95,79 @@ class BaraTables_Frontend {
 		if ($base === '') {
 			$base = 'baratables';
 		}
-		return $base . '-' . wp_unique_id();
+		// Deterministic per-render counter, NOT wp_unique_id(). wp_unique_id() is a request-global
+		// counter shared with core blocks and every other plugin, so its value -- and therefore the
+		// table's DOM id -- shifts whenever page composition changes. DataTables keys its saved state
+		// by that DOM id, so a shifting id silently discards "Remember table state" between loads.
+		// A plugin-local counter is stable across reloads of the same page (shortcodes render in a
+		// fixed document order) while staying unique per shortcode instance on the page.
+		static $counter = 0;
+		$counter++;
+		return $base . '-' . $counter;
 	}
 
-	private function enqueue_frontend_assets(bool $include_table, bool $include_chart): void {
+	/**
+	 * Which optional front-end libraries a table actually needs.
+	 *
+	 * All three ship off by default -- `buttons` defaults to [], `colReorder` to false, and a
+	 * column's `filter` to 'none' (Select2 is only ever instantiated for dropdown filters). They
+	 * were previously enqueued on every table page regardless, which put roughly 265KB of
+	 * unusable JS/CSS on a stock table: the Buttons family + JSZip, Select2, and ColReorder.
+	 */
+	private function get_table_asset_features(array $definition): array {
+		$features = [];
+		$options = $this->service->get_table_options($definition);
+
+		if (!empty($options['buttons'])) {
+			$features[] = 'buttons';
+		}
+		if (!empty($options['colReorder'])) {
+			$features[] = 'colreorder';
+		}
+		foreach (($definition['columns'] ?? []) as $col) {
+			$filter = is_array($col) && isset($col['filter']) ? (string) $col['filter'] : '';
+			if ($filter === 'dropdown' || $filter === 'dropdown_multi') {
+				$features[] = 'select2';
+				break;
+			}
+		}
+
+		return $features;
+	}
+
+	/**
+	 * @param string[] $features Optional-library features to include (see get_table_asset_features).
+	 *                           A spec carrying a 'feature' key is skipped unless it is listed here.
+	 */
+	private function enqueue_frontend_assets(bool $include_table, bool $include_chart, array $features = []): void {
 		$this->ensure_assets_registered();
 
+		$wanted = static function (array $spec) use ($include_table, $include_chart, $features): bool {
+			if (!$include_table && !empty($spec['table_only'])) {
+				return false;
+			}
+			if (!$include_chart && !empty($spec['chart_only'])) {
+				return false;
+			}
+			// Specs tagged with a feature only load when that feature is actually configured.
+			// Every member of a feature group is gated together, so the buttons.html5 -> jszip
+			// dependency edge is preserved intact whenever the Buttons family does load.
+			if (!empty($spec['feature']) && !in_array($spec['feature'], $features, true)) {
+				return false;
+			}
+			return true;
+		};
+
 		foreach ($this->get_style_specs() as $style) {
-			if (!$include_table && !empty($style['table_only'])) {
-				continue;
+			if ($wanted($style)) {
+				wp_enqueue_style($style['handle']);
 			}
-			if (!$include_chart && !empty($style['chart_only'])) {
-				continue;
-			}
-			wp_enqueue_style($style['handle']);
 		}
 
 		foreach ($this->get_script_specs() as $script) {
-			if (!$include_table && !empty($script['table_only'])) {
-				continue;
+			if ($wanted($script)) {
+				wp_enqueue_script($script['handle']);
 			}
-			if (!$include_chart && !empty($script['chart_only'])) {
-				continue;
-			}
-			wp_enqueue_script($script['handle']);
 		}
 	}
 
@@ -161,6 +210,7 @@ class BaraTables_Frontend {
 				'deps'   => ['baratables-datatables'],
 				'ver'    => '3.2.6',
 				'table_only' => true,
+				'feature'    => 'buttons',
 			],
 			[
 				'handle' => 'baratables-datatables-colreorder',
@@ -168,6 +218,7 @@ class BaraTables_Frontend {
 				'deps'   => ['baratables-datatables'],
 				'ver'    => '2.1.2',
 				'table_only' => true,
+				'feature'    => 'colreorder',
 			],
 			[
 				'handle' => 'baratables-select2',
@@ -175,6 +226,7 @@ class BaraTables_Frontend {
 				'deps'   => [],
 				'ver'    => '4.1.0-rc.0',
 				'table_only' => true,
+				'feature'    => 'select2',
 			],
 			[
 				'handle' => 'baratables',
@@ -202,14 +254,23 @@ class BaraTables_Frontend {
 				'ver'       => '3.2.6',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'buttons',
 			],
 			[
+				// JSZip is required by DataTables' excelHtml5 button and stays a hard dependency of
+				// buttons.html5 (below) so it always loads before the button's availability check runs.
+				// It is tagged with the same 'buttons' feature as the rest of the family, so the whole
+				// group is enqueued or skipped together and the dependency edge is never broken -- the
+				// Excel button cannot silently vanish. It still loads whenever ANY button is configured,
+				// even if Excel is not among them; splitting it out would mean re-guaranteeing load
+				// order another way for ~95KB, which is not worth that regression risk.
 				'handle'    => 'baratables-jszip',
 				'src'       => $this->plugin_url . 'assets/vendor/jszip/jszip.min.js',
 				'deps'      => [],
 				'ver'       => '3.10.1',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'buttons',
 			],
 			[
 				'handle'    => 'baratables-datatables-buttons-html5',
@@ -218,6 +279,7 @@ class BaraTables_Frontend {
 				'ver'       => '3.2.6',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'buttons',
 			],
 			[
 				'handle'    => 'baratables-datatables-buttons-print',
@@ -226,6 +288,7 @@ class BaraTables_Frontend {
 				'ver'       => '3.2.6',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'buttons',
 			],
 			[
 				'handle'    => 'baratables-datatables-buttons-colvis',
@@ -234,6 +297,7 @@ class BaraTables_Frontend {
 				'ver'       => '3.2.6',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'buttons',
 			],
 			[
 				'handle'    => 'baratables-datatables-colreorder',
@@ -242,6 +306,7 @@ class BaraTables_Frontend {
 				'ver'       => '2.1.2',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'colreorder',
 			],
 			[
 				'handle'    => 'baratables-select2',
@@ -250,6 +315,7 @@ class BaraTables_Frontend {
 				'ver'       => '4.1.0-rc.0',
 				'in_footer' => true,
 				'table_only' => true,
+				'feature'    => 'select2',
 			],
 			[
 				'handle'    => 'baratables-echarts',
@@ -269,11 +335,15 @@ class BaraTables_Frontend {
 		];
 	}
 
-	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $instance_id, bool $render_table, ?string $admin_edit_url = null): string {
-		$filters = $this->service->build_filter_options($definition, $rows);
+	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $instance_id, bool $render_table): string {
+		// Only the table markup consumes $filters. A [bara_chart] render always passes
+		// $render_table = false, so building them there walks every row, normalizes, decorates and
+		// sorts each option, then throws the result away -- cheap on a small table, ~600ms on a
+		// high-cardinality 10,000-row one.
+		$filters = $render_table ? $this->service->build_filter_options($definition, $rows) : [];
 		$table_id = $instance_id;
-		$preset_filters = $this->service->get_preset_filters($definition);
-		$preset_search = $this->service->get_preset_search($definition);
+		$preset_filters = $this->service->get_preset_filters();
+		$preset_search = $this->service->get_preset_search();
 		$slug_to_index = $this->service->map_column_slug_to_index($definition);
 		$hidden_columns = $this->service->get_hidden_column_indices($definition);
 		$non_sortable = $this->service->get_non_sortable_indices($definition);
@@ -358,7 +428,7 @@ class BaraTables_Frontend {
 						</div>
 					</div>
 					<?php foreach ($filters as $filter) : ?>
-						<div class="btbl-filter btbl-filter-<?php echo esc_attr($filter['type']); ?><?php echo esc_attr($filter['type'] === 'dropdown_multi' ? ' btbl-filter-dropdown-multi' : ''); ?>" data-column="<?php echo esc_attr($filter['column_index']); ?>" data-slug="<?php echo esc_attr($filter['slug']); ?>" data-type="<?php echo esc_attr($filter['type']); ?>" data-strict="<?php echo !empty($filter['filter_strict']) ? '1' : '0'; ?>">
+						<div class="btbl-filter btbl-filter-<?php echo esc_attr($filter['type']); ?><?php echo esc_attr($filter['type'] === 'dropdown_multi' ? ' btbl-filter-dropdown-multi' : ''); ?>" data-column="<?php echo esc_attr($filter['column_index']); ?>" data-slug="<?php echo esc_attr($filter['slug']); ?>" data-type="<?php echo esc_attr($filter['type']); ?>">
 							<?php $filter_label = isset($filter['label']) ? (string) $filter['label'] : ''; ?>
 							<?php if ($filter_label !== '') : ?>
 								<div class="btbl-filter-label"><?php echo wp_kses($filter_label, $allowed_inline); ?></div>
@@ -418,9 +488,14 @@ class BaraTables_Frontend {
 									<?php foreach ($definition['columns'] as $idx => $col) : ?>
 										<?php
 										$hidden_attr = !empty($col['hidden']) ? ' style="display:none;"' : '';
-										$cell = $row[$idx] ?? '';
+										$cell = (string) ($row[$idx] ?? '');
+										// wp_kses_post() only rewrites markup ('<') and entities ('&'); a cell with
+										// neither passes through byte-identical, so skipping the parse is safe. At the
+										// 10,000-row ceiling most cells are plain scalars, so this avoids the bulk of
+										// a measurable per-cell cost with no change to output.
+										$cell_html = (strpbrk($cell, '<&') === false) ? $cell : wp_kses_post($cell);
 										?>
-										<td<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo wp_kses_post($cell); ?></td>
+										<td<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo $cell_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- No '<'/'&' means raw == wp_kses_post(); otherwise wp_kses_post() ran. ?></td>
 									<?php endforeach; ?>
 								</tr>
 							<?php endforeach; ?>
@@ -431,19 +506,23 @@ class BaraTables_Frontend {
 					<?php endif; ?>
 					<div class="btbl-empty-state" aria-live="polite"><?php esc_html_e('No results match these filters.', 'baratables'); ?></div>
 					<?php
-					$defn_id = $definition['id'] ?? $table_id;
-					$post_id = $defn_id ? $this->service->get_definition_post_id($defn_id) : 0;
+					// Only logged-in users can ever have an edit capability, so skip the
+					// get_definition_post_id() meta_query for anonymous visitors (the common case
+					// for a public table) instead of running it on every render.
+					$post_id = 0;
+					$can_edit = false;
+					if (is_user_logged_in()) {
+						$defn_id = $definition['id'] ?? $table_id;
+						$post_id = $defn_id ? $this->service->get_definition_post_id($defn_id) : 0;
 						$can_edit = $post_id ? current_user_can('edit_post', $post_id) : current_user_can('manage_options');
+					}
 					?>
 					<?php if ($can_edit) : ?>
-						<div class="btbl-admin-tools" aria-label="Table admin tools">
+						<div class="btbl-admin-tools" role="group" aria-label="<?php echo esc_attr__('Table admin tools', 'baratables'); ?>">
 							<?php
-							$edit_url = $admin_edit_url;
-							if (!$edit_url) {
-								$edit_url = $post_id
-									? get_edit_post_link($post_id, '')
-									: admin_url('edit.php?post_type=' . BaraTables_Repository::CPT);
-							}
+							$edit_url = $post_id
+								? get_edit_post_link($post_id, '')
+								: admin_url('edit.php?post_type=' . BaraTables_Repository::CPT);
 							?>
 							<a class="button button-small btbl-edit-link" href="<?php echo esc_url($edit_url); ?>">
 								<?php esc_html_e('Edit Table', 'baratables'); ?>

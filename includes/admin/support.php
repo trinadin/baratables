@@ -18,7 +18,7 @@ class BaraTables_Post_Input {
 	}
 
 	public static function bool(string $key): bool {
-		return !empty($_POST[$key]); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller. No unslash needed — truthiness check only.
+		return !empty($_POST[$key]); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller. No unslash needed -- truthiness check only.
 	}
 
 	public static function array_raw(string $key): array {
@@ -250,7 +250,7 @@ class BaraTables_Admin_Duplicator {
 
 class BaraTables_Admin_Page_Utils {
 	public static function render_shortcode_cell(string $shortcode): string {
-		// R9: accessible click-to-copy — the label includes the shortcode so list rows
+		// R9: accessible click-to-copy -- the label includes the shortcode so list rows
 		// stay distinguishable to screen readers, and "Copied" is localized via a data attribute.
 		return sprintf(
 			'<code class="btbl-shortcode btbl-shortcode--copy" data-shortcode="%1$s" data-copied-label="%2$s" tabindex="0" role="button" title="%3$s" aria-label="%3$s">%4$s</code>',
@@ -323,17 +323,45 @@ class BaraTables_Admin_Page_Utils {
 
 
 class BaraTables_Admin_Action_Guard {
+	/** Marker rendered as the final field of the editor form. See request_is_complete(). */
+	const COMPLETE_FIELD = 'btbl_form_complete';
+
+	/**
+	 * False when PHP truncated the request at max_input_vars.
+	 *
+	 * The manual-data grid posts one input per cell, so a big grid can exceed the default 1000.
+	 * PHP drops the overflow without raising anything the request can see, and the nonce fields
+	 * are emitted before the grid, so the save would otherwise verify and then apply a request
+	 * missing everything after the cut.
+	 */
+	public static function request_is_complete(): bool {
+		// Presence check only: no request value is read here, just whether the marker key arrived.
+		// can_save_post() has already verified the nonce by the time any caller reaches this.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce verified by caller; presence check only.
+		return isset($_POST[self::COMPLETE_FIELD]);
+	}
+
+	/**
+	 * Queue the "your host cut the request short" error. Separate from can_save_post() because
+	 * only the table editor renders COMPLETE_FIELD -- the chart editor has no unbounded input and
+	 * folding this into the shared guard would reject every chart save.
+	 */
+	public static function warn_request_truncated(): void {
+		BaraTables_Admin_Notice::queue(
+			sprintf(
+				/* translators: %d is the server's max_input_vars setting. */
+				__('Nothing was saved. The editor sent more fields than this server accepts (max_input_vars is %d), so the data arrived incomplete. Use fewer grid cells, or ask your host to raise max_input_vars.', 'baratables'),
+				max(0, (int) ini_get('max_input_vars'))
+			),
+			'error'
+		);
+	}
+
 	public static function user_can_manage(int $post_id = 0): bool {
 		if ($post_id > 0) {
 			return current_user_can('edit_post', $post_id);
 		}
 		return current_user_can('manage_options');
-	}
-
-	public static function verify_nonce_or_bail(string $nonce_field, string $nonce_action): void {
-		if (!isset($_POST[$nonce_field]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[$nonce_field])), $nonce_action)) {
-			wp_die(esc_html__('Security check failed', 'baratables'));
-		}
 	}
 
 	public static function can_save_post(int $post_id, string $nonce_field, string $nonce_action): bool {
@@ -349,14 +377,14 @@ class BaraTables_Admin_Action_Guard {
 
 
 abstract class BaraTables_Base_Slug_Manager {
-	protected $repo;
+	protected BaraTables_Abstract_CPT_Repository $repo;
 	private bool $syncing_slug = false;
 
-	public function __construct($repo) {
+	public function __construct(BaraTables_Abstract_CPT_Repository $repo) {
 		$this->repo = $repo;
 	}
 
-	public function ensure_slug_on_save(int $post_id, WP_Post $post, bool $update): void {
+	public function ensure_slug_on_save(int $post_id, WP_Post $post): void {
 		if ($this->syncing_slug) {
 			return;
 		}
@@ -374,7 +402,11 @@ abstract class BaraTables_Base_Slug_Manager {
 		$this->maybe_resync_slug($post_id, $post, $meta_slug, $definition);
 	}
 
-	public function ensure_slug_on_meta($meta_id, $object_id, $meta_key, $meta_value): void {
+	// $meta_id is the first argument of added_post_meta / updated_post_meta and cannot be dropped
+	// without shifting $object_id and $meta_key, which are both used. The trailing $meta_value is
+	// dropped instead, and the hooks are registered with a matching accepted_args of 3.
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- fixed hook signature.
+	public function ensure_slug_on_meta($meta_id, $object_id, $meta_key): void {
 		if ($this->syncing_slug) {
 			return;
 		}
@@ -445,10 +477,6 @@ abstract class BaraTables_Base_Slug_Manager {
 
 
 class BaraTables_Admin_Slug_Manager extends BaraTables_Base_Slug_Manager {
-	public function __construct(BaraTables_Repository $repo) {
-		parent::__construct($repo);
-	}
-
 	protected function get_cpt(): string {
 		return BaraTables_Repository::CPT;
 	}
@@ -487,10 +515,6 @@ class BaraTables_Admin_Slug_Manager extends BaraTables_Base_Slug_Manager {
 
 
 class BaraTables_Chart_Slug_Manager extends BaraTables_Base_Slug_Manager {
-	public function __construct(BaraTables_Chart_Repository $repo) {
-		parent::__construct($repo);
-	}
-
 	protected function get_cpt(): string {
 		return BaraTables_Chart_Repository::CPT;
 	}
@@ -623,10 +647,18 @@ class BaraTables_Admin_List_Columns {
 						? $tax_obj->labels->singular_name
 						: ucwords(str_replace(['_', '-'], ' ', $tax));
 
+					// One bulk fetch, not get_term() per id. These ids come from the table's own
+					// postmeta rather than from the listed posts, so WordPress never primes them --
+					// per-id lookups meant a query each, on every row of the Tables list screen.
 					$term_labels = [];
-					foreach ($terms as $term_id) {
-						$term_obj = get_term($term_id, $tax);
-						if ($term_obj && !is_wp_error($term_obj)) {
+					$term_objects = get_terms([
+						'taxonomy'   => $tax,
+						'include'    => $terms,
+						'hide_empty' => false,
+						'orderby'    => 'include',
+					]);
+					if (!is_wp_error($term_objects)) {
+						foreach ($term_objects as $term_obj) {
 							$term_labels[] = $term_obj->name;
 						}
 					}
@@ -744,30 +776,12 @@ class BaraTables_Chart_List_Columns {
 					echo '&mdash;';
 					return;
 				}
-				$type_labels = [
-					'bar' => __('Bar', 'baratables'),
-					'horizontal_bar' => __('Horizontal Bar', 'baratables'),
-					'line' => __('Line', 'baratables'),
-					'area' => __('Area', 'baratables'),
-					'pie' => __('Pie', 'baratables'),
-					'donut' => __('Donut', 'baratables'),
-					'scatter' => __('Scatter', 'baratables'),
-					'bubble' => __('Bubble', 'baratables'),
-					'funnel' => __('Funnel', 'baratables'),
-					'gantt' => __('Gantt', 'baratables'),
-				];
-				// R42: a scannable Dashicon alongside the text label.
-				$type_icons = [
-					'bar' => 'chart-bar',
-					'line' => 'chart-line',
-					'area' => 'chart-area',
-					'pie' => 'chart-pie',
-					'gantt' => 'calendar-alt',
-				];
-				if (isset($type_icons[$type])) {
-					printf('<span class="dashicons dashicons-%s" aria-hidden="true" style="vertical-align:text-bottom;"></span> ', esc_attr($type_icons[$type]));
+				$chart_types = BaraTables_Chart_Types::all();
+				// R42: a scannable Dashicon alongside the text label (now defined for every type).
+				if (isset($chart_types[$type]['icon'])) {
+					printf('<span class="dashicons dashicons-%s" aria-hidden="true" style="vertical-align:text-bottom;"></span> ', esc_attr($chart_types[$type]['icon']));
 				}
-				echo esc_html($type_labels[$type] ?? ucwords($type));
+				echo esc_html($chart_types[$type]['label'] ?? ucwords($type));
 			},
 			'chart_fields' => function (array $chart): void {
 				$table = $this->get_table_definition($chart);

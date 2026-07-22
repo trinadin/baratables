@@ -36,7 +36,7 @@
 	if ($.fn.dataTable && $.fn.dataTable.ext) {
 		$.fn.dataTable.ext.type.detect.unshift(function(d) {
 			var text = btblExtractText(d);
-			// Bare numbers/decimals are NOT dates — Date.parse() accepts "3.2", "12", "184000",
+			// Bare numbers/decimals are NOT dates -- Date.parse() accepts "3.2", "12", "184000",
 			// etc., which would mis-detect numeric columns and sort them by bogus timestamps.
 			// Real dates carry a separator or month name, so let those fall through to Date.parse.
 			if (text && /^[+-]?\d+(\.\d+)?$/.test(text)) {
@@ -98,12 +98,44 @@
 		}
 	}
 
-	function applyColumnSearch(column, pattern, smart) {
+	// Column filters always match whole values: buildMultiValuePattern() emits an anchored,
+	// comma-aware alternation and it is applied as a RegExp. DataTables uses a RegExp verbatim
+	// and ignores its `smart` option, so the old `smart` argument here never had any effect --
+	// the "Strict matching" checkbox that fed it was removed rather than left lying about.
+	function applyColumnSearch(column, pattern) {
 		var regex = buildSearchRegex(pattern);
 		if (regex) {
 			return column.search(regex);
 		}
-		return column.search(pattern, true, smart);
+		return column.search(pattern, true, false);
+	}
+
+	// Column filters apply a RegExp via column().search(regex). DataTables cannot serialize a
+	// RegExp: JSON.stringify turns it into {}, which restores as the literal "[object Object]"
+	// and hides every row. Column filters and column order are always re-derived from the
+	// plugin's own controls, so strip them from the persisted state and keep only sort, paging,
+	// length, and global search. Run on both save and load; the load pass also repairs any
+	// poisoned entry written by an older plugin version, so returning visitors recover on their
+	// next page view without touching localStorage.
+	function sanitizeSavedTableState(data) {
+		if (!data || typeof data !== 'object') {
+			return;
+		}
+		if (Array.isArray(data.columns)) {
+			data.columns.forEach(function(col) {
+				if (col && typeof col === 'object') {
+					col.search = { search: '', regex: false, smart: true, caseInsensitive: true };
+				}
+			});
+		}
+		// ColReorder 2.x persists under the lower-case key -- its stateSaveParams writes
+		// `r.colReorder` and its loader reads `t.colReorder`. The capitalised key is what
+		// ColReorder 1.x used, so delete both: one is the live contract, the other repairs state
+		// left behind by an older bundle. Getting this wrong is silent -- the delete simply misses,
+		// the order restores, and the filters (which address columns by their ORIGINAL index via
+		// data-column/slugToIndex) then point at whatever column moved into that slot.
+		delete data.colReorder;
+		delete data.ColReorder;
 	}
 
 	function normalizeSearchText(value) {
@@ -329,6 +361,7 @@
 		var chart = echarts.init(container);
 
 		function render() {
+
 			var type = chartConfig.type || 'bar';
 			if (type === 'gantt') {
 				var ganttPrepared = buildGanttData();
@@ -555,6 +588,13 @@
 			$wrapper = $('.btbl-table-wrapper[data-table-id="' + tableId + '"]');
 		}
 		var slugToIndex = config.slugToIndex || {};
+		// The btbl_search value this instance last wrote, or null when it does not own the param.
+		// Tracking the VALUE rather than a boolean matters: btbl_search is page-wide and carries
+		// no table qualifier, so a second table searching silently takes it over. A boolean left
+		// this table still believing it was the owner, and its next sync deleted the other
+		// table's term out of the shareable link. Seeded from the server's preset, which is ours
+		// to clear. See syncStateToUrl().
+		var ownedSearchTerm = presetSearchTerm !== '' ? presetSearchTerm : null;
 		
 		function resolveLabelHtml(value, fallback) {
 			var label = '';
@@ -867,6 +907,15 @@
 			ordering: resolvedOptions.ordering !== false,
 			colReorder: resolvedOptions.colReorder === true,
 			stateSave: resolvedOptions.stateSave === true,
+			// 0 = persist in localStorage with no expiry, so "Remember table state" survives across
+			// visits rather than DataTables' 2-hour default.
+			stateDuration: 0,
+			stateSaveParams: function(settings, data) {
+				sanitizeSavedTableState(data);
+			},
+			stateLoadParams: function(settings, data) {
+				sanitizeSavedTableState(data);
+			},
 			autoWidth: resolvedOptions.autoWidth !== false,
 			scrollX: resolvedOptions.scrollX === true,
 			info: resolvedOptions.info !== false,
@@ -966,7 +1015,13 @@
 						searchableIndexSet[col.index] = true;
 					});
 					var searchState = {
-						term: presetSearchTerm || '',
+						// table.search() covers the saved-state case. With "Remember table state" on,
+						// DataTables restores a previous search and applies it during init -- which is
+						// before the 'search.dt' handler below exists, so that draw is never observed.
+						// Seeding from '' left scopedSearchFilter comparing against an empty term and
+						// therefore accepting every row, while DataTables' own search matched columns
+						// marked non-searchable. A URL preset still wins over the restored value.
+						term: presetSearchTerm || table.search() || '',
 						columns: searchableColumns.map(function(col) { return col.index; })
 					};
 
@@ -1110,10 +1165,6 @@
 					if (filterIndex !== -1) {
 						$.fn.dataTable.ext.search.splice(filterIndex, 1);
 					}
-					var globalIndex = $.fn.dataTable.ext.search.indexOf(globalSearchLimiter);
-					if (globalIndex !== -1) {
-						$.fn.dataTable.ext.search.splice(globalIndex, 1);
-					}
 					if (enableSearchColumns) {
 						$(document).off('click', handleDocumentClick);
 					}
@@ -1127,8 +1178,14 @@
 		}
 
 	function buildGlobalSearchLimiter(tableInstance, nonSearchable) {
+		// DataTables runs every ext.search entry once per row, per draw -- and ext.search is global,
+		// so drawing one table also runs every other table's limiter. table() builds a fresh API
+		// object each call (~7us vs ~0.008us for the cached node), which at 10,000 rows is ~73ms of
+		// pure overhead on each sort, page, and filter. Resolve the node once, like the sibling
+		// scopedSearchFilter already does.
+		var tableNode = tableInstance.table().node();
 		return function(settings, data) {
-			if (settings.nTable !== tableInstance.table().node()) {
+			if (settings.nTable !== tableNode) {
 				return true;
 			}
 			var term = tableInstance.search();
@@ -1149,9 +1206,49 @@
 			}
 
 			var presetFilters = config.presetFilters || {};
+			// "Clear filters" resets every control in turn, and each one fires its own change
+			// handler. Drawing on each meant N full DataTables redraws -- and N complete ECharts
+			// teardown/rebuilds -- before the single final draw. Suppress the intermediate draws
+			// and let the reset handler's own table.draw() do the work once.
+			var resettingFilters = false;
+			function applyFilterSearch(column, pattern) {
+				var api = applyColumnSearch(column, pattern);
+				if (!resettingFilters) {
+					api.draw();
+				}
+			}
+			function clearFilterSearch(column) {
+				var api = column.search('');
+				if (!resettingFilters) {
+					api.draw();
+				}
+			}
 			var $emptyState = $wrapper.find('.btbl-empty-state');
-			var globalSearchLimiter = buildGlobalSearchLimiter(table, nonSearchableSet);
-			$.fn.dataTable.ext.search.push(globalSearchLimiter);
+			// Only needed when the scoped filter is absent (no search box rendered). With both
+			// registered the limiter can never change the outcome: scopedSearchFilter searches a
+			// subset of searchableColumns, which already excludes nonSearchableSet, so any row it
+			// accepts this one accepts too -- and ext.search entries are ANDed. Registering both
+			// just doubled the per-row work on every draw, for every table on the page.
+			// scopedSearchFilter is var-hoisted to initInstance, so it is undefined when the
+			// block that defines it did not run.
+			var globalSearchLimiter;
+			if (!scopedSearchFilter) {
+				globalSearchLimiter = buildGlobalSearchLimiter(table, nonSearchableSet);
+				$.fn.dataTable.ext.search.push(globalSearchLimiter);
+				// ext.search is global and outlives the table, so this push needs a matching
+				// removal. It has to be registered HERE, not in the sibling destroy handler
+				// above: that one sits inside the block that assigns scopedSearchFilter, which
+				// runs in exactly the cases this branch does not. Reading globalSearchLimiter
+				// from there therefore always saw undefined, so nothing was ever removed -- a
+				// destroyed table left its entry behind holding a detached node, and DataTables
+				// runs every ext.search entry once per row, per draw, for every table on the page.
+				table.on('destroy', function() {
+					var globalIndex = $.fn.dataTable.ext.search.indexOf(globalSearchLimiter);
+					if (globalIndex !== -1) {
+						$.fn.dataTable.ext.search.splice(globalIndex, 1);
+					}
+				});
+			}
 
 		function toggleEmptyState() {
 			var hasRows = table.rows({ search: 'applied' }).data().length > 0;
@@ -1231,17 +1328,33 @@
 		function syncStateToUrl() {
 			var filters = getActiveFilters();
 				var url = new URL(window.location.href);
+				// Only clear the params this table owns. Deleting every btbl_filter[...] key meant
+				// a second [bara_table] on the same page wiped the first one's filters out of the
+				// address bar, so the "copy this link to share the view" promise returned whichever
+				// table had been touched last and silently reset the other.
+				var ownSlugs = slugToIndex && typeof slugToIndex === 'object' ? slugToIndex : {};
 				var keysToDelete = [];
 				url.searchParams.forEach(function(_, key) {
-					if (key.indexOf('btbl_filter[') === 0) {
+					if (key.indexOf('btbl_filter[') !== 0) {
+						return;
+					}
+					var slug = key.slice('btbl_filter['.length, -1);
+					if (Object.prototype.hasOwnProperty.call(ownSlugs, slug)) {
 						keysToDelete.push(key);
 					}
 				});
 				keysToDelete.forEach(function(key) {
 					url.searchParams.delete(key);
 				});
-				url.searchParams.delete('btbl_search');
-				url.searchParams.delete('btbl_search_cols');
+				// btbl_search is a single page-wide param, so it can only belong to one table.
+				// Clear it only while it still holds the exact value this table wrote: if another
+				// table has overwritten it since, that term belongs to them and deleting it would
+				// drop their search out of the link this one is rebuilding.
+				if (ownedSearchTerm !== null && url.searchParams.get('btbl_search') === ownedSearchTerm) {
+					url.searchParams.delete('btbl_search');
+					url.searchParams.delete('btbl_search_cols');
+				}
+				ownedSearchTerm = null;
 
 				Object.keys(filters).forEach(function(slug) {
 					var values = Array.isArray(filters[slug]) ? filters[slug] : [filters[slug]];
@@ -1257,6 +1370,7 @@
 				var term = searchState && searchState.term ? searchState.term : '';
 				var selectedColumns = searchState && Array.isArray(searchState.columns) ? searchState.columns : (searchableColumns || []).map(function(col) { return col.index; });
 				if (term && term.trim()) {
+					ownedSearchTerm = term;
 					url.searchParams.set('btbl_search', term);
 					var selectedSlugs = selectedColumns.map(function(idx) {
 						return slugIdx(indexToSlug, idx);
@@ -1268,7 +1382,13 @@
 					}
 				}
 
-				window.history.replaceState({}, '', url.toString());
+				try {
+					window.history.replaceState({}, '', url.toString());
+				} catch (e) {
+					// Safari throws SecurityError past ~100 replaceState calls in 30s. Keeping the
+					// address bar in sync is a convenience; it must never take the filter controls
+					// down with it, so swallow it and carry on.
+				}
 				updateFilterStateClass();
 			}
 
@@ -1279,8 +1399,6 @@
 			var slug = $filter.data('slug');
 			var preset = presetFilters[slug] || null;
 			var type = $filter.data('type') || '';
-			var filterStrict = $filter.data('strict') === true || $filter.data('strict') === 1 || $filter.data('strict') === '1';
-			var filterSmart = filterStrict ? false : true;
 
 			if (type === 'dropdown' || type === 'dropdown_multi') {
 				var $select = $filter.find('select');
@@ -1294,7 +1412,7 @@
 				}
 				$select.select2({
 					width: 'resolve',
-					placeholder,
+					placeholder: placeholder,
 					allowClear: type === 'dropdown_multi',
 					dropdownParent: $dropdownParent,
 					closeOnSelect: type === 'dropdown'
@@ -1321,10 +1439,10 @@
 				$singleSelect.on('change', function() {
 					var val = $(this).val();
 					if (!val || val === '__all') {
-						column.search('').draw();
+						clearFilterSearch(column);
 					} else {
 						var terms = getSearchTermsFromElement($(this).find('option:selected'), val);
-						applyColumnSearch(column, buildMultiValuePattern(terms), filterSmart).draw();
+						applyFilterSearch(column, buildMultiValuePattern(terms));
 					}
 					syncStateToUrl();
 				});
@@ -1362,9 +1480,9 @@
 						return val !== '' && val !== null && val !== undefined;
 					});
 					if (!terms.length) {
-						column.search('').draw();
+						clearFilterSearch(column);
 					} else {
-						applyColumnSearch(column, buildMultiValuePattern(terms), filterSmart).draw();
+						applyFilterSearch(column, buildMultiValuePattern(terms));
 					}
 					syncStateToUrl();
 				});
@@ -1383,10 +1501,10 @@
 						termsCheckbox = termsCheckbox.concat(t);
 					});
 					if (termsCheckbox.length === 0) {
-						column.search('').draw();
+						clearFilterSearch(column);
 					} else {
 						var patternCheckbox = buildMultiValuePattern(termsCheckbox);
-						applyColumnSearch(column, patternCheckbox, filterSmart).draw();
+						applyFilterSearch(column, patternCheckbox);
 					}
 						syncStateToUrl();
 				});
@@ -1404,11 +1522,11 @@
 				$radios.on('change', function() {
 					var val = $(this).val();
 					if (val === '__all') {
-						column.search('').draw();
+						clearFilterSearch(column);
 					} else {
 						var termsRadio = getSearchTermsFromElement($(this), val);
 						var patternRadio = buildMultiValuePattern(termsRadio);
-						applyColumnSearch(column, patternRadio, filterSmart).draw();
+						applyFilterSearch(column, patternRadio);
 					}
 						syncStateToUrl();
 				});
@@ -1435,30 +1553,40 @@
 						$dropdown.find('input[type="checkbox"]').prop('checked', true);
 					}
 				}
-				$wrapper.find('.btbl-filter-wrapper .btbl-filter').each(function() {
-					var $filter = $(this);
-					var type = $filter.data('type');
-					if (type === 'dropdown' || type === 'dropdown_plain') {
-					var $select = $filter.find('select');
-					var resetVal = type === 'dropdown' ? '' : '__all';
-					$select.val(resetVal).trigger('change');
-				} else if (type === 'dropdown_multi' || type === 'dropdown_plain_multi') {
-					var $multiSelect = $filter.find('select');
-					$multiSelect.val([]).trigger('change');
-				} else if ($filter.hasClass('btbl-filter-checkbox') || type === 'checkbox') {
-					var $checkboxes = $filter.find('input[type="checkbox"]');
-					$checkboxes.prop('checked', false);
-					$checkboxes.first().trigger('change');
-				} else if ($filter.hasClass('btbl-filter-radio') || type === 'radio') {
-					var $allRadio = $filter.find('input[type="radio"][value="__all"]');
-					if ($allRadio.length) {
-						$allRadio.prop('checked', true).trigger('change');
-					}
+				resettingFilters = true;
+				try {
+					$wrapper.find('.btbl-filter-wrapper .btbl-filter').each(function() {
+						var $filter = $(this);
+						var type = $filter.data('type');
+						if (type === 'dropdown' || type === 'dropdown_plain') {
+							var $select = $filter.find('select');
+							var resetVal = type === 'dropdown' ? '' : '__all';
+							$select.val(resetVal).trigger('change');
+						} else if (type === 'dropdown_multi' || type === 'dropdown_plain_multi') {
+							var $multiSelect = $filter.find('select');
+							$multiSelect.val([]).trigger('change');
+						} else if ($filter.hasClass('btbl-filter-checkbox') || type === 'checkbox') {
+							var $checkboxes = $filter.find('input[type="checkbox"]');
+							$checkboxes.prop('checked', false);
+							$checkboxes.first().trigger('change');
+						} else if ($filter.hasClass('btbl-filter-radio') || type === 'radio') {
+							var $allRadio = $filter.find('input[type="radio"][value="__all"]');
+							if ($allRadio.length) {
+								$allRadio.prop('checked', true).trigger('change');
+							}
+						}
+					});
+				} finally {
+					// Must be a finally: each trigger('change') runs third-party listeners and our
+					// own syncStateToUrl(). If any of them throws, a bare assignment after the loop
+					// never runs, the flag stays true, and every later filter change stages a search
+					// without ever redrawing -- the controls move but the table freezes for the rest
+					// of the page's life.
+					resettingFilters = false;
 				}
+				table.draw();
+				syncStateToUrl();
 			});
-			table.draw();
-		syncStateToUrl();
-		});
 
 				table.draw(false);
 			toggleEmptyState();

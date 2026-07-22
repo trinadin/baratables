@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BaraTables
  * Description: Build searchable, sortable tables and charts from CSV files, manual data, WordPress content, or external databases.
- * Version: 1.2.1
+ * Version: 1.2.2
  * Author: Nathan Noom
  * Author URI: https://profiles.wordpress.org/nathannoom/
  * License: GPL-2.0-or-later
@@ -10,7 +10,7 @@
  * Text Domain: baratables
  * Domain Path: /languages
  * Tested up to: 7.0
- * Requires at least: 6.2
+ * Requires at least: 6.4
  * Requires PHP: 7.4
  */
 

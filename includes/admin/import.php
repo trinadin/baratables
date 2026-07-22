@@ -45,16 +45,24 @@ class BaraTables_Import_Util {
 
 	/** Strip a leading BOM and normalize to UTF-8 so cells don't mojibake. */
 	public static function normalize_text(string $raw): string {
+		// The mb_convert_encoding() calls in this method are silenced on purpose. The input is an
+		// arbitrary uploaded file, so a malformed byte sequence is an expected outcome rather than
+		// a programming error; the function warns on those, and each call site already handles a
+		// failed conversion by falling back to the original bytes. Letting the warning through
+		// would print PHP notices over the admin screen for a file the user simply mis-saved.
 		if (strncmp($raw, "\xEF\xBB\xBF", 3) === 0) {
 			$raw = substr($raw, 3);
 		} elseif (strncmp($raw, "\xFF\xFE", 2) === 0 && function_exists('mb_convert_encoding')) {
-			// UTF-16 little-endian (BOM FF FE) — used by some exporters; convert before parsing.
+			// UTF-16 little-endian (BOM FF FE) -- used by some exporters; convert before parsing.
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- untrusted upload may be malformed.
 			$raw = (string) @mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE');
 		} elseif (strncmp($raw, "\xFE\xFF", 2) === 0 && function_exists('mb_convert_encoding')) {
 			// UTF-16 big-endian (BOM FE FF).
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- untrusted upload may be malformed.
 			$raw = (string) @mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE');
 		}
 		if (function_exists('mb_check_encoding') && !mb_check_encoding($raw, 'UTF-8') && function_exists('mb_convert_encoding')) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- untrusted upload may be malformed; failure falls back below.
 			$converted = @mb_convert_encoding($raw, 'UTF-8', 'Windows-1252, ISO-8859-1, UTF-8');
 			if (is_string($converted) && $converted !== '') {
 				$raw = $converted;
@@ -79,8 +87,11 @@ class BaraTables_Import_Util {
  * The builder is the ONE place that turns it into a custom_data definition.
  */
 class BaraTables_Import_Builder {
-	public const MAX_COLS = 50;
-	public const MAX_ROWS = 500;
+	// No MAX_COLS/MAX_ROWS of its own on purpose. A second, lower pair of ceilings lived here and
+	// silently threw away importable data: the manual grid accepts MAX_CUSTOM_COLUMNS columns and
+	// MAX_CUSTOM_ROWS rows, but the importer stopped at 50/500. 1.2.2 widened the gap by raising
+	// MAX_CUSTOM_CELLS 5,000 -> 25,000 and leaving these behind. The caps are now derived from the
+	// service constants at the point of use, so they cannot drift apart again.
 
 	public static function blank_settings(): array {
 		return [
@@ -118,8 +129,17 @@ class BaraTables_Import_Builder {
 		$pre_cols = $width;
 		$pre_rows = count($rows_in);
 
-		$cols_count = min($width, self::MAX_COLS);
-		$rows_count = min(count($rows_in), self::MAX_ROWS);
+		// The cell budget is applied here as well as in build_custom_dataset(). It has to be:
+		// that method clamps rows to intdiv(MAX_CUSTOM_CELLS, $column_count) regardless, so
+		// computing it up front is what keeps the "only the first N of M rows" warning below
+		// reporting the number of rows actually kept rather than a larger number that is then
+		// silently trimmed downstream.
+		$cols_count = min($width, BaraTables_Service::MAX_CUSTOM_COLUMNS);
+		$rows_count = min(
+			count($rows_in),
+			BaraTables_Service::MAX_CUSTOM_ROWS,
+			max(1, intdiv(BaraTables_Service::MAX_CUSTOM_CELLS, $cols_count))
+		);
 
 		// Labels: when there is no header row, leave them blank so render supplies "Column N".
 		$labels = [];
@@ -157,7 +177,6 @@ class BaraTables_Import_Builder {
 				'sortable' => true,
 				'filter_values' => [],
 				'filter_type_priority' => [],
-				'filter_strict' => false,
 				'format_date' => false,
 				'date_format' => '',
 				'auto_label' => $auto_label,
@@ -270,8 +289,8 @@ class BaraTables_Import_TablePress {
 		$dropped_row = false;
 
 		// Classify each row by its ORIGINAL index (header / footer / body) while applying row +
-		// column visibility. Splitting on the original index — not on a position in the compacted,
-		// visibility-filtered grid — is what keeps a hidden header row from promoting a body row,
+		// column visibility. Splitting on the original index -- not on a position in the compacted,
+		// visibility-filtered grid -- is what keeps a hidden header row from promoting a body row,
 		// and a hidden header row from eating one off the front of the body.
 		$header_rows = [];
 		$body = [];
@@ -297,7 +316,7 @@ class BaraTables_Import_TablePress {
 			if ($has_header && $r < $table_head) {
 				$header_rows[] = $out_row;
 			} elseif ($r >= $foot_start) {
-				continue; // footer row — not imported as data
+				continue; // footer row -- not imported as data
 			} else {
 				$body[] = $out_row;
 			}
@@ -380,7 +399,7 @@ class BaraTables_Import_TablePress {
 
 /**
  * Ninja Tables classic export. Manual (data_provider='default') static tables -> custom_data;
- * WP-Posts query tables -> wp_query (the original mapping, preserved verbatim for back-compat).
+ * WP-Posts query tables -> wp_query.
  */
 class BaraTables_Import_NinjaTables {
 	/** @return array{name:string,columns:array,rows:array,has_header:bool,settings:array,warnings:array} */
@@ -450,9 +469,8 @@ class BaraTables_Import_NinjaTables {
 	}
 
 	/**
-	 * WP-Posts query export -> wp_query definition (id left blank). This is the original
-	 * BaraTables_Admin_Options::map_and_save_definition mapping, moved here unchanged so the
-	 * existing import stays byte-identical; only the wp_insert_post/persist tail was removed.
+	 * WP-Posts query export -> wp_query definition (id left blank). Boolean display settings are
+	 * read through BaraTables_Import_Util::to_bool() so a string "false" is not treated as true.
 	 *
 	 * @return array{definition:array}|array{error:string}
 	 */
@@ -472,14 +490,19 @@ class BaraTables_Import_NinjaTables {
 				$table_options['pageLength'] = $per_page;
 			}
 		}
+		// Same reading of the same export keys as the manual-data path above, via the shared
+		// helper. These three had been hand-rolled here and had drifted: to_bool() understands
+		// "false"/"no"/"off" and an empty value means "unset, use the default", where the local
+		// version treated "false" as true and an empty value as false. One Ninja Tables export
+		// could therefore import with search on or off purely by which branch consumed it.
 		if (array_key_exists('enable_search', $settings)) {
-			$table_options['searchBox'] = !empty($settings['enable_search']) && (string) $settings['enable_search'] !== '0';
+			$table_options['searchBox'] = BaraTables_Import_Util::to_bool($settings['enable_search'], true);
 		}
 		if (array_key_exists('column_sorting', $settings)) {
-			$table_options['ordering'] = !empty($settings['column_sorting']) && (string) $settings['column_sorting'] !== '0';
+			$table_options['ordering'] = BaraTables_Import_Util::to_bool($settings['column_sorting'], true);
 		}
 		if (array_key_exists('show_all', $settings)) {
-			$table_options['paging'] = empty($settings['show_all']) || (string) $settings['show_all'] === '0';
+			$table_options['paging'] = !BaraTables_Import_Util::to_bool($settings['show_all'], false);
 		}
 
 		$mapped_columns = [];
@@ -635,7 +658,6 @@ class BaraTables_Import_NinjaTables {
 				$disable_auto = BaraTables_Import_Util::to_bool($filter['disable_auto_sorting'] ?? false, false);
 				$filter_sort = $disable_auto ? 'custom' : BaraTables_Import_Util::sort_dir($filter['sorting_type'] ?? 'asc', 'asc');
 				$mapped_columns[$col_idx]['filter_sort'] = $filter_sort;
-				$mapped_columns[$col_idx]['filter_strict'] = BaraTables_Import_Util::to_bool($filter['strict'] ?? false, false);
 
 				$type_priority = self::map_filter_type_priority($filter['sorting_method'] ?? '');
 				if (!empty($type_priority)) {
@@ -800,7 +822,7 @@ class BaraTables_Import_NinjaTables {
 			}
 			// strtr replaces longest keys first in a single pass and never re-scans replaced
 			// text, so a replacement output that equals a later token (e.g. HH -> H, then the
-			// H token) is NOT cascaded — unlike sequential str_replace.
+			// H token) is NOT cascaded -- unlike sequential str_replace.
 			$out .= strtr($part, $map);
 		}
 		return $out;
@@ -877,7 +899,7 @@ class BaraTables_Import_Spreadsheet {
 
 	private static function parse_csv(string $raw, string $delimiter): array {
 		$rows = [];
-		// php://temp is an in-memory stream, not a filesystem path — WP_Filesystem cannot provide
+		// php://temp is an in-memory stream, not a filesystem path -- WP_Filesystem cannot provide
 		// a stream handle, and fgetcsv() is needed to parse quoted fields (embedded delimiters and
 		// newlines) correctly rather than a naive explode().
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- In-memory stream, not a real file.
@@ -888,8 +910,12 @@ class BaraTables_Import_Spreadsheet {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Writing to the in-memory stream opened above.
 		fwrite($handle, $raw);
 		rewind($handle);
-		while (($row = fgetcsv($handle, 0, $delimiter, '"', '\\')) !== false) {
-			if ($row === [null] || $row === false) {
+		while (true) {
+			$row = fgetcsv($handle, 0, $delimiter, '"', '\\');
+			if ($row === false) {
+				break;
+			}
+			if ($row === [null]) {
 				continue; // blank physical line
 			}
 			$rows[] = array_map(static function ($cell) {
@@ -1006,7 +1032,7 @@ class BaraTables_Importer {
 	 * }
 	 */
 	public static function analyze(string $raw, string $filename, BaraTables_Service $service): array {
-		$detected = self::detect($raw, $filename);
+		$detected = self::detect($raw);
 		$format = $detected['format'];
 
 		$result = [
@@ -1070,9 +1096,15 @@ class BaraTables_Importer {
 			if (empty($def['custom_data']['rows']) && empty($def['custom_data']['columns'])) {
 				continue; // nothing usable
 			}
+			// Only the first usable table is ever imported -- the Create step reads
+			// definitions[0] and the preview reads previews[0]. Merging every table's warnings
+			// showed the discarded ones' notices ("only the first 50 of 80 columns were
+			// imported") beside a preview of a table that came through complete.
+			if (empty($result['definitions'])) {
+				$result['warnings'] = array_merge($result['warnings'], $built['warnings']);
+			}
 			$result['definitions'][] = $def;
 			$result['previews'][] = self::preview($def);
-			$result['warnings'] = array_merge($result['warnings'], $built['warnings']);
 		}
 		if (empty($result['definitions'])) {
 			$result['message'] = __('The file was recognized but contained no table rows to import.', 'baratables');
@@ -1081,7 +1113,7 @@ class BaraTables_Importer {
 		if (count($result['definitions']) > 1) {
 			$result['warnings'][] = sprintf(
 				/* translators: %d is the number of tables found in the file. */
-				__('The file contained %d tables; the first was imported. Import the file again to bring in the others.', 'baratables'),
+				__('The file contained %d tables. Only the first was imported.', 'baratables'),
 				count($result['definitions'])
 			);
 		}
@@ -1114,21 +1146,21 @@ class BaraTables_Importer {
 	}
 
 	private static function unknown_message(): string {
-		return __('This file was not recognized as a supported table export. Supported files: a table export in JSON or XML, or a CSV spreadsheet (header row + data rows).', 'baratables');
+		return __('This file is not a supported table export. Use JSON, XML, CSV, or TXT. A spreadsheet needs a header row followed by data rows.', 'baratables');
 	}
 
 	/**
 	 * Sniff the raw upload and return ['format'=>id, 'decoded'=>mixed, 'reason'=>string].
 	 * Detection never throws; an unrecognized file returns format 'unknown'.
 	 */
-	public static function detect(string $raw, string $filename = ''): array {
+	public static function detect(string $raw): array {
 		$trimmed = ltrim(BaraTables_Import_Util::normalize_text($raw));
 		if ($trimmed === '') {
 			return ['format' => 'unknown', 'decoded' => null, 'reason' => ''];
 		}
 
 		// Binary spreadsheet/archive: "PK" (XLSX/ZIP zip magic) or the OLE2 header (legacy XLS).
-		// We don't unpack these — read against the raw, not the normalized text, since the magic
+		// We don't unpack these -- read against the raw, not the normalized text, since the magic
 		// bytes are not valid UTF-8.
 		$raw_head = ltrim($raw);
 		if (
@@ -1138,13 +1170,13 @@ class BaraTables_Importer {
 			return [
 				'format' => 'unsupported',
 				'decoded' => null,
-				'reason' => __('This looks like a spreadsheet or ZIP archive, which cannot be read directly. Open it and save/export a single table as CSV, then import that file.', 'baratables'),
+				'reason' => __('Spreadsheet and ZIP files cannot be read directly. Export a single sheet as CSV, then import that file.', 'baratables'),
 			];
 		}
 
 		$first = $trimmed[0];
 
-		// XML container — but only commit if it actually parses. A CSV whose first cell starts
+		// XML container -- but only commit if it actually parses. A CSV whose first cell starts
 		// with '<' (e.g. an HTML cell) is not XML, so on a parse failure we fall through to the
 		// JSON and CSV paths instead of rejecting it.
 		if ($first === '<') {
@@ -1205,7 +1237,7 @@ class BaraTables_Importer {
 				return [
 					'format' => 'unsupported',
 					'decoded' => null,
-					'reason' => __('This table pulls its rows from an external source (a form, a linked CSV, or a connected sheet), so there are no stored rows to import. Export the table\'s data as CSV and import that file instead.', 'baratables'),
+					'reason' => __('This table pulls its rows from an external source, so it has no stored rows to import. Export its data as CSV and import that file instead.', 'baratables'),
 				];
 			}
 			$has_rows = (!empty($decoded['original_rows']) && is_array($decoded['original_rows']))
@@ -1223,7 +1255,7 @@ class BaraTables_Importer {
 			return [
 				'format' => 'unsupported',
 				'decoded' => null,
-				'reason' => __('This is a layout/builder export without a plain data grid, so its rows cannot be imported. Export the table\'s data as CSV and import that file instead.', 'baratables'),
+				'reason' => __('This is a layout export with no data grid, so its rows cannot be imported. Export the data as CSV and import that instead.', 'baratables'),
 			];
 		}
 
@@ -1246,7 +1278,7 @@ class BaraTables_Importer {
 	private static function detect_xml(string $raw): ?array {
 		$previous = libxml_use_internal_errors(true);
 		// SECURITY: pass only LIBXML_NONET (blocks network DTD/entity fetches). NEVER add
-		// LIBXML_NOENT — that flag turns ON general-entity substitution, which would re-enable
+		// LIBXML_NOENT -- that flag turns ON general-entity substitution, which would re-enable
 		// classic file:// XXE on an uploaded file. Modern libxml does not substitute external
 		// entities by default, so omitting LIBXML_NOENT keeps uploads safe.
 		$xml = simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NONET);
@@ -1254,7 +1286,7 @@ class BaraTables_Importer {
 		libxml_use_internal_errors($previous);
 
 		if (!($xml instanceof SimpleXMLElement)) {
-			return null; // not well-formed XML — let JSON/CSV detection try
+			return null; // not well-formed XML -- let JSON/CSV detection try
 		}
 
 		$root = strtolower($xml->getName());
@@ -1265,12 +1297,12 @@ class BaraTables_Importer {
 			return ['format' => 'league_table', 'decoded' => $xml, 'reason' => ''];
 		}
 
-		// WordPress eXtended RSS (WXR) — post data, not a table.
+		// WordPress eXtended RSS (WXR) -- post data, not a table.
 		if ($root === 'rss') {
 			return [
 				'format' => 'unsupported',
 				'decoded' => null,
-				'reason' => __('This is a WordPress content export (posts), not a table. Import it from Tools → Import, then build a table from a WordPress query.', 'baratables'),
+				'reason' => __('This is a WordPress content export (posts), not a table. Import it from Tools > Import, then build a table from a WordPress query.', 'baratables'),
 			];
 		}
 

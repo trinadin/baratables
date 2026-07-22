@@ -1,0 +1,393 @@
+<?php
+
+if (!defined('ABSPATH')) {
+	exit;
+}
+
+/**
+ * Cell value resolution + formatting for BaraTables_Service: reading a core/meta/taxonomy
+ * value for a post, stringifying it, applying date formats, value overrides and merge tags.
+ * Extracted from the service class; runs in the class scope via the trait.
+ */
+trait BaraTables_Value_Format_Trait {
+	public function resolve_value(WP_Post $post, array $column): string {
+		$value = '';
+
+		if ($column['source'] === 'core') {
+			$value = $this->get_core_value($post, $column['key']);
+		} elseif ($column['source'] === 'tax') {
+			$value = $this->get_taxonomy_value($post, $column['key']);
+		} else {
+			$value = $this->get_meta_value($post->ID, $column['key']);
+		}
+
+		$value = $this->stringify_cell_value($value);
+
+		if (!empty($column['format_date'])) {
+			$format = isset($column['date_format']) ? (string) $column['date_format'] : '';
+			// post_date/post_modified arrive from get_core_value() already rendered by
+			// get_the_date()/get_the_modified_date(), which drop the time and localize the month
+			// name. Re-parsing that with strtotime() zeroes the clock (so "Y-m-d H:i" always ends
+			// in 00:00) and mis-parses entirely on non-English sites. Format the raw column value.
+			if ($column['source'] === 'core' && in_array($column['key'], ['post_date', 'post_modified'], true)) {
+				$raw_date = $column['key'] === 'post_date' ? $post->post_date : $post->post_modified;
+				if (is_string($raw_date) && $raw_date !== '' && $raw_date !== '0000-00-00 00:00:00') {
+					$value = $raw_date;
+				}
+			}
+			$value = $this->format_date_value($value, $format);
+		}
+
+		// Deliberately NOT wp_kses_post()'d here. Escaping happens at output, where it is
+		// authoritative for all five sources: the front-end <td> (frontend.php) and the admin
+		// preview (pages.php) both wp_kses_post() every cell, and the chart payload's values pass
+		// through btblExtractText()/btblParseNumber() in baratables.js before reaching ECharts.
+		// A pass here could not be authoritative anyway -- apply_overrides() runs immediately
+		// after resolve_value() and can reintroduce markup. The CSV, external-DB and manual paths
+		// never kses'd at row-build time either, so this keeps all five consistent. At the
+		// 10,000-row ceiling the removed pass was ~250-880ms of duplicated work per render.
+		return $value;
+	}
+
+	/**
+	 * Reduce any resolved cell value to a string.
+	 *
+	 * Post meta is not guaranteed to be scalar. get_meta_value() prefers ACF's get_field(),
+	 * which returns typed values: WP_Post for a Post Object field, WP_Term for Taxonomy, and
+	 * nested arrays for Relationship/Repeater. WP_Post has no __toString, so a bare (string)
+	 * cast raises an uncaught Error and white-screens every page carrying the shortcode.
+	 * Every non-scalar shape is reduced here instead of at the cast sites.
+	 */
+	private function stringify_cell_value($value, int $depth = 0): string {
+		if (is_string($value)) {
+			return $value;
+		}
+		if (is_scalar($value)) {
+			return (string) $value;
+		}
+		if ($value === null) {
+			return '';
+		}
+		if (is_array($value)) {
+			if ($depth >= self::MAX_VALUE_FLATTEN_DEPTH) {
+				return '';
+			}
+			$parts = [];
+			foreach ($value as $item) {
+				$part = $this->stringify_cell_value($item, $depth + 1);
+				if ($part !== '') {
+					$parts[] = $part;
+				}
+			}
+			return implode(', ', $parts);
+		}
+		if (is_object($value)) {
+			if ($value instanceof WP_Post) {
+				return (string) $value->post_title;
+			}
+			if ($value instanceof WP_Term) {
+				return (string) $value->name;
+			}
+			if ($value instanceof DateTimeInterface) {
+				return $value->format('Y-m-d H:i:s');
+			}
+			if (method_exists($value, '__toString')) {
+				return (string) $value;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Build a list of date_format strings aligned to a column list's order: one entry per
+	 * column, a string when that column has the "Format as date" toggle on, or null when it
+	 * does not. Returns [] when no column is date-formatted so callers can skip cheaply.
+	 *
+	 * Used by the CSV and external-DB paths, whose rows are emitted already ordered to match
+	 * the column list, so the index-aligned list maps straight onto each row's cells. (The
+	 * custom-data path applies formatting earlier, before its value-override stage, so it keeps
+	 * its own slug-keyed builder.)
+	 */
+	private function build_ordered_date_formats(array $columns): array {
+		$has_any = false;
+		$formats = [];
+		foreach (array_values($columns) as $col) {
+			if (is_array($col) && !empty($col['format_date'])) {
+				$formats[] = isset($col['date_format']) ? (string) $col['date_format'] : '';
+				$has_any = true;
+			} else {
+				$formats[] = null;
+			}
+		}
+		return $has_any ? $formats : [];
+	}
+
+	/**
+	 * Apply an index-aligned date_format list (from build_ordered_date_formats) to rows that are
+	 * already ordered to match the same column list. Cells whose format entry is null are left as-is.
+	 */
+	private function apply_ordered_date_formats(array $rows, array $formats): array {
+		if (empty($formats)) {
+			return $rows;
+		}
+		foreach ($rows as &$row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			foreach ($formats as $idx => $format) {
+				if ($format === null || !array_key_exists($idx, $row)) {
+					continue;
+				}
+				$row[$idx] = $this->format_date_value((string) $row[$idx], $format);
+			}
+		}
+		unset($row);
+		return $rows;
+	}
+
+	/**
+	 * Index-aligned column slugs for rows already reordered to match $columns.
+	 * Returns [] when no column yields a slug, so callers can skip the row walk entirely.
+	 */
+	private function build_ordered_column_slugs(array $columns): array {
+		$slugs = [];
+		$has_any = false;
+		foreach (array_values($columns) as $col) {
+			$slug = is_array($col) ? $this->resolve_column_slug($col) : '';
+			$slugs[] = $slug;
+			if ($slug !== '') {
+				$has_any = true;
+			}
+		}
+		return $has_any ? $slugs : [];
+	}
+
+	/**
+	 * Apply value-override rules to rows already ordered to match the same column list.
+	 *
+	 * Mirrors the manual-grid loop in get_rows_from_custom(): each row first yields a
+	 * {{slug}} / {{row.slug}} token map, then every cell is run through the rules. Without this
+	 * the "Value overrides (JSON)" control was rendered, validated and persisted for CSV and
+	 * external-DB tables but never changed a single cell.
+	 */
+	private function apply_ordered_overrides(array $rows, array $columns, array $overrides): array {
+		if (empty($overrides)) {
+			return $rows;
+		}
+		$slugs = $this->build_ordered_column_slugs($columns);
+		if (empty($slugs)) {
+			return $rows;
+		}
+		foreach ($rows as &$row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			$row_tokens = [];
+			foreach ($slugs as $idx => $slug) {
+				if ($slug === '' || !array_key_exists($idx, $row)) {
+					continue;
+				}
+				$value = (string) $row[$idx];
+				$row_tokens[strtolower($slug)] = $value;
+				if (strpos($slug, ':') !== false) {
+					$key = substr($slug, strpos($slug, ':') + 1);
+					if ($key !== '') {
+						$row_tokens[strtolower($key)] = $value;
+					}
+				}
+			}
+			foreach ($slugs as $idx => $slug) {
+				if ($slug === '' || !array_key_exists($idx, $row)) {
+					continue;
+				}
+				$row[$idx] = $this->apply_overrides_for_row((string) $row[$idx], $slug, $overrides, $row_tokens);
+			}
+		}
+		unset($row);
+		return $rows;
+	}
+
+	private function format_date_value($value, string $format): string {
+		// Callers normally pass a string, but a meta value can be an object or array (ACF);
+		// reduce first so no (string) cast below can fatal on a WP_Post/WP_Term.
+		if (!is_scalar($value)) {
+			$value = $this->stringify_cell_value($value);
+		}
+		$format = $format !== '' ? $format : get_option('date_format');
+		if ($value === '' || $format === '') {
+			return (string) $value;
+		}
+
+		if (is_numeric($value)) {
+			$intVal = (int) $value;
+			// Treat very large integers as JS millisecond timestamps. The threshold
+			// (1e11) sits well above any plausible seconds-timestamp date (1e11 s ~ year
+			// 5138) and below any modern ms timestamp (~1.7e12), so a seconds-timestamp
+			// for a post-2033 date is no longer misread as milliseconds.
+			if ($intVal > 100000000000) {
+				$intVal = (int) ($intVal / 1000);
+			}
+			// Without a lower bound, a small integer (a year like 2024, an age, a count,
+			// an ID) would be read as epoch seconds and render as a 1970-era date. Only
+			// treat integers large enough to be a plausible real timestamp (|n| >= 1e8,
+			// ~year 1973) as epoch; leave smaller numbers as their raw value.
+			if (abs($intVal) < 100000000) {
+				return (string) $value;
+			}
+			// A genuine Unix epoch must go through wp_date(), which converts UTC to the site
+			// timezone. date_i18n() treats its timestamp argument as a "timestamp with offset"
+			// (a documented core quirk), so it would render the UTC wall clock labelled as
+			// local time -- every value shifted by the site's offset, and dates landing on the
+			// wrong day whenever UTC and local straddle midnight.
+			return wp_date($format, $intVal);
+		}
+
+		$timestamp = strtotime((string) $value);
+		if ($timestamp === false) {
+			return (string) $value;
+		}
+
+		// Deliberately date_i18n(), not wp_date(): WordPress sets PHP's default timezone to UTC,
+		// so strtotime() reads an already-local date string ("2026-06-26 04:33:06", post_date)
+		// as if it were UTC. date_i18n()'s legacy handling converts it straight back to the same
+		// wall clock, which is exactly right here. wp_date() would shift it by the site offset.
+		return date_i18n($format, $timestamp);
+	}
+
+	private function apply_overrides_with(string $value, string $column_slug, array $overrides, callable $resolve_replace): string {
+		if ($value === '' || empty($overrides)) {
+			return $value;
+		}
+
+		foreach ($overrides as $rule) {
+			if (!is_array($rule) || !isset($rule['column']) || $rule['column'] === '') {
+				continue;
+			}
+			if ($rule['column'] !== $column_slug && $rule['column'] !== '*') {
+				continue;
+			}
+			$search = isset($rule['search']) ? (string) $rule['search'] : '';
+			$replace = isset($rule['replace']) ? (string) $rule['replace'] : '';
+			if ($search === '') {
+				continue;
+			}
+			$resolved_replace = $resolve_replace($replace);
+			if (!empty($rule['regex'])) {
+				$pattern = $search;
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Suppresses warnings from user-supplied regex patterns; handler is immediately restored.
+				set_error_handler(static function () {});
+				$result = preg_replace($pattern, $resolved_replace, $value);
+				restore_error_handler();
+				if (is_string($result)) {
+					$value = $result;
+				}
+			} else {
+				$value = str_replace($search, $resolved_replace, $value);
+			}
+		}
+
+		return $value;
+	}
+
+	private function apply_overrides(string $value, string $column_slug, array $overrides, WP_Post $post): string {
+		return $this->apply_overrides_with($value, $column_slug, $overrides, function (string $replace) use ($post): string {
+			return $this->replace_merge_tags($replace, $post);
+		});
+	}
+
+	private function apply_overrides_for_row(string $value, string $column_slug, array $overrides, array $row_tokens): string {
+		return $this->apply_overrides_with($value, $column_slug, $overrides, function (string $replace) use ($row_tokens): string {
+			return $this->replace_row_tokens($replace, $row_tokens);
+		});
+	}
+
+	private function replace_merge_tags(string $text, WP_Post $post): string {
+		if ($text === '') {
+			return $text;
+		}
+
+		$pattern = '/{{\s*(core|meta):([^}]+)\s*}}/i';
+		$text = preg_replace_callback($pattern, function ($matches) use ($post) {
+			$source = strtolower($matches[1]);
+			$raw_key = trim($matches[2]);
+			$key = sanitize_key($raw_key);
+			if ($key === '') {
+				return '';
+			}
+
+			$value = '';
+			if ($source === 'core') {
+				$value = $this->get_core_value($post, $key);
+			} else {
+				$value = $this->get_meta_value($post->ID, $key);
+			}
+
+			return wp_kses_post($this->stringify_cell_value($value));
+		}, $text);
+
+		return $text;
+	}
+
+	private function replace_row_tokens(string $text, array $row_tokens): string {
+		if ($text === '' || empty($row_tokens)) {
+			return $text;
+		}
+		return preg_replace_callback('/{{\\s*(?:row\\.)?([a-z0-9_:-]+)\\s*}}/i', function ($matches) use ($row_tokens) {
+			$token = strtolower($matches[1]);
+			return array_key_exists($token, $row_tokens) ? $row_tokens[$token] : $matches[0];
+		}, $text);
+	}
+
+	public function get_core_value(WP_Post $post, string $key) {
+		switch ($key) {
+			case 'ID':
+				return $post->ID;
+			case 'post_title':
+				return get_the_title($post);
+			case 'post_excerpt':
+				return get_the_excerpt($post);
+			case 'post_content':
+				return wp_trim_words($post->post_content, 40);
+			case 'post_date':
+				return get_the_date('', $post);
+			case 'post_modified':
+				return get_the_modified_date('', $post);
+			case 'post_author':
+				return get_the_author_meta('display_name', $post->post_author);
+			case 'post_status':
+				return $post->post_status;
+			case 'permalink':
+				return get_permalink($post);
+			default:
+				return isset($post->$key) ? $post->$key : '';
+		}
+	}
+
+	private function get_taxonomy_value(WP_Post $post, string $taxonomy): string {
+		$taxonomy = sanitize_key($taxonomy);
+		if ($taxonomy === '' || !taxonomy_exists($taxonomy) || !is_object_in_taxonomy($post->post_type, $taxonomy)) {
+			return '';
+		}
+		$terms = get_the_terms($post, $taxonomy);
+		if (is_wp_error($terms) || empty($terms)) {
+			return '';
+		}
+		$names = array_map(static function ($term) {
+			return $term->name;
+		}, $terms);
+		return implode(', ', $names);
+	}
+
+	public function get_meta_value(int $post_id, string $key) {
+		if (function_exists('get_field')) {
+			$acf_value = get_field($key, $post_id);
+			if ($acf_value !== null) {
+				return $acf_value;
+			}
+		}
+
+		return get_post_meta($post_id, $key, true);
+	}
+
+}

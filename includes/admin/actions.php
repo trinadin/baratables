@@ -53,7 +53,6 @@ class BaraTables_Admin_Action_Handler {
 		$filter_sorts_raw = $p::array_raw('btbl_filter_sort');
 		$filter_type_priority_raw = $p::array_raw('btbl_filter_type_priority');
 		$filter_values_raw = $p::array_raw('btbl_filter_values');
-		$filter_strict_raw = $p::array_raw('btbl_filter_strict');
 		$custom_labels_raw = $p::array_raw('btbl_custom_labels');
 		$filter_labels_raw = $p::array_raw('btbl_filter_labels');
 		$searchable_raw = $p::array_raw('btbl_searchable');
@@ -65,7 +64,10 @@ class BaraTables_Admin_Action_Handler {
 		$sortable_raw = $p::array_raw('btbl_sortable');
 		$format_date_raw = $p::array_raw('btbl_format_date');
 		$date_format_raw = $p::array_raw('btbl_date_format');
-		$taxonomy_raw = $p::raw('btbl_taxonomy');
+		// btbl_taxonomy is a multi-select (`name="btbl_taxonomy[]"`), so it must be read with
+		// array_raw(); raw() would stringify the array to the literal "Array" and the filter
+		// would be silently discarded by sanitize_taxonomy_filter().
+		$taxonomy_raw = $p::array_raw('btbl_taxonomy');
 		$taxonomy_terms_raw = $p::array_raw('btbl_tax_terms');
 		$custom_query_raw = $p::raw('btbl_custom_query_json');
 		$value_overrides_raw = $p::raw('btbl_value_overrides_json');
@@ -82,10 +84,9 @@ class BaraTables_Admin_Action_Handler {
 		$external_table_raw = $p::raw('btbl_external_table');
 		$external_charset_raw = $p::raw('btbl_external_charset');
 		$external_port_raw = $p::raw('btbl_external_port');
-		$active_tab = $p::key('btbl_active_tab');
 
 		// A blank heading now means "use the column's default" (captured as auto_label),
-		// NOT "hide the header" — hiding is controlled by the explicit btbl_hide_title
+		// NOT "hide the header" -- hiding is controlled by the explicit btbl_hide_title
 		// checkbox, so the two are independent.
 
 		$post_types = $this->service->sanitize_post_types($post_types_raw, $source_type);
@@ -115,7 +116,6 @@ class BaraTables_Admin_Action_Handler {
 			'filter_sorts' => $filter_sorts_raw,
 			'filter_type_priority' => $filter_type_priority_raw,
 			'filter_values' => $filter_values_raw,
-			'filter_strict' => $filter_strict_raw,
 			'custom_labels' => $custom_labels_raw,
 			'filter_labels' => $filter_labels_raw,
 			'searchable' => $searchable_raw,
@@ -151,7 +151,7 @@ class BaraTables_Admin_Action_Handler {
 			'csv_column' => $access_csv_column_raw,
 			'external_column' => $access_external_column_raw,
 			'logged_out' => $access_logged_out_raw,
-		]);
+		], $source_type);
 		$external_db = $this->service->sanitize_external_db_config([
 			'host' => $external_host_raw,
 			'name' => $external_name_raw,
@@ -175,7 +175,6 @@ class BaraTables_Admin_Action_Handler {
 			'filter_sorts' => $column_state['filter_sorts'],
 			'filter_type_priority' => $column_state['filter_type_priority'],
 			'filter_values' => $column_state['filter_values'],
-			'filter_strict' => $column_state['filter_strict'],
 			'custom_labels' => $column_state['custom_labels'],
 			'filter_labels' => $column_state['filter_labels'],
 			'hide_titles' => $column_state['hide_titles'],
@@ -196,7 +195,6 @@ class BaraTables_Admin_Action_Handler {
 			'filter_order' => $filter_order,
 			'access_control' => $access_control,
 			'external_db' => $external_db,
-			'active_tab' => $active_tab,
 			'custom_data' => [
 				'columns' => $custom_columns,
 				'rows' => $custom_rows,
@@ -247,7 +245,6 @@ class BaraTables_Admin_Action_Handler {
 			$request['sort_enabled'],
 			$request['sortable'],
 			$request['filter_values'],
-			$request['filter_strict'],
 			$request['format_date_flags'],
 			$request['date_formats']
 		);

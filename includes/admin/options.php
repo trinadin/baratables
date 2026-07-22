@@ -8,14 +8,22 @@ if (!defined('ABSPATH')) {
  * Import controller: collects an uploaded/pasted table export, hands it to BaraTables_Importer
  * for format detection + mapping, previews the result, and creates a BaraTables table from it.
  *
- * The class name is kept for backward compatibility (it is referenced as BaraTables_Admin_Options
- * elsewhere); all format-specific logic lives in includes/admin/import.php.
+ * Named BaraTables_Admin_Options for historical reasons; all format-specific logic lives in
+ * includes/admin/import.php. The stable contract here is PAGE_SLUG, which is the admin URL.
  */
 class BaraTables_Admin_Options {
 	public const PAGE_SLUG = 'baratables-options';
 	private const MAX_IMPORT_BYTES = 5242880;
-	private const MAX_IMPORT_DEPTH = 64;
 	private BaraTables_Service $service;
+	/** @var string[] Errors collected while handling the request, rendered by render_page(). */
+	private array $errors = [];
+	/** @var array<string,mixed>|null Importer analysis, or null when there is nothing to preview. */
+	private ?array $analysis = null;
+	private string $import_filename = '';
+	/** Handoff key for the analyzed payload, so the Create step need not re-upload it. */
+	private string $import_token = '';
+	private const HANDOFF_PREFIX = 'btbl_import_handoff_';
+	private const HANDOFF_TTL = 900; // 15 minutes: long enough to read a preview, short enough to expire.
 
 	public function __construct(BaraTables_Service $service) {
 		$this->service = $service;
@@ -23,7 +31,7 @@ class BaraTables_Admin_Options {
 
 	public function register_menu(): void {
 		$parent = 'edit.php?post_type=' . BaraTables_Repository::CPT;
-		add_submenu_page(
+		$hook = add_submenu_page(
 			$parent,
 			__('Import a Table', 'baratables'),
 			__('Import', 'baratables'),
@@ -31,94 +39,194 @@ class BaraTables_Admin_Options {
 			self::PAGE_SLUG,
 			[$this, 'render_page']
 		);
+		if ($hook) {
+			// The POST must be handled on load-*, before a single byte is echoed. WordPress calls
+			// render_page() from wp-admin/admin.php only after admin-header.php has emitted the
+			// whole <head>, admin bar and menu, so a wp_safe_redirect() issued from the renderer
+			// can never take effect and its exit() truncates the page before admin-footer.php.
+			add_action('load-' . $hook, [$this, 'handle_import_request']);
+		}
+	}
+
+	/**
+	 * Handles the import POST on `load-{$hook}`, i.e. before any output has been sent, so that a
+	 * successful create can actually redirect. Results are stashed on the instance for
+	 * render_page() to display.
+	 */
+	public function handle_import_request(): void {
+		if (!current_user_can('manage_options')) {
+			return;
+		}
+
+		$action = !empty($_POST['btbl_options_action']) ? sanitize_key(wp_unslash($_POST['btbl_options_action'])) : '';
+		$is_analyze = $action === 'import_analyze';
+		$is_create = $action === 'import_create';
+		if (!$is_analyze && !$is_create) {
+			return;
+		}
+
+		check_admin_referer('btbl_options_import', '_btbl_options_nonce');
+
+		$errors = [];
+		$analysis = null;
+
+		// The follow-up step reclaims the payload the Analyze step already read, instead of the form
+		// re-posting it. It used to round-trip through a hidden textarea, so a file close to the
+		// 5 MB cap was uploaded once and then posted back again -- the second POST could exceed
+		// post_max_size even though the original upload had not.
+		//
+		// Claimed for BOTH actions, and unconditionally, so that:
+		//   - "Re-analyze" works without re-picking the file (the button posts a second, later
+		//     btbl_options_action, and PHP takes the last one, so this is not a Create);
+		//   - the stored copy is always consumed rather than left to idle out its TTL.
+		$handoff = $this->claim_handoff();
+
+		// A file or pasted text supplied on THIS request always wins over the stored copy: the file
+		// input and the paste box stay on screen next to the preview, so choosing a different file
+		// there and pressing Create has to import that file, not the previous one.
+		$payloads = $this->collect_import_payload();
+		if (!empty($payloads['error'])) {
+			$errors[] = $payloads['error'];
+			$json_raw = '';
+			$this->import_filename = $payloads['filename'];
+		} elseif ($payloads['raw'] !== '') {
+			$json_raw = $payloads['raw'];
+			$this->import_filename = $payloads['filename'];
+		} elseif ($handoff !== null) {
+			$json_raw = $handoff['raw'];
+			$this->import_filename = $handoff['filename'];
+		} else {
+			$json_raw = '';
+			$this->import_filename = $payloads['filename'];
+		}
+
+		if (empty($errors) && $json_raw === '') {
+			$errors[] = __('Please choose an export file or paste its contents.', 'baratables');
+		}
+
+		if (empty($errors)) {
+			$analysis = BaraTables_Importer::analyze($json_raw, $this->import_filename, $this->service);
+			if (empty($analysis['ok'])) {
+				$errors[] = $analysis['message'] !== ''
+					? $analysis['message']
+					: __('The file was not recognized as a supported table export.', 'baratables');
+				$analysis = null;
+			}
+		}
+
+		if (empty($errors) && $is_create && $analysis && !empty($analysis['definitions'])) {
+			$result = $this->persist_definition($analysis['definitions'][0]);
+			if (!empty($result['error'])) {
+				$errors[] = $result['error'];
+			} elseif (!empty($result['post_id'])) {
+				BaraTables_Admin_Notice::queue(
+					__('Table imported successfully. Review the columns, then update the table to save any changes.', 'baratables'),
+					'success'
+				);
+				$edit_link = get_edit_post_link((int) $result['post_id'], '');
+				$redirect = $edit_link
+					? $edit_link
+					: add_query_arg(['post_type' => BaraTables_Repository::CPT], admin_url('edit.php'));
+				wp_safe_redirect($redirect);
+				exit;
+			}
+		}
+
+		// Only a previewed-but-not-yet-created payload needs to survive to the next request.
+		// Errors must NOT skip this: a Create that failed to persist re-renders the preview with
+		// no handoff token, so the next Create claims nothing and fails with "Please choose an
+		// export file", blaming the user for a file they already uploaded. A successful Create
+		// redirects and exits above, so reaching here always means the payload is still needed.
+		if ($analysis && $json_raw !== '') {
+			$this->import_token = $this->store_handoff($json_raw, $this->import_filename);
+			if ($this->import_token === '') {
+				// Say so now, at the preview, rather than letting Create fail with a message that
+				// blames the user for not choosing a file. Pasting is a real way out: pasted text
+				// is read straight from this request and never needs the stored copy.
+				$errors[] = __('This site could not hold the import file between steps. Try a smaller file, or paste its contents into the box above.', 'baratables');
+				$analysis = null;
+			}
+		}
+		$this->errors = $errors;
+		$this->analysis = $analysis;
+	}
+
+	/**
+	 * Parks the analyzed payload for the follow-up Create request and returns its key.
+	 * Scoped to the current user so one admin's handoff is never readable by another.
+	 */
+	private function store_handoff(string $raw, string $filename): string {
+		// random_bytes() rather than wp_generate_password(), which ends in an apply_filters() call
+		// ('random_password') that security plugins do hook to force symbols in. One such filter
+		// would push the token outside the [A-Za-z0-9]{32} shape claim_handoff() checks for and
+		// break every import on the site. 16 bytes of hex is the same 32 characters, unfilterable.
+		$token = bin2hex(random_bytes(16));
+		$stored = set_transient(
+			self::HANDOFF_PREFIX . get_current_user_id() . '_' . $token,
+			['raw' => $raw, 'filename' => $filename],
+			self::HANDOFF_TTL
+		);
+		// A persistent object cache can silently refuse an oversized value -- memcached's default
+		// slab limit is 1 MB, well under this plugin's 5 MB import cap -- and a DB transient can
+		// exceed max_allowed_packet. Handing back a token for a value that was never stored sends
+		// the user to a Create step that fails with "Please choose an export file", every time,
+		// with no way to tell why. Report the failure so the caller can say something true.
+		return $stored ? $token : '';
+	}
+
+	/**
+	 * Reads and consumes the payload parked by store_handoff(). Returns null when no usable token
+	 * was posted, in which case the caller falls back to reading the request normally.
+	 */
+	private function claim_handoff(): ?array {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by the caller.
+		$token_raw = isset($_POST['btbl_import_token']) ? sanitize_text_field(wp_unslash($_POST['btbl_import_token'])) : '';
+		// Shape is fixed by store_handoff(): 16 random bytes as 32 hex chars (bin2hex(random_bytes(16))).
+		if ($token_raw === '' || !preg_match('/^[A-Za-z0-9]{32}$/', $token_raw)) {
+			return null;
+		}
+		$key = self::HANDOFF_PREFIX . get_current_user_id() . '_' . $token_raw;
+		$stored = get_transient($key);
+		delete_transient($key);
+		if (!is_array($stored) || !isset($stored['raw']) || !is_string($stored['raw']) || $stored['raw'] === '') {
+			return null;
+		}
+		return [
+			'raw' => $stored['raw'],
+			'filename' => isset($stored['filename']) && is_string($stored['filename']) ? $stored['filename'] : '',
+		];
 	}
 
 	public function render_page(): void {
 		if (!current_user_can('manage_options')) {
 			return;
 		}
-		$errors = [];
-		$analysis = null;
-		$import_payload_raw = '';
-		$import_filename = '';
-
-		$action = !empty($_POST['btbl_options_action']) ? sanitize_key(wp_unslash($_POST['btbl_options_action'])) : '';
-		$is_analyze = $action === 'import_analyze';
-		$is_create = $action === 'import_create';
-
-		if ($is_analyze || $is_create) {
-			check_admin_referer('btbl_options_import', '_btbl_options_nonce');
-
-			$payloads = $this->collect_import_payload();
-			$json_raw = $payloads['raw'];
-			$import_filename = $payloads['filename'];
-
-			if (!empty($payloads['error'])) {
-				$errors[] = $payloads['error'];
-			}
-
-			if (empty($errors) && $json_raw === '') {
-				$errors[] = __('Please choose an export file or paste its contents.', 'baratables');
-			}
-
-			if (empty($errors)) {
-				$analysis = BaraTables_Importer::analyze($json_raw, $import_filename, $this->service);
-				if (empty($analysis['ok'])) {
-					$errors[] = $analysis['message'] !== ''
-						? $analysis['message']
-						: __('The file was not recognized as a supported table export.', 'baratables');
-					$analysis = null;
-				}
-			}
-
-			if (empty($errors) && $is_create && $analysis && !empty($analysis['definitions'])) {
-				$result = $this->persist_definition($analysis['definitions'][0]);
-				if (!empty($result['error'])) {
-					$errors[] = $result['error'];
-				} elseif (!empty($result['post_id'])) {
-					BaraTables_Admin_Notice::queue(
-						__('Table imported successfully. Review the columns, then update the table to save any changes.', 'baratables'),
-						'success'
-					);
-					$edit_link = get_edit_post_link((int) $result['post_id'], '');
-					if ($edit_link) {
-						$redirect = add_query_arg(['imported' => '1'], $edit_link);
-					} else {
-						$redirect = add_query_arg(['post_type' => BaraTables_Repository::CPT, 'imported' => '1'], admin_url('edit.php'));
-					}
-					wp_safe_redirect($redirect);
-					exit;
-				}
-			}
-
-			if ($json_raw !== '') {
-				$import_payload_raw = $json_raw;
-			}
-		}
+		$errors = $this->errors;
+		$analysis = $this->analysis;
+		$import_token = $this->import_token;
 
 		?>
 		<div class="wrap btbl-admin">
 			<h1><?php esc_html_e('Import a Table', 'baratables'); ?></h1>
-			<p class="description"><?php esc_html_e('Import a table export from another table plugin to create a BaraTables table. Supported files: a JSON or XML table export, or a CSV spreadsheet (a header row followed by data rows). Charts are not imported.', 'baratables'); ?></p>
+			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, CSV, or TXT. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
 			<?php foreach ($errors as $message) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php echo esc_html($message); ?></p></div>
 			<?php endforeach; ?>
 			<form method="post" enctype="multipart/form-data" autocomplete="off">
 				<?php wp_nonce_field('btbl_options_import', '_btbl_options_nonce'); ?>
 				<input type="hidden" name="btbl_options_action" value="<?php echo esc_attr($analysis ? 'import_create' : 'import_analyze'); ?>" />
-				<?php if ($import_payload_raw !== '') : ?>
-					<textarea name="btbl_import_payload" hidden><?php echo esc_textarea($import_payload_raw); ?></textarea>
-					<input type="hidden" name="btbl_import_filename" value="<?php echo esc_attr($import_filename); ?>" />
+				<?php if ($import_token !== '') : ?>
+					<input type="hidden" name="btbl_import_token" value="<?php echo esc_attr($import_token); ?>" />
 				<?php endif; ?>
 				<div class="btbl-control-grid">
 						<div class="btbl-control">
 							<label class="btbl-small-heading" for="btbl_import_file"><?php esc_html_e('Upload a table export', 'baratables'); ?></label>
-							<input type="file" name="btbl_import_file" id="btbl_import_file" accept=".json,.xml,.csv,.txt,.xls,.xlsx,application/json,application/xml,text/csv,text/plain" />
-							<p class="description"><?php esc_html_e('Accepts .json, .xml, or .csv (max 5 MB).', 'baratables'); ?></p>
+							<input type="file" name="btbl_import_file" id="btbl_import_file" accept=".json,.xml,.csv,.txt,application/json,application/xml,text/csv,text/plain" />
+							<p class="description"><?php esc_html_e('Accepts .json, .xml, .csv, or .txt (max 5 MB).', 'baratables'); ?></p>
 						</div>
 					<div class="btbl-control">
 						<label class="btbl-small-heading" for="btbl_import_json"><?php esc_html_e('Or paste the export', 'baratables'); ?></label>
-						<textarea name="btbl_import_json" id="btbl_import_json" class="large-text code" rows="8" placeholder="<?php esc_attr_e('Paste the export contents here…', 'baratables'); ?>"></textarea>
+						<textarea name="btbl_import_json" id="btbl_import_json" class="large-text code" rows="8" placeholder="<?php esc_attr_e('Paste the export contents here', 'baratables'); ?>"></textarea>
 						<p class="description"><?php esc_html_e('If both are provided, the uploaded file wins.', 'baratables'); ?></p>
 					</div>
 				</div>
@@ -204,17 +312,18 @@ class BaraTables_Admin_Options {
 	}
 
 	/**
-	 * Gather the raw import text from (in priority order) an uploaded file, a re-submitted hidden
-	 * payload, or the paste textarea, with the same size/type guards as before.
+	 * Gather the raw import text supplied on THIS request: an uploaded file first, then the paste
+	 * textarea, with the usual size and type guards. Returns an empty 'raw' when neither was
+	 * supplied, which is the caller's signal to fall back to the stored handoff.
 	 *
 	 * @return array{raw:string,filename:string,error:string}
 	 */
 	private function collect_import_payload(): array {
 		$raw = '';
 		$filename = '';
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (render_page).
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (handle_import_request).
 		$tmp_file = isset($_FILES['btbl_import_file']['tmp_name']) ? sanitize_text_field(wp_unslash($_FILES['btbl_import_file']['tmp_name'])) : '';
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (render_page).
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (handle_import_request).
 		$file_name = isset($_FILES['btbl_import_file']['name']) ? sanitize_file_name(wp_unslash($_FILES['btbl_import_file']['name'])) : '';
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller; upload error is server-provided metadata.
 		$upload_error = isset($_FILES['btbl_import_file']['error']) ? (int) $_FILES['btbl_import_file']['error'] : UPLOAD_ERR_NO_FILE;
@@ -223,7 +332,7 @@ class BaraTables_Admin_Options {
 				return ['raw' => '', 'filename' => '', 'error' => __('Could not read the uploaded import file.', 'baratables')];
 			}
 			if (!$this->is_valid_import_upload($file_name)) {
-				return ['raw' => '', 'filename' => '', 'error' => __('Import uploads must be a .json, .xml, or .csv file.', 'baratables')];
+				return ['raw' => '', 'filename' => '', 'error' => __('Import uploads must be a .json, .xml, .csv, or .txt file.', 'baratables')];
 			}
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller; upload size is server-provided metadata.
 			$file_size = isset($_FILES['btbl_import_file']['size']) ? (int) $_FILES['btbl_import_file']['size'] : 0;
@@ -237,20 +346,7 @@ class BaraTables_Admin_Options {
 			}
 			$filename = $file_name;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (render_page).
-		if ($raw === '' && !empty($_POST['btbl_import_payload'])) {
-			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller. Parsed by the importer; not echoed raw.
-			$raw = (string) wp_unslash($_POST['btbl_import_payload']);
-			if (strlen($raw) > self::MAX_IMPORT_BYTES) {
-				return ['raw' => '', 'filename' => '', 'error' => $this->get_import_size_error()];
-			}
-			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			if (!empty($_POST['btbl_import_filename'])) {
-				// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-				$filename = sanitize_file_name(wp_unslash($_POST['btbl_import_filename']));
-			}
-		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (render_page).
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller (handle_import_request).
 		if ($raw === '' && !empty($_POST['btbl_import_json'])) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller. Parsed by the importer; not echoed raw.
 			$raw = (string) wp_unslash($_POST['btbl_import_json']);
@@ -271,8 +367,6 @@ class BaraTables_Admin_Options {
 			'xml' => 'application/xml',
 			'csv' => 'text/csv',
 			'txt' => 'text/plain',
-			'xls' => 'application/vnd.ms-excel',
-			'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 		];
 		$file_type = wp_check_filetype($file_name, $allowed);
 		return in_array($file_type['ext'] ?? '', array_keys($allowed), true);

@@ -26,38 +26,14 @@ abstract class BaraTables_Base_Repository {
 
 	protected function register_meta_keys_common(string $cpt, string $meta_key, string $meta_slug, callable $sanitize_callback, ?callable $auth_callback = null): void {
 		$auth_callback = $auth_callback ?: [$this, 'meta_auth_callback'];
-		$definition_schema = [
-			'type' => 'object',
-			'properties' => [
-				'id' => ['type' => 'string'],
-				'name' => ['type' => 'string'],
-				'status' => ['type' => 'string'],
-				'post_type' => ['type' => 'string'],
-				'post_types' => [
-					'type' => 'array',
-					'items' => ['type' => 'string'],
-				],
-				'source_type' => ['type' => 'string'],
-				'columns' => [
-					'type' => 'array',
-					'items' => ['type' => 'object'],
-				],
-				'chart' => ['type' => 'object'],
-				'table_options' => ['type' => 'object'],
-				'filter_order' => [
-					'type' => 'array',
-					'items' => ['type' => 'string'],
-				],
-			],
-			'additionalProperties' => true,
-		];
 
+		// show_in_rest is false: the plugin never uses the REST API (classic metaboxes only), and the
+		// definition meta holds external-DB connection details, custom queries, and access-control
+		// config that must not be reachable through the public REST endpoints.
 		register_post_meta($cpt, $meta_key, [
 			'type'              => 'object',
 			'single'            => true,
-			'show_in_rest'      => [
-				'schema' => $definition_schema,
-			],
+			'show_in_rest'      => false,
 			'object_subtype'    => $cpt,
 			'sanitize_callback' => $sanitize_callback,
 			'auth_callback'     => $auth_callback,
@@ -66,7 +42,7 @@ abstract class BaraTables_Base_Repository {
 		register_post_meta($cpt, $meta_slug, [
 			'type'              => 'string',
 			'single'            => true,
-			'show_in_rest'      => true,
+			'show_in_rest'      => false,
 			'object_subtype'    => $cpt,
 			'sanitize_callback' => 'sanitize_text_field',
 			'auth_callback'     => $auth_callback,
@@ -83,7 +59,9 @@ abstract class BaraTables_Base_Repository {
 			'show_in_admin_bar'  => true,
 			'show_in_nav_menus'  => false,
 			'exclude_from_search' => true,
-			'show_in_rest'       => true,
+			// No REST endpoints: nothing in the plugin consumes them, and leaving them on let
+			// anonymous requests enumerate every table/chart post (ids, titles, slugs).
+			'show_in_rest'       => false,
 			'menu_icon'          => $menu_icon,
 			'menu_position'      => $menu_position,
 			'supports'           => ['title', 'revisions'],
@@ -185,7 +163,7 @@ abstract class BaraTables_Base_Repository {
 		return !empty($query->posts) ? (int) $query->posts[0] : 0;
 	}
 
-	public function meta_auth_callback(...$args): bool {
+	public function meta_auth_callback(): bool {
 		return current_user_can('manage_options');
 	}
 
@@ -298,7 +276,7 @@ abstract class BaraTables_Abstract_CPT_Repository extends BaraTables_Base_Reposi
 		return $this->get_post_id_by_slug_common($this->get_cpt(), $this->get_meta_slug(), $slug);
 	}
 
-	public function sanitize_meta($value, $meta_key = '', $object_type = ''): array {
+	public function sanitize_meta($value): array {
 		return $this->sanitize_array_meta_value($value);
 	}
 

@@ -9,10 +9,10 @@ jQuery(function($) {
 		var sortEnabled = $sortToggle.is(':checked') && checked;
 		var $sortPriority = $label.find('.btbl-sort-priority');
 		var $row = $label.find('.btbl-sort-priority').closest('.btbl-options-row');
-		var wasEnabled = $row.data('sort-enabled') === true;
 		$row.data('sort-enabled', sortEnabled);
 		$row.toggleClass('is-hidden', !sortEnabled);
-		// Keep priority blank unless the user explicitly sets it.
+		// When sort is enabled but no priority is set yet, default it to 1 -- the same default the
+		// server applies in ui.php so an enabled column always has a concrete priority.
 		if (sortEnabled && $sortPriority.length) {
 			var priorityVal = ($sortPriority.val() || '').trim();
 			if (!priorityVal || parseInt(priorityVal, 10) < 1) {
@@ -53,7 +53,7 @@ jQuery(function($) {
 		}
 	}
 
-	function setOptionsOpen($label, open, fromUser) {
+	function setOptionsOpen($label, open) {
 		var $body = $label.find('.btbl-field-options-body');
 		var $toggle = $label.find('.btbl-options-toggle');
 		$body.toggleClass('is-open', open);
@@ -78,7 +78,6 @@ jQuery(function($) {
 		var $filterSortRow = $label.find('.btbl-filter-sort-row');
 		var $filterValuesRow = $label.find('.btbl-filter-values-row');
 		var $filterLabelRow = $label.find('.btbl-filter-label-row');
-		var $filterStrictRow = $label.find('.btbl-filter-strict-row');
 		var $dateRow = $label.find('.btbl-date-format-row');
 		var isDateCandidate = $dateRow.data('date-candidate') === 1 || $dateRow.data('date-candidate') === '1' || $dateRow.data('date-candidate') === true;
 		var $fieldControls = $label.find('.btbl-field-controls');
@@ -120,7 +119,6 @@ jQuery(function($) {
 		$filterSortRow.toggleClass('is-hidden', !filterEnabled || !customFilterSort);
 		$filterValuesRow.toggleClass('is-hidden', !filterEnabled);
 		$filterLabelRow.toggleClass('is-hidden', !filterEnabled);
-		$filterStrictRow.toggleClass('is-hidden', !filterEnabled);
 
 		if (isDateCandidate) {
 			$dateRow.toggleClass('is-hidden', !dateRowEnabled);
@@ -132,7 +130,7 @@ jQuery(function($) {
 		// Keep sortable state; default handled by server-side state.
 
 		$sortRow.toggleClass('is-hidden', !sortInputsEnabled);
-		// Leave sort priority empty until the user sets a value.
+		// updateSortVisibility() below fills a blank priority with 1 when sort is enabled.
 
 		if (!filterEnabled) {
 			$select.val('none');
@@ -147,7 +145,7 @@ jQuery(function($) {
 		}
 
 		if (!checked) {
-			setOptionsOpen($label, false, false);
+			setOptionsOpen($label, false);
 			$select.val('none');
 			$sortSelect.val('asc');
 			$dropdownInputs.prop('checked', false);
@@ -156,12 +154,22 @@ jQuery(function($) {
 		updateSortVisibility($label);
 	}
 
+	// Set while "Select all columns" is flipping every checkbox in turn. Each change would
+	// otherwise trigger a full order-list rebuild plus a document-wide attribute sweep per
+	// selected column -- O(N^2) for a result the bulk handler recomputes once at the end
+	// (~40ms at 80 fields). toggleFilterControls() deliberately still runs per row: that is
+	// per-row state, not a whole-list rebuild.
+	var bulkColumnToggle = false;
+
 	// Bind a single column row's controls. Extracted so swapped-in rows (AJAX
 	// post-type refresh) can be re-initialised without a page reload.
 	function initColumnOption($label) {
 		toggleFilterControls($label);
 		$label.find('input[type="checkbox"][name="btbl_columns[]"]').on('change', function() {
 			toggleFilterControls($label);
+			if (bulkColumnToggle) {
+				return;
+			}
 			syncOrderFromSelection();
 			syncFilterOrderFromSelection();
 		});
@@ -184,7 +192,7 @@ jQuery(function($) {
 		$label.find('.btbl-options-toggle').on('click', function(e) {
 			e.preventDefault();
 			var isOpen = $label.find('.btbl-field-options-body').hasClass('is-open');
-			setOptionsOpen($label, !isOpen, true);
+			setOptionsOpen($label, !isOpen);
 		});
 	}
 
@@ -198,23 +206,23 @@ jQuery(function($) {
 		});
 	});
 
+	// #btbl_source_type is the one control applyFieldRefresh() never replaces, so it is safe to
+	// hold. Everything else below is re-queried on each call instead of cached at DOM-ready:
+	// applyFieldRefresh() swaps out the taxonomy select and the entire .btbl-taxonomy-filter
+	// block, and a cached collection would keep toggling classes on the detached originals --
+	// leaving the term picker permanently invisible until a full page reload.
 	var $sourceSelect = $('#btbl_source_type');
-	var $sourceBlocks = $('[data-btbl-source]');
-	var $taxonomySelect = $('#btbl_taxonomy');
-	var $taxGroups = $('.btbl-tax-terms-group');
-	var $taxFilterRows = $('.btbl-taxonomy-filter');
-	var $taxTermPickers = $('.btbl-taxonomy-term-picker');
 	function syncTaxonomyTerms() {
 		var source = $sourceSelect.length ? $sourceSelect.val() || 'wp_query' : 'wp_query';
 		var isWpQuerySource = source === 'wp_query';
-		var selected = $taxonomySelect.val() || [];
+		var selected = $('#btbl_taxonomy').val() || [];
 		if (!Array.isArray(selected)) {
 			selected = selected ? [selected] : [];
 		}
 		var hasSelection = selected.length > 0 && isWpQuerySource;
-		$taxFilterRows.toggleClass('is-hidden', !hasSelection);
-		$taxTermPickers.toggleClass('is-hidden', !hasSelection);
-		$taxGroups.each(function() {
+		$('.btbl-taxonomy-filter').toggleClass('is-hidden', !hasSelection);
+		$('.btbl-taxonomy-term-picker').toggleClass('is-hidden', !hasSelection);
+		$('.btbl-tax-terms-group').each(function() {
 			var $group = $(this);
 			var matches = isWpQuerySource && selected.indexOf($group.data('taxonomy')) !== -1;
 			$group.toggleClass('is-hidden', !matches);
@@ -222,19 +230,26 @@ jQuery(function($) {
 	}
 	function syncSourceVisibility() {
 		var selected = $sourceSelect.length ? $sourceSelect.val() || 'wp_query' : 'wp_query';
-		$sourceBlocks.each(function() {
+		$('[data-btbl-source]').each(function() {
 			var $block = $(this);
-			var target = $block.data('btbl-source') || 'wp_query';
-			var show = target === selected;
+			// data-btbl-source may list several sources, space separated (e.g. the row-token
+			// field, which applies to both WP_Query-backed sources).
+			var targets = String($block.data('btbl-source') || 'wp_query').split(' ');
+			var show = targets.indexOf(selected) !== -1;
 			$block.toggleClass('is-hidden', !show);
 		});
 		syncTaxonomyTerms();
 	}
+	// Declared ahead of the source-select handler below, which reads it. Both run only on user
+	// interaction, so the hoisted `var` was never actually undefined at call time -- but keeping
+	// the declaration above its first use is what lets no-use-before-define stay on, and that
+	// rule is what caught the ext.search cleanup bug in baratables.js.
+	var $postTypeSelect = $('#btbl_post_type');
 	if ($sourceSelect.length) {
 		$sourceSelect.on('change', function() {
 			syncSourceVisibility();
 			// Each source's control block is already in the DOM (toggled above), so switching only
-			// needs to refresh the source-dependent columns panel — done in place via
+			// needs to refresh the source-dependent columns panel -- done in place via
 			// btbl_refresh_fields (the same AJAX swap the post-type switch uses), no full reload.
 			// CSV column inference still runs through the CSV controls' own refresh (file upload /
 			// delimiter / header), and custom-query/external columns load via their own actions.
@@ -245,7 +260,6 @@ jQuery(function($) {
 		syncSourceVisibility();
 	}
 
-	var $postTypeSelect = $('#btbl_post_type');
 	if ($postTypeSelect.length) {
 		$postTypeSelect.on('change', function() {
 			var selected = $(this).val();
@@ -254,7 +268,7 @@ jQuery(function($) {
 		});
 	}
 
-	// Legacy full-page reload — used as a graceful fallback if the AJAX refresh fails.
+	// Legacy full-page reload -- used as a graceful fallback if the AJAX refresh fails.
 	function legacyPostTypeReload(typeParam) {
 		var url = new URL(window.location.href);
 		if (isBuilderPage) {
@@ -407,7 +421,7 @@ jQuery(function($) {
 	}
 	function applyChartFieldRefresh(panelHtml) {
 		var $new = $('<div>').html(panelHtml);
-		// Swap only the INNER content of the live, handler-bound nodes — never replace the
+		// Swap only the INNER content of the live, handler-bound nodes -- never replace the
 		// <select>/<div> elements themselves, or their directly-bound change handlers are orphaned.
 		['#btbl_chart_x_axis', '#btbl_chart_gantt_label', '#btbl_chart_gantt_start', '#btbl_chart_gantt_end', '#btbl_chart_gantt_group', '#btbl_chart_gantt_progress'].forEach(function(sel) {
 			var $frag = $new.find(sel).first();
@@ -426,8 +440,10 @@ jQuery(function($) {
 		if (typeof toggleChartControlsUI === 'function') { toggleChartControlsUI(); }
 		if (typeof syncChartSeriesOptions === 'function') { syncChartSeriesOptions(); }
 	}
-	if ($taxonomySelect.length) {
-		$taxonomySelect.on('change', syncTaxonomyTerms);
+	// Delegated, not bound directly: applyFieldRefresh() replaces #btbl_taxonomy, which would
+	// discard a handler attached to the original node.
+	$(document).on('change', '#btbl_taxonomy', syncTaxonomyTerms);
+	if ($('#btbl_taxonomy').length) {
 		syncTaxonomyTerms();
 	}
 
@@ -521,7 +537,14 @@ jQuery(function($) {
 		} else {
 			$chips.each(function() {
 				var $chip = $(this);
-				var text = $chip.text().toLowerCase();
+				// Cache the lowercased label on first use: without it every keystroke re-read and
+				// re-lowercased the text node of every chip, which is O(terms) string work per
+				// character typed on a taxonomy with hundreds of terms.
+				var text = $chip.data('btblSearchText');
+				if (text === undefined) {
+					text = $chip.text().toLowerCase();
+					$chip.data('btblSearchText', text);
+				}
 				var matches = text.indexOf(search) !== -1;
 				$chip.toggleClass('is-hidden', !matches);
 				if (matches) {
@@ -539,16 +562,39 @@ jQuery(function($) {
 			updateTermCount($group);
 		});
 
+		// Debounced: the handler walks every chip in the group, so firing it on each keystroke
+		// is the expensive part on a large taxonomy. 150ms still feels instant while typing.
+		// The timer is stored on the input rather than in one shared variable, because a single
+		// delegated handler serves every taxonomy's search box -- a shared timer let typing in
+		// one box cancel a different box's pending filter and leave that group unfiltered.
+		function flushTermSearch($group) {
+			var $input = $group.find('.btbl-term-search');
+			var timer = $input.data('btblSearchTimer');
+			if (timer) {
+				clearTimeout(timer);
+				$input.removeData('btblSearchTimer');
+				filterTermChips($group, $input.val());
+			}
+		}
 		$(document).on('input', '.btbl-term-search', function() {
 			var $input = $(this);
 			var $group = $input.closest('.btbl-tax-terms-group');
-			filterTermChips($group, $input.val());
+			clearTimeout($input.data('btblSearchTimer'));
+			$input.data('btblSearchTimer', setTimeout(function() {
+				$input.removeData('btblSearchTimer');
+				filterTermChips($group, $input.val());
+			}, 150));
 		});
 
 		$(document).on('click', '.btbl-term-action', function() {
 			var $button = $(this);
 			var action = $button.data('action');
 			var $group = $button.closest('.btbl-tax-terms-group');
+			// Select all / Clear operate on what is currently *visible*. If a search is still
+			// waiting out its debounce the visible set is the pre-search one, so a keyboard user
+			// who reaches this button within 150ms of typing would select every term in the
+			// taxonomy instead of the matches. Settle the filter first.
+			flushTermSearch($group);
 			var $targets = $group.find('.btbl-term-chip').not('.is-hidden').find('input[type="checkbox"]');
 			var shouldCheck = action === 'select-all';
 			$targets.prop('checked', shouldCheck);
@@ -696,12 +742,24 @@ jQuery(function($) {
 		return Math.min(Math.max(num, min), max);
 	}
 
+	// Grid caps come from PHP (data-max-* attributes = the MAX_CUSTOM_* constants). Every path
+	// that resizes the grid must read them here, not hardcode a number, or the grid ends up with
+	// two disagreeing limits and legal rows get silently dropped on a row action or paste.
+	function getGridCaps() {
+		return {
+			cols: parseInt($customGrid.data('maxCols'), 10) || 100,
+			rows: parseInt($customGrid.data('maxRows'), 10) || 1000,
+			cells: parseInt($customGrid.data('maxCells'), 10) || 25000
+		};
+	}
+
 	function getCustomCounts() {
 		var cols = $customGrid.data('cols') || 1;
 		var rows = $customGrid.data('rows') || 1;
-		var maxCols = parseInt($customGrid.data('maxCols'), 10) || 100;
-		var maxRows = parseInt($customGrid.data('maxRows'), 10) || 1000;
-		var maxCells = parseInt($customGrid.data('maxCells'), 10) || 5000;
+		var caps = getGridCaps();
+		var maxCols = caps.cols;
+		var maxRows = caps.rows;
+		var maxCells = caps.cells;
 		var requestedCols = clampNumber($customColsInput.val() || cols, 1, maxCols);
 		var requestedRows = clampNumber($customRowsInput.val() || rows, 1, maxRows);
 		var cappedRows = Math.min(requestedRows, Math.max(1, Math.floor(maxCells / requestedCols)));
@@ -727,7 +785,8 @@ jQuery(function($) {
 		duplicate: $customGrid.data('label-duplicate') || 'Duplicate row',
 		remove: $customGrid.data('label-delete') || 'Delete row'
 	};
-	var gridConfirmShrink = $customGrid.data('confirm-shrink') || 'Reducing the grid will remove %d filled cell(s). Continue?';
+	var gridConfirmShrinkOne = $customGrid.data('confirm-shrink-one') || 'Reducing the grid will remove %d filled cell. Continue?';
+	var gridConfirmShrinkMany = $customGrid.data('confirm-shrink-many') || 'Reducing the grid will remove %d filled cells. Continue?';
 
 	// R17: read the current header labels from the DOM so resizes preserve them
 	// instead of resetting to the generic "Column N" placeholders.
@@ -770,60 +829,66 @@ jQuery(function($) {
 	// R12: per-row delete / insert-below / duplicate controls.
 	// Uniform dashicons (shared 20x20 metrics) so the three actions align and size
 	// identically, instead of three mismatched text glyphs.
-	function buildRowAction(cls, dashicon, label, disabled) {
-		var $btn = $('<button type="button"/>')
-			.addClass('button-link ' + cls)
-			.attr({ title: label, 'aria-label': label })
-			.append($('<span class="dashicons ' + dashicon + '" aria-hidden="true"/>'));
-		if (disabled) { $btn.attr('disabled', 'disabled'); }
-		return $btn;
+	// The grid is built as one HTML string and parsed once, rather than as ~13 jQuery objects per
+	// row plus 4 per cell. At the 25,000-cell budget that was roughly 65,000 element constructions
+	// on editor load AND again on every row action (move/insert/duplicate/delete), which made a
+	// single row-action click take hundreds of milliseconds and reset the scroll position.
+	function escGridHtml(value) {
+		return String(value === null || value === undefined ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#039;');
 	}
-	function buildRowActions(rowIndex, rowCount) {
-		var $td = $('<td class="btbl-row-actions"/>');
+	function rowActionHtml(cls, dashicon, label, disabled) {
+		return '<button type="button" class="button-link ' + cls + '"'
+			+ ' title="' + escGridHtml(label) + '" aria-label="' + escGridHtml(label) + '"'
+			+ (disabled ? ' disabled="disabled"' : '') + '>'
+			+ '<span class="dashicons ' + dashicon + '" aria-hidden="true"></span>'
+			+ '</button>';
+	}
+	function buildRowActionsHtml(rowIndex, rowCount) {
 		// Reorder controls (disabled at the boundaries), then the edit controls.
-		buildRowAction('btbl-row-move-up', 'dashicons-arrow-up-alt2', gridLabels.moveUp, rowIndex === 0).appendTo($td);
-		buildRowAction('btbl-row-move-down', 'dashicons-arrow-down-alt2', gridLabels.moveDown, rowIndex === rowCount - 1).appendTo($td);
-		buildRowAction('btbl-row-insert', 'dashicons-plus-alt2', gridLabels.insert).appendTo($td);
-		buildRowAction('btbl-row-duplicate', 'dashicons-admin-page', gridLabels.duplicate).appendTo($td);
-		buildRowAction('btbl-row-delete', 'dashicons-no-alt', gridLabels.remove).appendTo($td);
-		return $td;
+		return '<td class="btbl-row-actions">'
+			+ rowActionHtml('btbl-row-move-up', 'dashicons-arrow-up-alt2', gridLabels.moveUp, rowIndex === 0)
+			+ rowActionHtml('btbl-row-move-down', 'dashicons-arrow-down-alt2', gridLabels.moveDown, rowIndex === rowCount - 1)
+			+ rowActionHtml('btbl-row-insert', 'dashicons-plus-alt2', gridLabels.insert, false)
+			+ rowActionHtml('btbl-row-duplicate', 'dashicons-admin-page', gridLabels.duplicate, false)
+			+ rowActionHtml('btbl-row-delete', 'dashicons-no-alt', gridLabels.remove, false)
+			+ '</td>';
 	}
 
 	function renderCustomGrid(headers, rows, counts) {
 		var headingLabel = $customGrid.data('heading-label') || 'Column';
 		var colTemplate = $customGrid.data('column-label') || 'Column %d';
 		var rowTemplate = $customGrid.data('row-label') || 'Row %d';
-		var $table = $('<table class="widefat fixed striped"/>');
-		var $thead = $('<thead/>').appendTo($table);
-		var $headRow = $('<tr/>').appendTo($thead);
-		$('<th scope="col" class="btbl-grid-corner"/>').text(headingLabel).appendTo($headRow);
+		var html = ['<table class="widefat fixed striped"><thead><tr>'];
+		html.push('<th scope="col" class="btbl-grid-corner">' + escGridHtml(headingLabel) + '</th>');
 		for (var c = 0; c < counts.cols; c++) {
 			var placeholder = (colTemplate || '').replace('%d', (c + 1));
 			var headerVal = (headers && headers[c]) ? headers[c] : placeholder;
-			$('<th scope="col"/>').text(headerVal).appendTo($headRow);
+			html.push('<th scope="col">' + escGridHtml(headerVal) + '</th>');
 		}
-		$('<th scope="col" class="btbl-row-actions-head"><span class="screen-reader-text">' + gridLabels.remove + '</span></th>').appendTo($headRow);
-		var $tbody = $('<tbody/>').appendTo($table);
+		html.push('<th scope="col" class="btbl-row-actions-head"><span class="screen-reader-text">' + escGridHtml(gridLabels.remove) + '</span></th>');
+		html.push('</tr></thead><tbody>');
 		for (var r = 0; r < counts.rows; r++) {
 			var rowLabel = (rowTemplate || 'Row %d').replace('%d', (r + 1));
-			var $tr = $('<tr/>');
 			// Visible gutter shows just the number; the descriptive "Row N" stays as an
 			// aria-label so screen readers still announce it.
-			$tr.append($('<th scope="row" class="btbl-grid-rownum"/>').attr('aria-label', rowLabel).text(r + 1));
+			html.push('<tr><th scope="row" class="btbl-grid-rownum" aria-label="' + escGridHtml(rowLabel) + '">' + (r + 1) + '</th>');
 			var rowValues = rows[r] || [];
 			for (var c2 = 0; c2 < counts.cols; c2++) {
 				var cellVal = rowValues[c2] || '';
 				// R39: title mirrors the value so truncated cells reveal on hover.
-				var $cellInput = $('<input type="text"/>')
-					.attr('name', 'btbl_custom_data[' + r + '][' + c2 + ']')
-					.attr('title', cellVal)
-					.val(cellVal);
-				$tr.append($('<td/>').append($cellInput));
+				html.push('<td><input type="text" name="btbl_custom_data[' + r + '][' + c2 + ']"'
+					+ ' title="' + escGridHtml(cellVal) + '" value="' + escGridHtml(cellVal) + '" /></td>');
 			}
-			$tr.append(buildRowActions(r, counts.rows));
-			$tbody.append($tr);
+			html.push(buildRowActionsHtml(r, counts.rows));
+			html.push('</tr>');
 		}
-		$customGrid.empty().append($table);
+		html.push('</tbody></table>');
+		$customGrid.html(html.join(''));
 		$customGrid.attr('data-cols', counts.cols).attr('data-rows', counts.rows);
 		$customColsInput.val(counts.cols);
 		$customRowsInput.val(counts.rows);
@@ -838,6 +903,7 @@ jQuery(function($) {
 		var values = readCustomGridValues();
 		if (confirmLoss) {
 			var dropped = countDroppedCells(values.rows, counts);
+			var gridConfirmShrink = dropped === 1 ? gridConfirmShrinkOne : gridConfirmShrinkMany;
 			if (dropped > 0 && !window.confirm(gridConfirmShrink.replace('%d', dropped))) {
 				return false;
 			}
@@ -857,8 +923,10 @@ jQuery(function($) {
 
 	// Re-render from a mutated rows array (used by the row-action buttons).
 	function renderRows(rows) {
-		var cols = parseInt($customGrid.attr('data-cols'), 10) || 1;
-		var rowCount = Math.max(1, Math.min(500, rows.length));
+		var caps = getGridCaps();
+		var cols = Math.min(parseInt($customGrid.attr('data-cols'), 10) || 1, caps.cols);
+		var rowsForCells = Math.max(1, Math.floor(caps.cells / cols));
+		var rowCount = Math.max(1, Math.min(rows.length, caps.rows, rowsForCells));
 		renderCustomGrid(readCustomGridHeaders().slice(0, cols), rows, { cols: cols, rows: rowCount });
 	}
 
@@ -870,7 +938,7 @@ jQuery(function($) {
 			var gridCols = parseInt($customGrid.attr('data-cols'), 10) || counts.cols;
 			var gridRows = parseInt($customGrid.attr('data-rows'), 10) || counts.rows;
 			var changed = (counts.cols !== gridCols) || (counts.rows !== gridRows);
-			// The button simply appearing when counts change is signal enough — no extra
+			// The button simply appearing when counts change is signal enough -- no extra
 			// highlight on the button or the grid cells.
 			$customRefresh.prop('hidden', !changed);
 		}
@@ -893,7 +961,7 @@ jQuery(function($) {
 			var $row = $customGrid.find('tbody tr').eq(newIdx);
 			var $btn = $row.find(primary);
 			if (!$btn.length || $btn.is('[disabled]')) {
-				$btn = $row.find(fallback); // hit the boundary — keep focus on the row
+				$btn = $row.find(fallback); // hit the boundary -- keep focus on the row
 			}
 			$btn.trigger('focus');
 		}
@@ -946,7 +1014,7 @@ jQuery(function($) {
 			var text = clip.getData('text/plain') || clip.getData('Text') || '';
 			var hasTab = text.indexOf('\t') !== -1;
 			var hasNewline = /\r|\n/.test(text);
-			if (!hasTab && !hasNewline) { return; } // single cell — default paste
+			if (!hasTab && !hasNewline) { return; } // single cell -- default paste
 			e.preventDefault();
 			var lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
 			var $cell = $(this);
@@ -964,8 +1032,10 @@ jQuery(function($) {
 					if (startCol + j > maxCol) { maxCol = startCol + j; }
 				}
 			}
-			var newCols = Math.min(50, Math.max(parseInt($customGrid.attr('data-cols'), 10) || 1, maxCol + 1));
-			var newRows = Math.min(500, Math.max(parseInt($customGrid.attr('data-rows'), 10) || 1, values.length));
+			var caps = getGridCaps();
+			var newCols = Math.min(caps.cols, Math.max(parseInt($customGrid.attr('data-cols'), 10) || 1, maxCol + 1));
+			var rowsForCells = Math.max(1, Math.floor(caps.cells / newCols));
+			var newRows = Math.min(caps.rows, rowsForCells, Math.max(parseInt($customGrid.attr('data-rows'), 10) || 1, values.length));
 			renderCustomGrid(readCustomGridHeaders().slice(0, newCols), values, { cols: newCols, rows: newRows });
 		});
 		rebuildCustomGrid(false);
@@ -977,7 +1047,9 @@ jQuery(function($) {
 			var pt = parsed && parsed.post_type;
 			if (Array.isArray(pt)) { return pt.join(','); }
 			if (typeof pt === 'string' && pt) { return pt; }
-		} catch (e) {}
+		} catch (e) {
+			// Not valid JSON yet (user still typing) -- fall through to the empty default.
+		}
 		return '';
 	}
 
@@ -1029,7 +1101,7 @@ jQuery(function($) {
 				markCustomQueryLoaded(raw); // columns now match this query -> re-hide the button
 			}
 		}).always(function() {
-			// Always re-enable the button — fieldRefreshSeq is shared with the source/CSV refreshes,
+			// Always re-enable the button -- fieldRefreshSeq is shared with the source/CSV refreshes,
 			// so a sibling refresh started while this request was in flight would otherwise leave
 			// seq !== fieldRefreshSeq and strand the button disabled until a full page reload. The
 			// stale-response guard stays on the .done() fragment swap above (line ~1010); only the
@@ -1128,7 +1200,7 @@ jQuery(function($) {
 	});
 
 	var initialHash = window.location.hash.replace('#', '');
-	var initialTabParam = '';
+	var initialTabParam;
 	try {
 		initialTabParam = new URL(window.location.href).searchParams.get('tab') || '';
 	} catch (e) {
@@ -1184,7 +1256,7 @@ jQuery(function($) {
 		if (typeof $input.data('original') !== 'undefined') { $input.val($input.data('original')); }
 		collapseIdEditor($editor);
 	});
-	// Enter acts as OK, Escape as Cancel — and never submits the surrounding post form.
+	// Enter acts as OK, Escape as Cancel -- and never submits the surrounding post form.
 	$(document).on('keydown', '.btbl-id-input', function(e) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
@@ -1247,7 +1319,7 @@ jQuery(function($) {
 		});
 	}
 
-	function toggleSearchSettings(event) {
+	function toggleSearchSettings() {
 		var $searchToggle = $('input[type="checkbox"][name="btbl_table_options[searchBox]"]');
 		var $searchColumnsToggle = $('input[type="checkbox"][name="btbl_table_options[searchColumns]"]');
 		var $settingRows = $('.btbl-search-setting-row');
@@ -1547,7 +1619,7 @@ jQuery(function($) {
 		var dragSlug = null;
 
 		function updateInput() {
-			// Fire change so listeners (e.g. the Refresh-preview reveal) notice a reorder —
+			// Fire change so listeners (e.g. the Refresh-preview reveal) notice a reorder --
 			// jQuery .val() alone is silent. Safe during init: the reveal handler binds later,
 			// so the initial sync's change is a no-op until a real user reorder.
 			$input.val(order.join(',')).trigger('change');
@@ -1701,7 +1773,7 @@ jQuery(function($) {
 		filterOrderController.sync();
 	}
 
-	// Live-update a column's heading — the label next to its checkbox and its order/filter pills —
+	// Live-update a column's heading -- the label next to its checkbox and its order/filter pills --
 	// as the gear's "Column heading" field is typed, instead of waiting for a Refresh.
 	$(document).on('input', '#btbl-tab-columns input[name^="btbl_custom_labels"]', function() {
 		var $input = $(this);
@@ -1714,13 +1786,16 @@ jQuery(function($) {
 		var typed = ($input.val() || '').trim();
 		var label = typed !== '' ? typed : ($input.attr('data-default-label') || slug);
 		$box.find('.btbl-field-name').first().text(label);
-		// Keep the checkbox's data-label (read by getSelectedColumnsMap) in sync — both the
-		// attribute and jQuery's cached .data() — so any rebuilt pills use the new heading too.
-		// The order/filter pill list is rebuilt with jQuery .html(), and the server emits this
-		// attribute as wp_kses'd inline HTML; so HTML-escape USER-TYPED text here (the typed
-		// branch) before storing it, otherwise typing markup into a heading would execute it on
-		// the next pill rebuild. The empty-field fallback is a server default label — left as-is.
-		var labelForData = typed !== '' ? $('<div/>').text(typed).html() : label;
+		// Keep the checkbox's data-label (read by getSelectedColumnsMap) in sync -- both the
+		// attribute and jQuery's cached .data() -- so any rebuilt pills use the new heading too.
+		// getSelectedColumnsMap()'s value is written to the DOM by renderList() with jQuery
+		// .html(), so whatever we store here must be HTML-safe. HTML-escape BOTH branches:
+		// the typed value AND the default fallback. The fallback comes from data-default-label,
+		// which the server emits with esc_attr() only (not wp_kses) -- so for an inferred CSV
+		// column it holds the raw file header, and reading it back with .attr() returns live
+		// markup. Escaping only the typed branch (as this did) let a header like
+		// "<img src=x onerror=...>" reach the .html() sink and execute on the next pill rebuild.
+		var labelForData = $('<div/>').text(label).html();
 		$checkbox.attr('data-label', labelForData).data('label', labelForData);
 		$('#btbl-column-order-list li[data-slug="' + slug + '"], #btbl-filter-order-list li[data-slug="' + slug + '"]').text(label);
 	});
@@ -1741,13 +1816,18 @@ jQuery(function($) {
 		$selectAllColumns.on('change', function() {
 			var checked = $(this).is(':checked');
 
-			$('#btbl-tab-columns input[type="checkbox"][name="btbl_columns[]"]').each(function() {
-				var $cb = $(this);
-				if (!$cb.is(':visible')) {
-					return;
-				}
-				$cb.prop('checked', checked).trigger('change');
-			});
+			bulkColumnToggle = true;
+			try {
+				$('#btbl-tab-columns input[type="checkbox"][name="btbl_columns[]"]').each(function() {
+					var $cb = $(this);
+					if (!$cb.is(':visible')) {
+						return;
+					}
+					$cb.prop('checked', checked).trigger('change');
+				});
+			} finally {
+				bulkColumnToggle = false;
+			}
 			
 			if (!checked) {
 				$('.btbl-filter-select').each(function() {
@@ -1757,12 +1837,61 @@ jQuery(function($) {
 			syncOrderFromSelection();
 			syncFilterOrderFromSelection();
 			syncSelectAllState();
+			// Suppressed per-column during the bulk loop above; run it once now that the
+			// selection has settled, which is the only result that was ever visible.
+			syncRefreshPreviewVisibility();
 		});
 
 		$(document).on('change', '#btbl-tab-columns input[type="checkbox"][name="btbl_columns[]"]', function() {
+			if (bulkColumnToggle) {
+				return;
+			}
 			syncSelectAllState();
 		});
 	}
+
+	// Holds a queued external-DB column reset so a form submit can cancel it. See the comment at
+	// the reset site below for why the reset cannot run synchronously.
+	var pendingExternalReset = null;
+	$('#post').on('submit', function() {
+		if (pendingExternalReset) {
+			clearTimeout(pendingExternalReset);
+			pendingExternalReset = null;
+		}
+	});
+
+	// True from the moment a save button is pressed until that press resolves.
+	//
+	// Cancelling the queued reset on 'submit' is not sufficient for a MOUSE click. Pressing a save
+	// button blurs the focused field first, so the real order is:
+	//     mousedown -> blur -> change   [task ends]   -> mouseup -> click -> submit
+	// A setTimeout(0) queued during 'change' runs at the end of that first task -- before mouseup,
+	// let alone submit -- so the reset fired and wiped the column config every time, and the submit
+	// handler above then found nothing left to cancel. mousedown is the one event that lands ahead
+	// of the blur, which is why the intent is recorded there rather than cancelled later.
+	var SAVE_CONTROLS = '#publish, #save-post, #post input[type="submit"], #post button[type="submit"]';
+	var saveIntent = false;
+	$(document).on('mousedown', SAVE_CONTROLS, function() {
+		saveIntent = true;
+	});
+	$(document).on('keydown', SAVE_CONTROLS, function(e) {
+		// Enter or Space on a focused save button activates it.
+		if (e.which === 13 || e.which === 32) {
+			saveIntent = true;
+		}
+	});
+	function releaseSaveIntent() {
+		// If the press did not turn into a submit (pointer dragged off the button, or a validation
+		// hook blocked it), drop the intent so a later schema edit still resets as it should.
+		window.setTimeout(function() {
+			saveIntent = false;
+		}, 0);
+	}
+	$(document).on('mouseup', releaseSaveIntent);
+	// Keyboard activation needs its own release. With only mouseup listening, activating Publish
+	// via Enter or Space while something blocked the submit left saveIntent latched true for the
+	// rest of the page, silently suppressing every later external-DB column reset.
+	$(document).on('keyup', releaseSaveIntent);
 
 	$('#btbl-tab-general').on('change input', ':input', function(e) {
 		var $target = $(e.target);
@@ -1770,11 +1899,17 @@ jQuery(function($) {
 			return;
 		}
 		var source = $sourceSelect.length ? $sourceSelect.val() || 'wp_query' : 'wp_query';
-		var isWpQueryControl = $target.closest('[data-btbl-source="wp_query"]').length > 0
+		var isWpQueryControl = $target.closest('[data-btbl-source~="wp_query"]').length > 0
 			|| $target.is('#btbl_post_type')
 			|| $target.is('#btbl_taxonomy');
-		var isCustomQueryControl = $target.closest('[data-btbl-source="custom_query"]').length > 0;
-		var isCustomDataControl = $target.closest('[data-btbl-source="custom_data"]').length > 0;
+		var isCustomQueryControl = $target.closest('[data-btbl-source~="custom_query"]').length > 0;
+		var isCustomDataControl = $target.closest('[data-btbl-source~="custom_data"]').length > 0;
+		// External DB is the one source with no auto-refresh to rebuild the column list after a
+		// reset, so wiping columns here is pure data loss. Credentials and charset never change
+		// which columns exist; the fields that do (server, port, database, table) still reset --
+		// but only once the value is committed, never on each keystroke while it is being typed.
+		var isExternalDbControl = $target.closest('[data-btbl-source~="external_db"]').length > 0;
+		var isExternalSchemaField = $target.is('#btbl_external_table, #btbl_external_name, #btbl_external_host, #btbl_external_port');
 		if (source === 'wp_query' && isWpQueryControl) {
 			return;
 		}
@@ -1782,6 +1917,33 @@ jQuery(function($) {
 			return;
 		}
 		if (source === 'custom_data' && isCustomDataControl) {
+			return;
+		}
+		if (source === 'external_db' && isExternalDbControl) {
+			if (e.type === 'input' || !isExternalSchemaField) {
+				return;
+			}
+			// 'change' fires on blur, and clicking "Update" blurs the focused field first, so a
+			// synchronous reset here would wipe the column config and the emptied form is what
+			// gets saved, with no chance to see it.
+			//
+			// The mouse path is caught by saveIntent (see its declaration above for the event
+			// ordering): the press is already recorded by the time this runs, and the user's
+			// column configuration must survive their own save.
+			if (saveIntent) {
+				return;
+			}
+			// Enter inside the field fires 'change' and 'submit' in the SAME task, so there the
+			// queued reset below is still cancelled by the submit handler before it can run.
+			// Tabbing away or clicking elsewhere leaves it to fire, which is what re-infers the
+			// columns for the newly pointed-at table.
+			if (pendingExternalReset) {
+				clearTimeout(pendingExternalReset);
+			}
+			pendingExternalReset = setTimeout(function() {
+				pendingExternalReset = null;
+				resetColumnsAndFilters();
+			}, 0);
 			return;
 		}
 		resetColumnsAndFilters();
@@ -1796,7 +1958,8 @@ jQuery(function($) {
 	function updateChartStackToggle() {
 		var type = $('#btbl_chart_type').val();
 		var $stack = $('input[name="btbl_chart_stack"]');
-		var disableStack = type === 'pie' || type === 'gantt';
+		// Keep in sync with the no-stack set in BaraTables_Service::sanitize_chart_options().
+		var disableStack = ['pie', 'donut', 'funnel', 'scatter', 'bubble', 'gantt'].indexOf(type) !== -1;
 		if (disableStack) {
 			$stack.prop('checked', false);
 		}
@@ -1809,7 +1972,7 @@ jQuery(function($) {
 		if (!$series.length) {
 			return;
 		}
-		// R8: checkbox series list — hide and uncheck the column chosen as the X-axis.
+		// R8: checkbox series list -- hide and uncheck the column chosen as the X-axis.
 		$series.find('.btbl-chart-series-option').each(function() {
 			var $opt = $(this);
 			var isXAxis = xAxis !== '' && String($opt.data('slug')) === xAxis;
@@ -2000,10 +2163,24 @@ jQuery(function($) {
 	var previewedState = $builderForm.length ? $builderForm.serialize() : '';
 	function syncRefreshPreviewVisibility() {
 		if (!$builderForm.length) { return; }
+		// serialize() walks every control in the builder, and this is bound at document level to
+		// every :input inside it -- so "Select all columns", which triggers one change per column,
+		// otherwise serialized the whole form once per column. The bulk handler calls this once
+		// when it is done, which is the only result that was ever visible.
+		if (bulkColumnToggle) { return; }
 		var dirty = $builderForm.serialize() !== previewedState;
 		$('.btbl-preview-toolbar').prop('hidden', !dirty);
 	}
-	$(document).on('change input', '#btbl-table-builder :input', syncRefreshPreviewVisibility);
+	// Debounce the input-driven path only. A manual-data grid is thousands of text inputs inside
+	// this form, and syncRefreshPreviewVisibility() serialize()s the whole #post form; running that
+	// synchronously on every keystroke lagged typing badly at the 25,000-cell cap (~58ms/key). The
+	// Refresh-preview button only needs to appear shortly after edits settle, not on the exact
+	// keystroke. Direct callers (post-refresh, and the reset at load) still invoke it synchronously.
+	var refreshPreviewDebounce;
+	$(document).on('change input', '#btbl-table-builder :input', function() {
+		clearTimeout(refreshPreviewDebounce);
+		refreshPreviewDebounce = setTimeout(syncRefreshPreviewVisibility, 200);
+	});
 
 	// R15: refresh the table preview against the current (unsaved) builder state.
 	$(document).on('click', '#btbl-refresh-preview', function(e) {

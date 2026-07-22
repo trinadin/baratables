@@ -26,8 +26,6 @@ class BaraTables_Admin_Pages {
 	public function render_table_form(array $context, ?array $editing_defn, string $page_slug, bool $wrap_form = true, bool $include_title = true, string $title_fallback = ''): void {
 		$form_action = $context['form_action'] ?? '';
 		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
-		$display_columns = $context['display_columns'] ?? [];
-		$definition_columns = is_array($editing_defn['columns'] ?? null) ? $editing_defn['columns'] : [];
 		$table_id = $editing_defn['id'] ?? '';
 		$shortcode = $table_id !== '' ? '[bara_table id="' . sanitize_text_field((string) $table_id) . '"]' : '';
 		$title_value = $editing_defn['name'] ?? $title_fallback;
@@ -81,11 +79,21 @@ class BaraTables_Admin_Pages {
 
 				<?php
 				$this->tab_general->render($context, $editing_defn, $page_slug);
-				$this->tab_columns->render($context, $editing_defn);
+				$this->tab_columns->render($context);
 				$this->tab_table->render($context);
 				$this->tab_advanced->render($context);
 				?>
 			</div>
+			<?php
+			// Last field in the editor, deliberately. The manual-data grid posts one input per
+			// cell, so a large grid can push the request past PHP's max_input_vars (default 1000).
+			// PHP then truncates $_POST silently -- it only logs a warning -- and because both
+			// nonces are emitted before the grid, the save still passes verification and proceeds
+			// with everything after the cut missing. That reset table_options to defaults and
+			// dropped access_control. If this marker is absent while the nonce is present, the
+			// request was cut short and must not be treated as the user's intent.
+			?>
+			<input type="hidden" name="<?php echo esc_attr(BaraTables_Admin_Action_Guard::COMPLETE_FIELD); ?>" value="1" />
 			<?php if ($wrap_form) : ?>
 				<p class="btbl-submit-row">
 					<button type="submit" class="button button-primary">
@@ -174,21 +182,20 @@ class BaraTables_Admin_Pages {
 		$page_length = isset($table_options['pageLength']) ? (int) $table_options['pageLength'] : 10;
 		$length_choices = array_unique(array_filter([$page_length, 10, 25, 50, 100]));
 		sort($length_choices);
+		// Take the effective button text from the same helper the front end uses, rather than a
+		// second local copy of the defaults. The copies had drifted -- the preview rendered
+		// "CSV" / "Excel" / "Columns" where the published table renders "Export CSV" /
+		// "Export Excel" / "Column visibility" -- so the same screen disagreed with itself.
+		// localize_frontend_table_labels() returns the user's custom text when set and the
+		// translated default otherwise, so one lookup covers both cases.
+		$button_label_options = $this->service->localize_frontend_table_labels($table_options);
 		$button_labels = [
-			'copy' => __('Copy', 'baratables'),
-			'csv' => __('CSV', 'baratables'),
-			'excel' => __('Excel', 'baratables'),
-			'print' => __('Print', 'baratables'),
-			'colvis' => __('Columns', 'baratables'),
-			'pagelength' => __('Page length', 'baratables'),
-		];
-		$button_text_map = [
-			'copy' => (string) ($table_options['buttonTextCopy'] ?? ''),
-			'csv' => (string) ($table_options['buttonTextCsv'] ?? ''),
-			'excel' => (string) ($table_options['buttonTextExcel'] ?? ''),
-			'print' => (string) ($table_options['buttonTextPrint'] ?? ''),
-			'colvis' => (string) ($table_options['buttonTextColvis'] ?? ''),
-			'pagelength' => (string) ($table_options['buttonTextPagelength'] ?? ''),
+			'copy'       => (string) ($button_label_options['buttonTextCopy'] ?? ''),
+			'csv'        => (string) ($button_label_options['buttonTextCsv'] ?? ''),
+			'excel'      => (string) ($button_label_options['buttonTextExcel'] ?? ''),
+			'print'      => (string) ($button_label_options['buttonTextPrint'] ?? ''),
+			'colvis'     => (string) ($button_label_options['buttonTextColvis'] ?? ''),
+			'pagelength' => (string) ($button_label_options['buttonTextPagelength'] ?? ''),
 		];
 		$paginate_defaults = ['first' => '«', 'previous' => '‹', 'next' => '›', 'last' => '»'];
 		$paginate_labels = [];
@@ -206,7 +213,6 @@ class BaraTables_Admin_Pages {
 			'length_choices' => $length_choices,
 			'page_length' => $page_length,
 			'button_labels' => $button_labels,
-			'button_text_map' => $button_text_map,
 			'search_label' => $search_label,
 			'search_placeholder' => $search_placeholder,
 			'info_text' => $info_text,
@@ -351,7 +357,7 @@ class BaraTables_Admin_Pages {
 							if (!isset($ctx['button_labels'][$choice])) {
 								continue;
 							}
-							$label = $ctx['button_text_map'][$choice] !== '' ? $ctx['button_text_map'][$choice] : $ctx['button_labels'][$choice];
+							$label = $ctx['button_labels'][$choice];
 							?>
 							<button type="button" class="button button-small" disabled><?php echo wp_kses($label, $allowed_inline); ?></button>
 						<?php endforeach; ?>

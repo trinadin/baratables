@@ -79,9 +79,11 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 = 1.2.2 =
 New:
+
 * Row-level access control on Custom WP Query tables.
 
 Fixes:
+
 * Filtering by category or tag.
 * Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly, and those columns show their title, name, or contents.
 * Manual data grids hold up to 25,000 cells. If your server's form-field limit is too low for a grid that size, the editor now says so instead of saving with cells and settings missing.
@@ -104,6 +106,7 @@ Fixes:
 * Creating a table from an import opens that table's editor.
 
 Improvements:
+
 * A table loads only the export, column-reorder, and dropdown-filter libraries it uses, cutting about 265KB from a typical page.
 * Large tables sort, page, and filter faster.
 * The term picker lists the first 200 terms of a taxonomy, plus any you have already selected.
@@ -111,6 +114,7 @@ Improvements:
 * A column order set by dragging applies to the current visit only.
 
 Security:
+
 * A column heading taken from a CSV file's header row could run script in the table editor. Column headings are now escaped everywhere they appear.
 * Table and chart posts are no longer listed by the REST API. Anonymous requests could retrieve their ids, titles, and slugs.
 * An external database table with no columns selected no longer publishes the column holding its access tokens.
@@ -127,6 +131,7 @@ Security:
 
 = 1.1.1 =
 Fixes:
+
 * "Format as date" displays the formatted date (e.g. "Mar 18, 2026") on manual data columns.
 * Plain numbers such as a year or a count are not read as dates.
 * A [bara_table] or [bara_chart] shortcode used without an id shows a "not found" message on WordPress 6.2 through 6.4.
@@ -134,21 +139,25 @@ Fixes:
 * Front-end table controls (export buttons, column-visibility menu, "Search in") and the CSV file picker follow the site language.
 
 Security:
+
 * Hardened the table editor's "Column heading" field against script injection (XSS).
 
 = 1.1.0 =
 New:
+
 * Import a table from another table plugin or a spreadsheet: upload a JSON or XML table export, or a CSV file, and BaraTables creates a matching table for you.
 * Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after it is created. Linked charts update automatically, and a notice reminds you to update any [bara_table] / [bara_chart] shortcodes already placed in your content.
 * Reorder manual-data rows directly in the editor with up and down controls.
 * Manual-table column headers are now translation-ready and follow the site language.
 
 Improvements:
+
 * Wide manual-data tables now scroll horizontally while keeping the row number and row controls in view.
 * Paste tabular data straight from a spreadsheet into the manual-data grid.
 * Smoother admin experience: one-click copy for shortcodes and IDs, a Show/Hide help text preference, and fewer page reloads while configuring a source.
 
 Fixes:
+
 * Numeric columns sort numerically (e.g. 3.15, 3.2, 3.9 in numeric order).
 * Far-future dates display correctly.
 * Security: hardened admin request handling and input validation.

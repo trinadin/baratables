@@ -27,10 +27,13 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 	// This file loads no plugin classes, so the literal key strings are used:
 	//   - 'btbl_auto_label_migrated' option  (legacy gate left by the 1.1.0 auto-label backfill,
 	//                                          removed in a later version; cleaned here for old sites)
+	//   - 'btbl_label_i18n_migrated' option  (gate for the 1.2.3 English-label backfill,
+	//                                          BaraTables_Service::LABEL_I18N_MIGRATION_OPTION)
 	//   - 'btbl_hide_help' user meta         (support.php BaraTables_Help::META_KEY, all users)
 	// Per-user transients are not cleaned, because both self-expire well before anyone would
 	// notice them: 'btbl_admin_notice_*' after 60s, and 'btbl_import_handoff_*' (the analyzed
 	// import payload handed to the Create step) after 15 minutes.
 	delete_option('btbl_auto_label_migrated');
+	delete_option('btbl_label_i18n_migrated');
 	delete_metadata('user', 0, 'btbl_hide_help', '', true);
 })();

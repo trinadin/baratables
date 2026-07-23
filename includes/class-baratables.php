@@ -71,6 +71,12 @@ class BaraTables {
 		$this->admin = new BaraTables_Admin($this->service, $this->repo, $this->plugin_url, $this->plugin_path);
 		$this->chart_admin = new BaraTables_Chart_Admin($this->chart_service, $this->chart_repo, $this->service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD);
 
+		// One-time label backfill, admin side only: admin_init never fires on a front-end page
+		// render, so a public request never pays for the write pass over every table. The gate is a
+		// non-autoloaded option -- read only here, never on the front end -- so after the first run
+		// each admin-side request spends a single indexed option lookup and returns.
+		add_action('admin_init', [$this->service, 'migrate_legacy_english_labels']);
+
 		add_action('admin_menu', [$this, 'cleanup_admin_menu'], 20);
 		add_filter('parent_file', [$this, 'highlight_tables_parent_menu']);
 		add_filter('submenu_file', [$this, 'highlight_tables_submenu'], 10, 1);

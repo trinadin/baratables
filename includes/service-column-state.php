@@ -73,7 +73,6 @@ trait BaraTables_Column_State_Trait {
 			}
 			if (!empty($col['hide_title'])) {
 				$state['selected_hide_titles'][$slug] = true;
-				$state['selected_custom_labels'][$slug] = '';
 			}
 			if (array_key_exists('searchable', $col)) {
 				$state['selected_searchable'][$slug] = (bool) $col['searchable'];

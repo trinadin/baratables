@@ -40,10 +40,6 @@ class BaraTables_Admin {
 		(new BaraTables_Admin_Duplicator())->register();
 	}
 
-	public function register_cpt(): void {
-		$this->repo->register_cpt();
-	}
-
 	public function register_meta_boxes(): void {
 		add_meta_box(
 			'btbl-table-builder',
@@ -72,9 +68,8 @@ class BaraTables_Admin {
 
 		$context_builder = new BaraTables_Admin_Form_Context($this->service);
 		$context = $context_builder->build($existing);
-		$page_slug = $existing ? 'baratables-edit' : 'baratables-add';
 		echo '<div class="btbl-admin btbl-admin-embed">';
-		$this->pages->render_table_form($context, $existing, $page_slug, false, false, get_the_title($post));
+		$this->pages->render_table_form($context, $existing);
 		echo '</div>';
 	}
 
@@ -118,43 +113,31 @@ class BaraTables_Admin {
 		// assembled straight from this AJAX POST. (It used to fake a full-page GET by writing $_GET
 		// and $_SERVER['REQUEST_METHOD'] and restoring them in a finally -- fragile, because build()
 		// opens files, runs WP_Query and dials external MySQL, any of which can throw mid-request.)
-		$preview = [
-			'type'   => isset($_POST['type']) ? sanitize_text_field(wp_unslash($_POST['type'])) : 'post',
-			'source' => isset($_POST['source']) ? sanitize_key(wp_unslash($_POST['source'])) : 'wp_query',
-		];
+		// Same sanitizer as the full-page GET collector, so the in-place refresh and the legacy
+		// reload can never disagree about an input. Nonce already verified above.
+		$raw = [];
+		foreach (['type', 'source', 'custom_query', 'csv_id', 'csv_delim', 'csv_header'] as $key) {
+			if (isset($_POST[$key])) {
+				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized in sanitize_preview_values() below.
+				$raw[$key] = wp_unslash($_POST[$key]);
+			}
+		}
+		$preview = BaraTables_Admin_Form_Context::sanitize_preview_values($raw);
+		$preview += ['type' => 'post', 'source' => 'wp_query'];
 		// CSV preview params let build() infer columns from the uploaded file. build()'s CSV column
 		// reset is gated on a non-POST request (the legacy reload arrived as GET), so mark the
 		// preview as GET only when those params are present -- matching the old reload semantics.
-		$has_csv_params = false;
-		if (isset($_POST['csv_id'])) {
-			$preview['csv_id'] = absint(wp_unslash($_POST['csv_id']));
-			$has_csv_params = true;
-		}
-		if (isset($_POST['csv_delim'])) {
-			$preview['csv_delim'] = sanitize_text_field(wp_unslash($_POST['csv_delim']));
-			$has_csv_params = true;
-		}
-		if (isset($_POST['csv_header'])) {
-			$preview['csv_header'] = absint(wp_unslash($_POST['csv_header']));
-			$has_csv_params = true;
-		}
+		$has_csv_params = isset($raw['csv_id']) || isset($raw['csv_delim']) || isset($raw['csv_header']);
 		$preview['request_method'] = $has_csv_params ? 'GET' : 'POST';
-		if (isset($_POST['custom_query'])) {
-			// sanitize_json_textarea() is the sanitizer (it preserves valid JSON); single unslash here,
-			// a second would corrupt escapes. Nonce already verified via check_ajax_referer() above.
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_json_textarea() sanitizes on this line.
-			$preview['custom_query'] = BaraTables_Admin_Action_Handler::sanitize_json_textarea(wp_unslash($_POST['custom_query']));
-		}
 
 		$context_builder = new BaraTables_Admin_Form_Context($this->service);
 		$context = $context_builder->build($existing, $preview);
 
 		$editing_defn = !empty($existing) ? $existing : null;
-		$page_slug = $editing_defn ? 'baratables-edit' : 'baratables-add';
 
 		wp_send_json_success([
 			'columns' => $this->pages->render_columns_panel($context, $editing_defn),
-			'source'  => $this->pages->render_source_panel($context, $editing_defn, $page_slug),
+			'source'  => $this->pages->render_source_panel($context, $editing_defn),
 		]);
 	}
 
@@ -368,10 +351,6 @@ class BaraTables_Chart_Admin {
 		add_action('wp_ajax_btbl_refresh_chart_fields', [$this, 'ajax_refresh_chart_fields']);
 	}
 
-	public function register_cpt(): void {
-		$this->chart_repo->register_cpt();
-	}
-
 	public function register_meta_boxes(): void {
 		add_meta_box(
 			'btbl-chart-builder',
@@ -407,17 +386,12 @@ class BaraTables_Chart_Admin {
 	}
 
 	public function render_chart_metabox(WP_Post $post): void {
-		$chart = $this->chart_service->find_chart($post->post_name, true);
-		if (!$chart) {
-			$chart = get_post_meta($post->ID, BaraTables_Chart_Repository::META_KEY, true);
-			$chart = is_array($chart) ? $chart : null;
-		}
+		$chart = $this->get_existing_chart_definition_for_post($post);
 		$selected_table = isset($_GET['table']) ? sanitize_text_field(wp_unslash($_GET['table'])) : ($chart['table_id'] ?? ''); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Admin URL parameter.
 		$context = $this->chart_service->build_form_context($chart, $selected_table);
-		$page_slug = $chart ? 'btbl-charts-edit' : 'btbl-charts-add';
 
 		echo '<div class="btbl-admin btbl-admin-embed">';
-		$this->render_chart_form($context, $chart, $chart ? 'update' : 'create', false, false, get_the_title($post));
+		$this->render_chart_form($context, $chart);
 		echo '</div>';
 	}
 
@@ -432,7 +406,6 @@ class BaraTables_Chart_Admin {
 			'active_tab'      => 'btbl-tab-chart',
 			'table_choices'   => $context['table_choices'] ?? [],
 			'selected_table'  => $context['selected_table'] ?? '',
-			'page_slug'       => $context['page_slug'] ?? '',
 			'dropped_columns' => $context['dropped_columns'] ?? [],
 		], $context['column_choices'] ?? []);
 		return (string) ob_get_clean();
@@ -453,44 +426,38 @@ class BaraTables_Chart_Admin {
 		$post = $post_id ? get_post($post_id) : null;
 		$chart = null;
 		if ($post instanceof WP_Post && $post->post_type === BaraTables_Chart_Repository::CPT) {
-			$chart = $this->chart_service->find_chart($post->post_name, true);
-			if (!$chart) {
-				$meta = get_post_meta($post->ID, BaraTables_Chart_Repository::META_KEY, true);
-				$chart = is_array($meta) ? $meta : null;
-			}
+			$chart = $this->get_existing_chart_definition_for_post($post);
 		}
 		$selected_table = isset($_POST['table_id']) ? sanitize_text_field(wp_unslash($_POST['table_id'])) : '';
 		$context = $this->chart_service->build_form_context($chart, $selected_table);
-		$context['page_slug'] = $chart ? 'btbl-charts-edit' : 'btbl-charts-add';
 
 		wp_send_json_success(['panel' => $this->render_chart_panel($context)]);
 	}
 
-	private function render_chart_form(
-		array $context,
-		?array $chart,
-		string $action,
-		bool $wrap_form = true,
-		bool $include_title = true,
-		string $title_fallback = ''
-	): void {
+	/**
+	 * The saved chart for a chart post: the indexed lookup first, falling back to the raw meta for
+	 * a post whose slug index has not been written yet (first save / an import).
+	 */
+	private function get_existing_chart_definition_for_post(WP_Post $post): ?array {
+		$chart = $this->chart_service->find_chart($post->post_name, true);
+		if (!$chart) {
+			$meta = get_post_meta($post->ID, BaraTables_Chart_Repository::META_KEY, true);
+			$chart = is_array($meta) ? $meta : null;
+		}
+		return is_array($chart) ? $chart : null;
+	}
+
+	private function render_chart_form(array $context, ?array $chart): void {
 		$chart_options = $context['chart_options'] ?? $this->table_service->get_default_chart_options();
 		$column_choices = $context['column_choices'] ?? [];
 		$table_choices = $context['table_choices'] ?? [];
 		$selected_table = $context['selected_table'] ?? '';
-		$page_slug = $chart ? 'btbl-charts-edit' : 'btbl-charts-add';
 		$chart_id = $chart['id'] ?? '';
 		$shortcode = $chart_id !== '' ? '[bara_chart id="' . sanitize_text_field((string) $chart_id) . '"]' : '';
-		$title_value = $chart['name'] ?? $title_fallback;
 		?>
-		<?php if ($wrap_form) : ?>
-			<form method="post" autocomplete="off">
-		<?php endif; ?>
 			<?php wp_nonce_field($this->nonce_action, $this->nonce_field); ?>
-			<?php if ($wrap_form) : ?>
-				<input type="hidden" name="btbl_chart_action" value="<?php echo esc_attr($action); ?>" />
-			<?php endif; ?>
-			<input type="hidden" name="btbl_active_tab" id="btbl_active_tab" value="btbl-tab-chart" />
+			<?php // id only: read client-side by admin.js to restore the active tab. Never posted. ?>
+			<input type="hidden" id="btbl_active_tab" value="btbl-tab-chart" />
 			<?php
 			$id_editor_html = '';
 			if ($chart) {
@@ -498,18 +465,11 @@ class BaraTables_Chart_Admin {
 				BaraTables_Admin_Page_Utils::render_id_editor('btbl_chart_id', (string) $chart_id, __('Chart ID', 'baratables'), '[bara_chart]');
 				$id_editor_html = (string) ob_get_clean();
 			}
-			BaraTables_Admin_Page_Utils::render_title_section(
-				__('Chart name', 'baratables'),
-				'btbl_chart_name',
-				$title_value,
-				$shortcode,
-				$include_title,
-				$id_editor_html
-			);
+			BaraTables_Admin_Page_Utils::render_title_section($shortcode, $id_editor_html);
 			?>
 			<?php BaraTables_Help::render_toggle(); ?>
 			<div class="btbl-tab-wrapper">
-				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper">
+				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist">
 					<a href="#btbl-tab-chart" id="btbl-tab-chart-label" role="tab" aria-selected="true" class="nav-tab nav-tab-active btbl-tab-link" data-target="btbl-tab-chart"><?php esc_html_e('Chart', 'baratables'); ?></a>
 				</h2>
 				<?php
@@ -518,21 +478,11 @@ class BaraTables_Chart_Admin {
 					'active_tab' => 'btbl-tab-chart',
 					'table_choices' => $table_choices,
 						'selected_table' => $selected_table,
-						'page_slug' => $page_slug,
 						'dropped_columns' => $context['dropped_columns'] ?? [],
 					], $column_choices);
 				?>
 			</div>
-			<?php if ($wrap_form) : ?>
-				<p class="btbl-submit-row">
-					<button type="submit" class="button button-primary">
-						<?php echo $chart ? esc_html__('Update Chart', 'baratables') : esc_html__('Publish Chart', 'baratables'); ?>
-					</button>
-				</p>
-			<?php endif; ?>
-		<?php if ($wrap_form) : ?>
-			</form>
-		<?php endif;
+		<?php
 	}
 
 	public function save_chart_from_editor(int $post_id, WP_Post $post): void {

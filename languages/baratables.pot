@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: BaraTables 1.2.2\n"
+"Project-Id-Version: BaraTables 1.2.3\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/baratables\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-07-22T06:52:37+00:00\n"
+"POT-Creation-Date: 2026-07-25T22:20:14+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -38,108 +38,96 @@ msgstr ""
 msgid "Untitled Table"
 msgstr ""
 
-#: includes/admin/admin.php:50
+#: includes/admin/admin.php:46
 msgid "Table Builder"
 msgstr ""
 
-#: includes/admin/admin.php:59
+#: includes/admin/admin.php:55
 msgid "Table Preview"
 msgstr ""
 
-#: includes/admin/admin.php:84
+#: includes/admin/admin.php:79
 msgid "Pick a data source and at least one column on the Columns &amp; Filters tab, then save to preview the table here."
 msgstr ""
 
-#: includes/admin/admin.php:97
+#: includes/admin/admin.php:92
 msgid "Refresh preview"
 msgstr ""
 
-#: includes/admin/admin.php:258
+#: includes/admin/admin.php:241
 msgid "This table has no columns, so it will not display anything. Select at least one column on the Columns &amp; Filters tab, then update."
 msgstr ""
 
-#: includes/admin/admin.php:267
+#: includes/admin/admin.php:250
 msgid "Value overrides were not valid JSON, so no rules were saved. Check the JSON on the Advanced tab."
 msgstr ""
 
 #. translators: %s is a comma-separated list of invalid regex patterns.
-#: includes/admin/admin.php:291
+#: includes/admin/admin.php:274
 #, php-format
 msgid "These value-override regex patterns are invalid and were skipped (remember the delimiters, e.g. #pattern#): %s"
 msgstr ""
 
 #. translators: 1: the ID the user asked for, 2: the unique ID actually saved.
-#: includes/admin/admin.php:306
+#: includes/admin/admin.php:289
 #, php-format
 msgid "The Table ID \"%1$s\" was already in use, so it was saved as \"%2$s\"."
 msgstr ""
 
 #. translators: 1: old Table ID, 2: new Table ID.
-#: includes/admin/admin.php:313
+#: includes/admin/admin.php:296
 #, php-format
 msgid "Table ID changed from \"%1$s\" to \"%2$s\". Update any [bara_table id=\"%1$s\"] you have already pasted into your content."
 msgstr ""
 
 #. translators: %d: number of linked charts updated.
-#: includes/admin/admin.php:320
+#: includes/admin/admin.php:303
 #, php-format
 msgid "%d linked chart was updated automatically."
 msgid_plural "%d linked charts were updated automatically."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/admin.php:378
+#: includes/admin/admin.php:357
 msgid "Chart Builder"
 msgstr ""
 
-#: includes/admin/admin.php:388
+#: includes/admin/admin.php:367
 msgid "Chart Preview"
 msgstr ""
 
-#: includes/admin/admin.php:400
+#: includes/admin/admin.php:379
 msgid "Save the chart to see a preview."
 msgstr ""
 
-#: includes/admin/admin.php:498
+#: includes/admin/admin.php:465
 msgid "Chart ID"
 msgstr ""
 
-#: includes/admin/admin.php:502
-msgid "Chart name"
-msgstr ""
-
-#: includes/admin/admin.php:513
+#: includes/admin/admin.php:473
 msgid "Chart"
 msgstr ""
 
-#: includes/admin/admin.php:529
-msgid "Update Chart"
-msgstr ""
-
-#: includes/admin/admin.php:529
-msgid "Publish Chart"
-msgstr ""
-
-#: includes/admin/admin.php:566
+#: includes/admin/admin.php:516
 msgid "This chart has no source table, so it will show \"Chart not found.\" Edit the chart and choose one."
 msgstr ""
 
-#: includes/admin/admin.php:567
+#: includes/admin/admin.php:517
 msgid "This chart's table no longer exists, so it will show \"Chart not found.\" Edit the chart and choose another."
 msgstr ""
 
-#: includes/admin/admin.php:609
+#: includes/admin/admin.php:559
 msgid "This chart has no series selected, so it will render empty. Choose at least one series column."
 msgstr ""
 
 #. translators: 1: the ID the user asked for, 2: the unique ID actually saved.
-#: includes/admin/admin.php:631
+#: includes/admin/admin.php:581
 #, php-format
 msgid "The Chart ID \"%1$s\" was already in use, so it was saved as \"%2$s\"."
 msgstr ""
 
 #. translators: 1: old Chart ID, 2: new Chart ID.
-#: includes/admin/admin.php:638
+#: includes/admin/admin.php:588
 #, php-format
 msgid "Chart ID changed from \"%1$s\" to \"%2$s\". Update any [bara_chart id=\"%1$s\"] you have already pasted into your content."
 msgstr ""
@@ -159,7 +147,7 @@ msgstr ""
 #: includes/admin/import.php:227
 #: includes/admin/import.php:484
 #: includes/admin/import.php:933
-#: includes/admin/options.php:290
+#: includes/admin/options.php:316
 msgid "Imported Table"
 msgstr ""
 
@@ -254,1095 +242,1069 @@ msgstr ""
 msgid "This site could not hold the import file between steps. Try a smaller file, or paste its contents into the box above."
 msgstr ""
 
-#: includes/admin/options.php:211
+#: includes/admin/options.php:217
 msgid "Create a table from another plugin's export. Accepts JSON, XML, CSV, or TXT. A spreadsheet needs a header row followed by data rows. Charts are not imported."
 msgstr ""
 
-#: includes/admin/options.php:223
+#: includes/admin/options.php:229
 msgid "Upload a table export"
 msgstr ""
 
-#: includes/admin/options.php:225
+#: includes/admin/options.php:231
 msgid "Accepts .json, .xml, .csv, or .txt (max 5 MB)."
 msgstr ""
 
-#: includes/admin/options.php:228
+#: includes/admin/options.php:234
 msgid "Or paste the export"
 msgstr ""
 
-#: includes/admin/options.php:229
+#: includes/admin/options.php:235
 msgid "Paste the export contents here"
 msgstr ""
 
-#: includes/admin/options.php:230
+#: includes/admin/options.php:236
 msgid "If both are provided, the uploaded file wins."
 msgstr ""
 
 #. translators: %s is the name of the table being imported.
-#: includes/admin/options.php:236
+#: includes/admin/options.php:242
 #, php-format
 msgid "Import preview: %s"
 msgstr ""
 
 #. translators: %s is the data source type, e.g. Manual data or WordPress query.
-#: includes/admin/options.php:239
+#: includes/admin/options.php:245
 #, php-format
 msgid "Source: %s"
 msgstr ""
 
 #. translators: %d is the number of columns.
-#: includes/admin/options.php:241
+#: includes/admin/options.php:247
 #, php-format
 msgid "Columns: %d"
 msgstr ""
 
 #. translators: %d is the number of rows.
-#: includes/admin/options.php:244
+#: includes/admin/options.php:250
 #, php-format
 msgid "Rows: %d"
 msgstr ""
 
 #. translators: %s is the rows per page setting.
-#: includes/admin/options.php:247
+#: includes/admin/options.php:253
 #, php-format
 msgid "Rows per page: %s"
 msgstr ""
 
 #. translators: %s is Yes or No.
-#: includes/admin/options.php:249
+#: includes/admin/options.php:255
 #, php-format
 msgid "Search enabled: %s"
 msgstr ""
 
 #. translators: %s is Yes or No.
-#: includes/admin/options.php:249
-#: includes/admin/options.php:251
+#: includes/admin/options.php:255
+#: includes/admin/options.php:257
 msgid "Yes"
 msgstr ""
 
 #. translators: %s is Yes or No.
-#: includes/admin/options.php:249
-#: includes/admin/options.php:251
+#: includes/admin/options.php:255
+#: includes/admin/options.php:257
 msgid "No"
 msgstr ""
 
 #. translators: %s is Yes or No.
-#: includes/admin/options.php:251
+#: includes/admin/options.php:257
 #, php-format
 msgid "Ordering enabled: %s"
 msgstr ""
 
-#: includes/admin/options.php:254
+#: includes/admin/options.php:260
 msgid "Column labels:"
 msgstr ""
 
-#: includes/admin/options.php:258
+#: includes/admin/options.php:284
 msgid "Notes:"
 msgstr ""
 
-#: includes/admin/options.php:266
+#: includes/admin/options.php:292
 msgid "Review the details above and click Create to finish importing."
 msgstr ""
 
-#: includes/admin/options.php:271
+#: includes/admin/options.php:297
 msgid "Create Table from Import"
 msgstr ""
 
-#: includes/admin/options.php:272
+#: includes/admin/options.php:298
 msgid "Re-analyze"
 msgstr ""
 
-#: includes/admin/options.php:274
+#: includes/admin/options.php:300
 msgid "Analyze Import"
 msgstr ""
 
-#: includes/admin/options.php:297
-#: includes/admin/options.php:301
+#: includes/admin/options.php:323
+#: includes/admin/options.php:327
 msgid "Failed to create the imported table."
 msgstr ""
 
-#: includes/admin/options.php:305
+#: includes/admin/options.php:331
 msgid "Failed to generate a table slug for the import."
 msgstr ""
 
-#: includes/admin/options.php:332
+#: includes/admin/options.php:358
 msgid "Could not read the uploaded import file."
 msgstr ""
 
-#: includes/admin/options.php:335
+#: includes/admin/options.php:361
 msgid "Import uploads must be a .json, .xml, .csv, or .txt file."
 msgstr ""
 
 #. translators: %s is the maximum import file size.
-#: includes/admin/options.php:378
+#: includes/admin/options.php:404
 #, php-format
 msgid "Import file is too large. Maximum size is %s."
 msgstr ""
 
-#: includes/admin/pages.php:49
+#: includes/admin/pages.php:42
 msgid "Table ID"
 msgstr ""
 
-#: includes/admin/pages.php:53
-msgid "Table name"
-msgstr ""
-
-#: includes/admin/pages.php:65
+#: includes/admin/pages.php:51
 msgid "New table:"
 msgstr ""
 
-#: includes/admin/pages.php:66
+#: includes/admin/pages.php:52
 msgid "1. Pick a data source on the Source tab."
 msgstr ""
 
-#: includes/admin/pages.php:67
+#: includes/admin/pages.php:53
 msgid "2. Choose at least one column on Columns &amp; Filters."
 msgstr ""
 
-#: includes/admin/pages.php:68
+#: includes/admin/pages.php:54
 msgid "3. Publish."
 msgstr ""
 
-#: includes/admin/pages.php:74
+#: includes/admin/pages.php:60
 msgid "Source"
 msgstr ""
 
-#: includes/admin/pages.php:75
+#: includes/admin/pages.php:61
 msgid "Columns & Filters"
 msgstr ""
 
-#: includes/admin/pages.php:76
-#: includes/admin/ui.php:1221
-#: includes/admin/ui.php:1488
-#: includes/admin/ui.php:1746
+#: includes/admin/pages.php:62
+#: includes/admin/ui.php:1243
+#: includes/admin/ui.php:1512
+#: includes/admin/ui.php:1741
 msgid "Options"
 msgstr ""
 
-#: includes/admin/pages.php:77
+#: includes/admin/pages.php:63
 msgid "Advanced"
 msgstr ""
 
-#: includes/admin/pages.php:100
-msgid "Update Table"
-msgstr ""
-
-#: includes/admin/pages.php:100
-msgid "Publish Table"
-msgstr ""
-
-#: includes/admin/pages.php:152
-#: includes/admin/ui.php:1571
-msgid "Showing _START_ to _END_ of _TOTAL_ entries"
-msgstr ""
-
-#: includes/admin/pages.php:153
-#: includes/admin/ui.php:1572
-msgid "Showing 0 to 0 of 0 entries"
-msgstr ""
-
-#: includes/admin/pages.php:223
+#: includes/admin/pages.php:205
 msgid "No columns selected yet for this table."
 msgstr ""
 
-#: includes/admin/pages.php:225
+#: includes/admin/pages.php:207
 msgid "No data available for this table yet."
 msgstr ""
 
-#: includes/admin/support.php:111
-#: includes/admin/support.php:116
+#: includes/admin/support.php:108
+#: includes/admin/support.php:113
 msgid "Show help text"
 msgstr ""
 
-#: includes/admin/support.php:111
-#: includes/admin/support.php:115
+#: includes/admin/support.php:108
+#: includes/admin/support.php:112
 msgid "Hide help text"
 msgstr ""
 
-#: includes/admin/support.php:180
+#: includes/admin/support.php:177
 msgid "Duplicate"
 msgstr ""
 
-#: includes/admin/support.php:187
-#: includes/admin/support.php:194
-#: includes/admin/support.php:218
+#: includes/admin/support.php:184
+#: includes/admin/support.php:191
+#: includes/admin/support.php:215
 msgid "Invalid duplicate request."
 msgstr ""
 
-#: includes/admin/support.php:197
+#: includes/admin/support.php:194
 msgid "You are not allowed to duplicate this item."
 msgstr ""
 
 #. translators: %s is the original item title.
-#: includes/admin/support.php:225
+#: includes/admin/support.php:222
 #, php-format
 msgid "%s (copy)"
 msgstr ""
 
-#: includes/admin/support.php:258
-#: includes/admin/ui.php:1230
+#: includes/admin/support.php:255
+#: includes/admin/ui.php:1252
 msgid "Copied"
 msgstr ""
 
 #. translators: %s is the shortcode.
-#: includes/admin/support.php:259
+#: includes/admin/support.php:256
 #, php-format
 msgid "Copy shortcode: %s"
 msgstr ""
 
-#: includes/admin/support.php:268
+#: includes/admin/support.php:265
 msgid "Shortcode:"
 msgstr ""
 
-#: includes/admin/support.php:282
+#: includes/admin/support.php:279
 msgid "Edit ID"
 msgstr ""
 
-#: includes/admin/support.php:287
+#: includes/admin/support.php:284
 msgid "OK"
 msgstr ""
 
-#: includes/admin/support.php:288
+#: includes/admin/support.php:285
 msgid "Cancel"
 msgstr ""
 
 #. translators: %s is the shortcode tag, e.g. [bara_table].
-#: includes/admin/support.php:292
+#: includes/admin/support.php:289
 #, php-format
 msgid "Lowercase letters, numbers, and hyphens. Any %s you have already pasted into a page will need updating by hand."
 msgstr ""
 
 #. translators: %d is the server's max_input_vars setting.
-#: includes/admin/support.php:353
+#: includes/admin/support.php:343
 #, php-format
 msgid "Nothing was saved. The editor sent more fields than this server accepts (max_input_vars is %d), so the data arrived incomplete. Use fewer grid cells, or ask your host to raise max_input_vars."
 msgstr ""
 
 #. translators: %d is the number of data rows.
-#: includes/admin/support.php:710
+#: includes/admin/support.php:706
 #, php-format
 msgid "(%d row)"
 msgid_plural "(%d rows)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/support.php:734
-#: includes/admin/ui.php:666
+#: includes/admin/support.php:730
+#: includes/admin/ui.php:687
 msgid "Post type"
 msgstr ""
 
-#: includes/admin/support.php:735
+#: includes/admin/support.php:731
 msgid "Data Source"
 msgstr ""
 
-#: includes/admin/support.php:736
+#: includes/admin/support.php:732
 msgid "Taxonomy"
 msgstr ""
 
-#: includes/admin/support.php:737
+#: includes/admin/support.php:733
 msgid "Fields"
 msgstr ""
 
-#: includes/admin/support.php:738
-#: includes/admin/support.php:850
+#: includes/admin/support.php:734
+#: includes/admin/support.php:846
 msgid "Shortcode"
 msgstr ""
 
-#: includes/admin/support.php:847
-#: includes/admin/ui.php:1896
+#: includes/admin/support.php:843
+#: includes/admin/ui.php:1890
 msgid "Table"
 msgstr ""
 
-#: includes/admin/support.php:848
+#: includes/admin/support.php:844
 msgid "Type"
 msgstr ""
 
-#: includes/admin/support.php:849
-#: includes/services.php:663
+#: includes/admin/support.php:845
+#: includes/services.php:732
 msgid "Columns"
 msgstr ""
 
-#: includes/admin/ui.php:532
+#: includes/admin/ui.php:553
 msgid "Data source"
 msgstr ""
 
-#: includes/admin/ui.php:534
+#: includes/admin/ui.php:555
 msgid "WP Query Builder"
 msgstr ""
 
-#: includes/admin/ui.php:535
+#: includes/admin/ui.php:556
 msgid "Custom WP Query"
 msgstr ""
 
-#: includes/admin/ui.php:536
+#: includes/admin/ui.php:557
 msgid "Manual Data"
 msgstr ""
 
-#: includes/admin/ui.php:537
+#: includes/admin/ui.php:558
 msgid "CSV File"
 msgstr ""
 
-#: includes/admin/ui.php:538
+#: includes/admin/ui.php:559
 msgid "External Database"
 msgstr ""
 
-#: includes/admin/ui.php:540
+#: includes/admin/ui.php:561
 msgid "Choose where your table data will come from."
 msgstr ""
 
-#: includes/admin/ui.php:545
+#: includes/admin/ui.php:566
 msgid "CSV file"
 msgstr ""
 
-#: includes/admin/ui.php:546
+#: includes/admin/ui.php:567
 msgid "Select or upload a CSV from the Media Library."
 msgstr ""
 
-#: includes/admin/ui.php:549
+#: includes/admin/ui.php:570
 msgid "Select CSV file"
 msgstr ""
 
-#: includes/admin/ui.php:549
+#: includes/admin/ui.php:570
 msgid "Use CSV"
 msgstr ""
 
-#: includes/admin/ui.php:549
+#: includes/admin/ui.php:570
 msgid "Choose file"
 msgstr ""
 
-#: includes/admin/ui.php:550
-#: includes/admin/ui.php:741
+#: includes/admin/ui.php:571
+#: includes/admin/ui.php:762
 msgid "Clear"
 msgstr ""
 
-#: includes/admin/ui.php:554
+#: includes/admin/ui.php:575
 msgid "Delimiter"
 msgstr ""
 
-#: includes/admin/ui.php:556
+#: includes/admin/ui.php:577
 msgid "Single character, usually a comma."
 msgstr ""
 
-#: includes/admin/ui.php:559
+#: includes/admin/ui.php:580
 msgid "Header row"
 msgstr ""
 
-#: includes/admin/ui.php:563
+#: includes/admin/ui.php:584
 msgid "First row contains column headers"
 msgstr ""
 
-#: includes/admin/ui.php:569
+#: includes/admin/ui.php:590
 msgid "Number of columns"
 msgstr ""
 
-#: includes/admin/ui.php:571
+#: includes/admin/ui.php:592
 msgid "Set how many columns your custom data should have."
 msgstr ""
 
-#: includes/admin/ui.php:574
+#: includes/admin/ui.php:595
 msgid "Number of rows"
 msgstr ""
 
-#: includes/admin/ui.php:576
+#: includes/admin/ui.php:597
 msgid "Enter how many rows of data you want to manage."
 msgstr ""
 
-#: includes/admin/ui.php:583
+#: includes/admin/ui.php:604
 msgid "Custom data"
 msgstr ""
 
 #. translators: %d is the maximum number of editable custom-data cells.
-#: includes/admin/ui.php:588
+#: includes/admin/ui.php:609
 #, php-format
 msgid "Set the column and row counts, then click Update grid. Supports up to %d cells."
 msgstr ""
 
 #. translators: %1$d is the column count, %2$d is the row count, %3$d is the maximum number of cells.
-#: includes/admin/ui.php:597
+#: includes/admin/ui.php:618
 #, php-format
 msgid "Grid size adjusted to %1$d columns and %2$d rows (maximum %3$d cells)."
 msgstr ""
 
-#: includes/admin/ui.php:600
+#: includes/admin/ui.php:621
 msgid "Update grid size"
 msgstr ""
 
 #. translators: %d is the row number.
-#: includes/admin/ui.php:612
-#: includes/admin/ui.php:651
+#: includes/admin/ui.php:633
+#: includes/admin/ui.php:672
 #, php-format
 msgid "Row %d"
 msgstr ""
 
 #. translators: %d is the column number.
-#: includes/admin/ui.php:614
-#: includes/admin/ui.php:639
-#: includes/service-column-state.php:211
-#: includes/services.php:1165
-#: includes/services.php:1169
-#: includes/services.php:1250
+#: includes/admin/ui.php:635
+#: includes/admin/ui.php:660
+#: includes/service-column-state.php:210
+#: includes/services.php:1348
+#: includes/services.php:1352
+#: includes/services.php:1433
 #, php-format
 msgid "Column %d"
 msgstr ""
 
-#: includes/admin/ui.php:616
+#: includes/admin/ui.php:637
 msgid "Move row up"
 msgstr ""
 
-#: includes/admin/ui.php:617
+#: includes/admin/ui.php:638
 msgid "Move row down"
 msgstr ""
 
-#: includes/admin/ui.php:618
+#: includes/admin/ui.php:639
 msgid "Insert row below"
 msgstr ""
 
-#: includes/admin/ui.php:619
+#: includes/admin/ui.php:640
 msgid "Duplicate row"
 msgstr ""
 
-#: includes/admin/ui.php:620
+#: includes/admin/ui.php:641
 msgid "Delete row"
 msgstr ""
 
 #. translators: %d is the number of filled cells that would be removed.
-#: includes/admin/ui.php:622
+#: includes/admin/ui.php:643
 #, php-format
 msgid "Reducing the grid will remove %d filled cell. Continue?"
 msgstr ""
 
 #. translators: %d is the number of filled cells that would be removed.
-#: includes/admin/ui.php:624
+#: includes/admin/ui.php:645
 #, php-format
 msgid "Reducing the grid will remove %d filled cells. Continue?"
 msgstr ""
 
-#: includes/admin/ui.php:667
+#: includes/admin/ui.php:688
 msgid "Choose one or more post types to pull rows from."
 msgstr ""
 
-#: includes/admin/ui.php:668
+#: includes/admin/ui.php:689
 msgid "Post types"
 msgstr ""
 
-#: includes/admin/ui.php:683
+#: includes/admin/ui.php:704
 msgid "Taxonomy filter"
 msgstr ""
 
-#: includes/admin/ui.php:684
+#: includes/admin/ui.php:705
 msgid "Pick the taxonomies you want to filter by."
 msgstr ""
 
-#: includes/admin/ui.php:685
-#: includes/admin/ui.php:957
+#: includes/admin/ui.php:706
+#: includes/admin/ui.php:979
 msgid "Taxonomies"
 msgstr ""
 
-#: includes/admin/ui.php:710
+#: includes/admin/ui.php:731
 msgid "No taxonomies available for this post type."
 msgstr ""
 
-#: includes/admin/ui.php:720
+#: includes/admin/ui.php:741
 msgid "No terms found for this taxonomy yet."
 msgstr ""
 
 #. translators: %d is the number of selected taxonomy terms.
-#: includes/admin/ui.php:727
-#: includes/admin/ui.php:760
+#: includes/admin/ui.php:748
+#: includes/admin/ui.php:781
 #, php-format
 msgid "%d term selected"
 msgid_plural "%d terms selected"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/ui.php:728
-#: includes/admin/ui.php:758
+#: includes/admin/ui.php:749
+#: includes/admin/ui.php:779
 msgid "No terms selected"
 msgstr ""
 
-#: includes/admin/ui.php:731
-#: includes/admin/ui.php:736
+#: includes/admin/ui.php:752
+#: includes/admin/ui.php:757
 msgid "Search terms"
 msgstr ""
 
-#: includes/admin/ui.php:740
+#: includes/admin/ui.php:761
 msgid "Select all"
 msgstr ""
 
 #. translators: %d is the maximum number of taxonomy terms shown in the picker.
-#: includes/admin/ui.php:749
+#: includes/admin/ui.php:770
 #, php-format
 msgid "Showing the first %d terms, so \"Select all\" covers only these. Terms you have already selected are always listed."
 msgstr ""
 
 #. translators: %d is the number of selected taxonomy terms.
-#: includes/admin/ui.php:762
+#: includes/admin/ui.php:783
 #, php-format
 msgid "%d terms selected"
 msgstr ""
 
-#: includes/admin/ui.php:781
+#: includes/admin/ui.php:802
 msgid "No terms match your search."
 msgstr ""
 
-#: includes/admin/ui.php:792
+#: includes/admin/ui.php:813
 msgid "Custom WP_Query args (JSON)"
 msgstr ""
 
-#: includes/admin/ui.php:793
+#: includes/admin/ui.php:814
 msgid "WP_Query args as JSON. Only public post types and published posts are queried, and results are capped."
 msgstr ""
 
-#: includes/admin/ui.php:795
+#: includes/admin/ui.php:816
 msgid "Load columns"
 msgstr ""
 
-#: includes/admin/ui.php:802
+#: includes/admin/ui.php:819
+msgid "This is not valid JSON. The query will not be saved until you fix it."
+msgstr ""
+
+#: includes/admin/ui.php:824
 msgid "DB host"
 msgstr ""
 
-#: includes/admin/ui.php:806
+#: includes/admin/ui.php:828
 msgid "Port (optional)"
 msgstr ""
 
-#: includes/admin/ui.php:810
+#: includes/admin/ui.php:832
 msgid "Database name"
 msgstr ""
 
-#: includes/admin/ui.php:814
+#: includes/admin/ui.php:836
 msgid "Username"
 msgstr ""
 
-#: includes/admin/ui.php:818
+#: includes/admin/ui.php:840
 msgid "Password"
 msgstr ""
 
-#: includes/admin/ui.php:821
+#: includes/admin/ui.php:843
 msgid "A password is saved. Leave this blank to keep the existing password."
 msgstr ""
 
-#: includes/admin/ui.php:825
+#: includes/admin/ui.php:847
 msgid "Table / View name"
 msgstr ""
 
-#: includes/admin/ui.php:827
+#: includes/admin/ui.php:849
 msgid "Read with a prepared query, with results capped automatically."
 msgstr ""
 
-#: includes/admin/ui.php:830
+#: includes/admin/ui.php:852
 msgid "Charset (optional)"
 msgstr ""
 
-#: includes/admin/ui.php:905
+#: includes/admin/ui.php:927
 msgid "Select / Deselect All Columns"
 msgstr ""
 
-#: includes/admin/ui.php:914
+#: includes/admin/ui.php:936
 msgid "CSV columns"
 msgstr ""
 
-#: includes/admin/ui.php:915
+#: includes/admin/ui.php:937
 msgid "No columns yet. Choose a CSV file on the Source tab to load its headers."
 msgstr ""
 
-#: includes/admin/ui.php:925
+#: includes/admin/ui.php:947
 msgid "Custom columns"
 msgstr ""
 
-#: includes/admin/ui.php:926
+#: includes/admin/ui.php:948
 msgid "Set your column and row counts in the Source tab to manage these columns."
 msgstr ""
 
-#: includes/admin/ui.php:936
+#: includes/admin/ui.php:958
 msgid "External columns"
 msgstr ""
 
-#: includes/admin/ui.php:937
+#: includes/admin/ui.php:959
 msgid "No columns detected yet. Save after entering connection details to load a preview."
 msgstr ""
 
-#: includes/admin/ui.php:945
+#: includes/admin/ui.php:967
 msgid "Core fields"
 msgstr ""
 
-#: includes/admin/ui.php:974
+#: includes/admin/ui.php:996
 msgid "Custom meta"
 msgstr ""
 
-#: includes/admin/ui.php:976
+#: includes/admin/ui.php:998
 msgid "No meta keys detected for this post type yet."
 msgstr ""
 
-#: includes/admin/ui.php:994
+#: includes/admin/ui.php:1016
 msgid "Meta keys currently selected that are not detected for this post type:"
 msgstr ""
 
-#: includes/admin/ui.php:1015
-#: includes/admin/ui.php:1017
+#: includes/admin/ui.php:1037
+#: includes/admin/ui.php:1039
 msgid "Selected column order"
 msgstr ""
 
-#: includes/admin/ui.php:1016
+#: includes/admin/ui.php:1038
 msgid "Drag to change the display order of selected columns."
 msgstr ""
 
-#: includes/admin/ui.php:1020
-#: includes/admin/ui.php:1022
+#: includes/admin/ui.php:1042
+#: includes/admin/ui.php:1044
 msgid "Selected filter order"
 msgstr ""
 
-#: includes/admin/ui.php:1021
+#: includes/admin/ui.php:1043
 msgid "Drag to change the display order of selected filter controls."
 msgstr ""
 
-#: includes/admin/ui.php:1226
+#: includes/admin/ui.php:1248
 msgid "Column"
 msgstr ""
 
-#: includes/admin/ui.php:1229
+#: includes/admin/ui.php:1251
 msgid "Reference"
 msgstr ""
 
 #. translators: %s is the column reference slug.
-#: includes/admin/ui.php:1230
+#: includes/admin/ui.php:1252
 #, php-format
 msgid "Copy column reference: %s"
 msgstr ""
 
-#: includes/admin/ui.php:1235
+#: includes/admin/ui.php:1257
 msgid "Column heading"
 msgstr ""
 
-#: includes/admin/ui.php:1242
+#: includes/admin/ui.php:1264
 msgid "Hide heading"
 msgstr ""
 
-#: includes/admin/ui.php:1248
+#: includes/admin/ui.php:1270
 msgid "Hide column"
 msgstr ""
 
-#: includes/admin/ui.php:1254
+#: includes/admin/ui.php:1276
 msgid "Searchable"
 msgstr ""
 
-#: includes/admin/ui.php:1256
+#: includes/admin/ui.php:1278
 msgid "Include this column when visitors type in the table search box."
 msgstr ""
 
-#: includes/admin/ui.php:1262
+#: includes/admin/ui.php:1284
 msgid "Sortable"
 msgstr ""
 
-#: includes/admin/ui.php:1264
+#: includes/admin/ui.php:1286
 msgid "Let visitors click the column header to sort by this column."
 msgstr ""
 
-#: includes/admin/ui.php:1270
+#: includes/admin/ui.php:1292
 msgid "Sort by default"
 msgstr ""
 
-#: includes/admin/ui.php:1275
+#: includes/admin/ui.php:1297
 msgid "Priority"
 msgstr ""
 
-#: includes/admin/ui.php:1279
+#: includes/admin/ui.php:1301
 msgid "Direction"
 msgstr ""
 
-#: includes/admin/ui.php:1281
-#: includes/admin/ui.php:1312
+#: includes/admin/ui.php:1303
+#: includes/admin/ui.php:1334
 msgid "Ascending"
 msgstr ""
 
-#: includes/admin/ui.php:1282
-#: includes/admin/ui.php:1313
+#: includes/admin/ui.php:1304
+#: includes/admin/ui.php:1335
 msgid "Descending"
 msgstr ""
 
-#: includes/admin/ui.php:1291
+#: includes/admin/ui.php:1313
 msgid "Format as date"
 msgstr ""
 
-#: includes/admin/ui.php:1294
+#: includes/admin/ui.php:1316
 msgid "PHP date format"
 msgstr ""
 
-#: includes/admin/ui.php:1298
+#: includes/admin/ui.php:1320
 msgid "Filter"
 msgstr ""
 
-#: includes/admin/ui.php:1301
+#: includes/admin/ui.php:1323
 msgid "Filter type"
 msgstr ""
 
-#: includes/admin/ui.php:1303
+#: includes/admin/ui.php:1325
 msgid "No filter"
 msgstr ""
 
-#: includes/admin/ui.php:1304
+#: includes/admin/ui.php:1326
 msgid "Dropdown"
 msgstr ""
 
-#: includes/admin/ui.php:1305
+#: includes/admin/ui.php:1327
 msgid "Checkboxes"
 msgstr ""
 
-#: includes/admin/ui.php:1306
+#: includes/admin/ui.php:1328
 msgid "Radio"
 msgstr ""
 
-#: includes/admin/ui.php:1310
+#: includes/admin/ui.php:1332
 msgid "Filter sort"
 msgstr ""
 
-#: includes/admin/ui.php:1314
+#: includes/admin/ui.php:1336
 msgid "Custom"
 msgstr ""
 
-#: includes/admin/ui.php:1320
+#: includes/admin/ui.php:1342
 msgid "Data type priority"
 msgstr ""
 
-#: includes/admin/ui.php:1321
+#: includes/admin/ui.php:1343
 msgid ""
 "text => asc\n"
 "number => desc\n"
 "date => asc"
 msgstr ""
 
-#: includes/admin/ui.php:1326
+#: includes/admin/ui.php:1348
 msgid "Filter heading"
 msgstr ""
 
-#: includes/admin/ui.php:1332
+#: includes/admin/ui.php:1354
 msgid "Custom filter values"
 msgstr ""
 
-#: includes/admin/ui.php:1333
+#: includes/admin/ui.php:1355
 msgid "Label => search1, search2"
 msgstr ""
 
-#: includes/admin/ui.php:1336
+#: includes/admin/ui.php:1358
 msgid "One mapping per line: label on the left, the value(s) it matches on the right. For example:"
 msgstr ""
 
-#: includes/admin/ui.php:1343
+#: includes/admin/ui.php:1365
 msgid "Allow multiple"
 msgstr ""
 
-#: includes/admin/ui.php:1349
+#: includes/admin/ui.php:1371
 msgid "Filter search box"
 msgstr ""
 
-#: includes/admin/ui.php:1351
+#: includes/admin/ui.php:1373
 msgid "Show a search box inside this filter's dropdown (useful when a filter has many options)."
 msgstr ""
 
-#: includes/admin/ui.php:1422
-#: includes/services.php:670
+#: includes/admin/ui.php:1446
+#: includes/services.php:739
 msgid "Page length"
 msgstr ""
 
-#: includes/admin/ui.php:1423
+#: includes/admin/ui.php:1447
 msgid "Buttons"
 msgstr ""
 
-#: includes/admin/ui.php:1424
+#: includes/admin/ui.php:1448
 msgid "Search"
 msgstr ""
 
-#: includes/admin/ui.php:1425
+#: includes/admin/ui.php:1449
 msgid "Result summary"
 msgstr ""
 
-#: includes/admin/ui.php:1426
+#: includes/admin/ui.php:1450
 msgid "Pagination"
 msgstr ""
 
-#: includes/admin/ui.php:1429
+#: includes/admin/ui.php:1453
 msgid "Top left"
 msgstr ""
 
-#: includes/admin/ui.php:1430
+#: includes/admin/ui.php:1454
 msgid "Top right"
 msgstr ""
 
-#: includes/admin/ui.php:1431
+#: includes/admin/ui.php:1455
 msgid "Bottom left"
 msgstr ""
 
-#: includes/admin/ui.php:1432
+#: includes/admin/ui.php:1456
 msgid "Bottom right"
 msgstr ""
 
-#: includes/admin/ui.php:1468
+#: includes/admin/ui.php:1492
 msgid "Table controls"
 msgstr ""
 
-#: includes/admin/ui.php:1469
+#: includes/admin/ui.php:1493
 msgid "Turn the most common table controls on or off."
 msgstr ""
 
-#: includes/admin/ui.php:1573
-msgid "(filtered from _MAX_ total entries)"
-msgstr ""
-
-#: includes/admin/ui.php:1589
+#: includes/admin/ui.php:1610
 msgid "Tokens: _START_ first row shown, _END_ last row shown, _TOTAL_ total rows, _MAX_ rows before filtering."
 msgstr ""
 
-#: includes/admin/ui.php:1631
-msgid "Pixel height for a vertically scrolling table body. 0 disables it. Independent of horizontal scrolling."
-msgstr ""
-
-#: includes/admin/ui.php:1644
+#: includes/admin/ui.php:1639
 msgid "Table layout"
 msgstr ""
 
-#: includes/admin/ui.php:1645
-msgid "Drag each control to the corner where it should appear. An element only appears if its matching control is enabled above."
+#: includes/admin/ui.php:1640
+msgid "Drag each control to the corner where it should appear, or focus one and use the arrow keys. An element only appears if its matching control is enabled above."
 msgstr ""
 
-#: includes/admin/ui.php:1647
+#: includes/admin/ui.php:1642
 msgid "Reset layout"
 msgstr ""
 
-#: includes/admin/ui.php:1647
+#: includes/admin/ui.php:1642
 msgid "Move all elements back to their default zones. Does not change controls or styles."
 msgstr ""
 
-#: includes/admin/ui.php:1649
+#: includes/admin/ui.php:1644
 msgid "Enable the matching control above to use this element."
 msgstr ""
 
-#: includes/admin/ui.php:1670
+#: includes/admin/ui.php:1665
 msgid "Available elements"
 msgstr ""
 
-#: includes/admin/ui.php:1672
+#: includes/admin/ui.php:1667
 msgid "Drag an element here to remove it from the table layout."
 msgstr ""
 
-#: includes/admin/ui.php:1683
+#: includes/admin/ui.php:1678
 msgid "Style features"
 msgstr ""
 
-#: includes/admin/ui.php:1684
+#: includes/admin/ui.php:1679
 msgid "Toggle built-in styles like borders, stripes, and hover highlighting."
 msgstr ""
 
-#: includes/admin/ui.php:1754
+#: includes/admin/ui.php:1749
 msgid "Button text"
 msgstr ""
 
-#: includes/admin/ui.php:1795
+#: includes/admin/ui.php:1790
 msgid "Additional meta keys (comma-separated)"
 msgstr ""
 
-#: includes/admin/ui.php:1797
+#: includes/admin/ui.php:1792
 msgid "Add keys that are not auto-detected then Update Table to apply."
 msgstr ""
 
-#: includes/admin/ui.php:1800
+#: includes/admin/ui.php:1795
 msgid "Value overrides (JSON)"
 msgstr ""
 
-#: includes/admin/ui.php:1802
+#: includes/admin/ui.php:1797
 msgid "Rules applied after values are resolved. Each needs a column slug (or \"*\" for all), a search string, and a replace string. Set regex=true for a pattern like #pattern#. In replace, WordPress-content tables accept {{core:post_title}} and {{meta:your_key}}; CSV, external database, and manual tables accept {{row.slug}} for another column in the same row."
 msgstr ""
 
-#: includes/admin/ui.php:1803
+#: includes/admin/ui.php:1798
 msgid "This is not valid JSON. The rules will not be saved until you fix it."
 msgstr ""
 
-#: includes/admin/ui.php:1815
+#: includes/admin/ui.php:1810
 msgid "Access control"
 msgstr ""
 
-#: includes/admin/ui.php:1816
+#: includes/admin/ui.php:1811
 msgid "Show a row only to visitors whose tokens match it. Set where row tokens and user tokens are stored. Leave blank to disable."
 msgstr ""
 
-#: includes/admin/ui.php:1830
+#: includes/admin/ui.php:1825
 msgid "Set the row-token field below. Without it nothing in this section is saved, and every row stays visible."
 msgstr ""
 
-#: includes/admin/ui.php:1834
+#: includes/admin/ui.php:1829
 msgid "User meta key (tokens)"
 msgstr ""
 
-#: includes/admin/ui.php:1836
+#: includes/admin/ui.php:1831
 msgid "Read tokens from this user meta key. Leave blank to fall back to user roles."
 msgstr ""
 
-#: includes/admin/ui.php:1839
+#: includes/admin/ui.php:1834
 msgid "Post meta key (row tokens)"
 msgstr ""
 
-#: includes/admin/ui.php:1841
+#: includes/admin/ui.php:1836
 msgid "Rows are shown if tokens here overlap the user tokens. Empty/missing = public."
 msgstr ""
 
-#: includes/admin/ui.php:1844
+#: includes/admin/ui.php:1839
 msgid "CSV column (row tokens)"
 msgstr ""
 
-#: includes/admin/ui.php:1846
+#: includes/admin/ui.php:1841
 msgid "Use the header/slug for the CSV column containing allowed tokens."
 msgstr ""
 
-#: includes/admin/ui.php:1849
+#: includes/admin/ui.php:1844
 msgid "External column (row tokens)"
 msgstr ""
 
-#: includes/admin/ui.php:1851
+#: includes/admin/ui.php:1846
 msgid "Column name from your external table or view that contains allowed tokens."
 msgstr ""
 
-#: includes/admin/ui.php:1854
+#: includes/admin/ui.php:1849
 msgid "Logged-out visitors see"
 msgstr ""
 
-#: includes/admin/ui.php:1856
+#: includes/admin/ui.php:1851
 msgid "All rows"
 msgstr ""
 
-#: includes/admin/ui.php:1857
+#: includes/admin/ui.php:1852
 msgid "Only public rows (empty tokens)"
 msgstr ""
 
-#: includes/admin/ui.php:1858
+#: includes/admin/ui.php:1853
 msgid "No rows"
 msgstr ""
 
-#: includes/admin/ui.php:1860
+#: includes/admin/ui.php:1855
 msgid "Content that logged out users see."
 msgstr ""
 
 #. translators: %s is a comma-separated list of column references.
-#: includes/admin/ui.php:1890
+#: includes/admin/ui.php:1884
 #, php-format
 msgid "These chart columns no longer exist and were cleared: %s. Pick replacements below, then update."
 msgstr ""
 
-#: includes/admin/ui.php:1897
+#: includes/admin/ui.php:1891
 msgid "Switching tables will reset the column choices (X-axis and series) for this chart. Continue?"
 msgstr ""
 
-#: includes/admin/ui.php:1898
+#: includes/admin/ui.php:1892
 msgid "Select table"
 msgstr ""
 
-#: includes/admin/ui.php:1903
+#: includes/admin/ui.php:1897
 msgid "Choose which table powers this chart. Column choices update when you change the table."
 msgstr ""
 
-#: includes/admin/ui.php:1909
+#: includes/admin/ui.php:1903
 msgid "Stack series"
 msgstr ""
 
-#: includes/admin/ui.php:1915
-#: includes/admin/ui.php:2021
+#: includes/admin/ui.php:1909
+#: includes/admin/ui.php:2015
 msgid "Chart type"
 msgstr ""
 
-#: includes/admin/ui.php:1918
+#: includes/admin/ui.php:1912
 msgid "Open chart type gallery"
 msgstr ""
 
-#: includes/admin/ui.php:1928
+#: includes/admin/ui.php:1922
 msgid "Chart height (px)"
 msgstr ""
 
-#: includes/admin/ui.php:1930
+#: includes/admin/ui.php:1924
 msgid "Recommended 300-500px."
 msgstr ""
 
-#: includes/admin/ui.php:1935
+#: includes/admin/ui.php:1929
 msgid "X-axis / category column"
 msgstr ""
 
-#: includes/admin/ui.php:1937
-#: includes/admin/ui.php:1961
-#: includes/admin/ui.php:1971
-#: includes/admin/ui.php:1981
+#: includes/admin/ui.php:1931
+#: includes/admin/ui.php:1955
+#: includes/admin/ui.php:1965
+#: includes/admin/ui.php:1975
 msgid "Select column"
 msgstr ""
 
-#: includes/admin/ui.php:1942
+#: includes/admin/ui.php:1936
 msgid "Categories or labels. Pie, donut, and funnel use it for slice and stage names. Scatter and bubble plot it as a number and skip non-numeric rows."
 msgstr ""
 
-#: includes/admin/ui.php:1945
-#: includes/admin/ui.php:1946
+#: includes/admin/ui.php:1939
+#: includes/admin/ui.php:1940
 msgid "Series columns"
 msgstr ""
 
-#: includes/admin/ui.php:1954
+#: includes/admin/ui.php:1948
 msgid "Columns to plot. Pie, donut, and funnel use only the first. Bubble uses the first for height and the second for size. Scatter and bubble skip non-numeric rows."
 msgstr ""
 
-#: includes/admin/ui.php:1959
+#: includes/admin/ui.php:1953
 msgid "Task / label column"
 msgstr ""
 
-#: includes/admin/ui.php:1966
+#: includes/admin/ui.php:1960
 msgid "Used for the task names on the Y-axis."
 msgstr ""
 
-#: includes/admin/ui.php:1969
+#: includes/admin/ui.php:1963
 msgid "Start date/time column"
 msgstr ""
 
-#: includes/admin/ui.php:1976
+#: includes/admin/ui.php:1970
 msgid "Dates should be parseable (e.g. 2024-01-31 or 2024-01-31 12:00)."
 msgstr ""
 
-#: includes/admin/ui.php:1979
+#: includes/admin/ui.php:1973
 msgid "End date/time column"
 msgstr ""
 
-#: includes/admin/ui.php:1986
+#: includes/admin/ui.php:1980
 msgid "Each task needs both a start and end."
 msgstr ""
 
-#: includes/admin/ui.php:1989
+#: includes/admin/ui.php:1983
 msgid "Group / lane column (optional)"
 msgstr ""
 
-#: includes/admin/ui.php:1991
-#: includes/admin/ui.php:2001
+#: includes/admin/ui.php:1985
+#: includes/admin/ui.php:1995
 msgid "None"
 msgstr ""
 
-#: includes/admin/ui.php:1996
+#: includes/admin/ui.php:1990
 msgid "Use to color tasks by owner/lane."
 msgstr ""
 
-#: includes/admin/ui.php:1999
+#: includes/admin/ui.php:1993
 msgid "Progress % column (optional)"
 msgstr ""
 
-#: includes/admin/ui.php:2006
+#: includes/admin/ui.php:2000
 msgid "Shown in tooltips; numbers should be 0-100."
 msgstr ""
 
-#: includes/admin/ui.php:2010
+#: includes/admin/ui.php:2004
 msgid "Add columns first, then configure the chart."
 msgstr ""
 
-#: includes/admin/ui.php:2017
+#: includes/admin/ui.php:2011
 msgid "Choose chart type"
 msgstr ""
 
-#: includes/admin/ui.php:2018
+#: includes/admin/ui.php:2012
 msgid "Close chart type chooser"
 msgstr ""
 
-#: includes/chart-service.php:113
+#: includes/chart-service.php:99
 msgid "Selected table not found."
 msgstr ""
 
-#: includes/chart-service.php:120
+#: includes/chart-service.php:106
 msgid "Untitled Chart"
 msgstr ""
 
@@ -1406,168 +1368,169 @@ msgstr ""
 msgid "Custom Data"
 msgstr ""
 
-#: includes/frontend.php:39
+#: includes/frontend.php:83
 msgid "Table not found."
 msgstr ""
 
-#: includes/frontend.php:45
+#: includes/frontend.php:89
 msgid "No columns selected for this table."
 msgstr ""
 
-#: includes/frontend.php:59
+#: includes/frontend.php:103
 msgid "Chart not found."
 msgstr ""
 
-#: includes/frontend.php:68
+#: includes/frontend.php:112
 msgid "No columns selected for the source table."
 msgstr ""
 
-#: includes/frontend.php:79
+#: includes/frontend.php:123
 msgid "Chart is not configured yet."
 msgstr ""
 
-#: includes/frontend.php:404
+#: includes/frontend.php:467
 msgid "Loading table..."
 msgstr ""
 
-#: includes/frontend.php:419
+#: includes/frontend.php:486
+#: includes/services.php:724
 msgid "Filters"
 msgstr ""
 
-#: includes/frontend.php:427
+#: includes/frontend.php:494
 msgid "Clear filters"
 msgstr ""
 
-#: includes/frontend.php:441
-#: includes/frontend.php:550
-#: includes/frontend.php:580
+#: includes/frontend.php:514
+#: includes/frontend.php:682
+#: includes/frontend.php:721
 msgid "All"
 msgstr ""
 
-#: includes/frontend.php:451
+#: includes/frontend.php:526
 msgid "Select options"
 msgstr ""
 
-#: includes/frontend.php:507
+#: includes/frontend.php:582
 msgid "No results match these filters."
 msgstr ""
 
-#: includes/frontend.php:521
+#: includes/frontend.php:600
 msgid "Table admin tools"
 msgstr ""
 
-#: includes/frontend.php:528
-#: includes/repositories.php:335
+#: includes/frontend.php:607
+#: includes/repositories.php:346
 msgid "Edit Table"
 msgstr ""
 
-#: includes/repositories.php:328
+#: includes/repositories.php:339
 msgctxt "post type general name"
 msgid "Tables"
 msgstr ""
 
-#: includes/repositories.php:329
+#: includes/repositories.php:340
 msgctxt "post type singular name"
 msgid "Table"
 msgstr ""
 
-#: includes/repositories.php:330
+#: includes/repositories.php:341
 msgctxt "admin menu"
 msgid "BaraTables"
 msgstr ""
 
-#: includes/repositories.php:331
+#: includes/repositories.php:342
 msgctxt "add new on admin bar"
 msgid "Table"
 msgstr ""
 
-#: includes/repositories.php:332
+#: includes/repositories.php:343
 msgctxt "table"
 msgid "Add New"
 msgstr ""
 
-#: includes/repositories.php:333
+#: includes/repositories.php:344
 msgid "Add Table"
 msgstr ""
 
-#: includes/repositories.php:334
+#: includes/repositories.php:345
 msgid "New Table"
 msgstr ""
 
-#: includes/repositories.php:336
+#: includes/repositories.php:347
 msgid "View Table"
 msgstr ""
 
-#: includes/repositories.php:337
+#: includes/repositories.php:348
 msgid "Tables"
 msgstr ""
 
-#: includes/repositories.php:338
+#: includes/repositories.php:349
 msgid "Search Tables"
 msgstr ""
 
-#: includes/repositories.php:339
+#: includes/repositories.php:350
 msgid "No tables found."
 msgstr ""
 
-#: includes/repositories.php:340
+#: includes/repositories.php:351
 msgid "No tables found in Trash."
 msgstr ""
 
-#: includes/repositories.php:382
+#: includes/repositories.php:436
 msgctxt "post type general name"
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:383
+#: includes/repositories.php:437
 msgctxt "post type singular name"
 msgid "Chart"
 msgstr ""
 
-#: includes/repositories.php:384
+#: includes/repositories.php:438
 msgctxt "admin menu"
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:385
+#: includes/repositories.php:439
 msgctxt "add new on admin bar"
 msgid "Chart"
 msgstr ""
 
-#: includes/repositories.php:386
+#: includes/repositories.php:440
 msgctxt "chart"
 msgid "Add New"
 msgstr ""
 
-#: includes/repositories.php:387
+#: includes/repositories.php:441
 msgid "Add Chart"
 msgstr ""
 
-#: includes/repositories.php:388
+#: includes/repositories.php:442
 msgid "New Chart"
 msgstr ""
 
-#: includes/repositories.php:389
+#: includes/repositories.php:443
 msgid "Edit Chart"
 msgstr ""
 
-#: includes/repositories.php:390
+#: includes/repositories.php:444
 msgid "View Chart"
 msgstr ""
 
-#: includes/repositories.php:391
+#: includes/repositories.php:445
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:392
+#: includes/repositories.php:446
 msgid "Search Charts"
 msgstr ""
 
-#: includes/repositories.php:393
+#: includes/repositories.php:447
 msgid "No charts found."
 msgstr ""
 
-#: includes/repositories.php:394
+#: includes/repositories.php:448
 msgid "No charts found in Trash."
 msgstr ""
 
@@ -1607,239 +1570,267 @@ msgstr ""
 msgid "Permalink"
 msgstr ""
 
-#: includes/services.php:664
+#: includes/services.php:721
+msgid "Search:"
+msgstr ""
+
+#: includes/services.php:722
+msgid "Show"
+msgstr ""
+
+#: includes/services.php:723
+msgid "entries"
+msgstr ""
+
+#: includes/services.php:729
+msgid "Showing _START_ to _END_ of _TOTAL_ entries"
+msgstr ""
+
+#: includes/services.php:730
+msgid "Showing 0 to 0 of 0 entries"
+msgstr ""
+
+#: includes/services.php:731
+msgid "(filtered from _MAX_ total entries)"
+msgstr ""
+
+#: includes/services.php:733
 msgid "Search in"
 msgstr ""
 
-#: includes/services.php:665
-#: includes/services.php:2188
+#: includes/services.php:734
+#: includes/services.php:2602
 msgid "Copy"
 msgstr ""
 
-#: includes/services.php:666
-#: includes/services.php:2189
+#: includes/services.php:735
+#: includes/services.php:2603
 msgid "Export CSV"
 msgstr ""
 
-#: includes/services.php:667
-#: includes/services.php:2190
+#: includes/services.php:736
+#: includes/services.php:2604
 msgid "Export Excel"
 msgstr ""
 
-#: includes/services.php:668
-#: includes/services.php:2191
+#: includes/services.php:737
+#: includes/services.php:2605
 msgid "Print"
 msgstr ""
 
-#: includes/services.php:669
-#: includes/services.php:2192
+#: includes/services.php:738
+#: includes/services.php:2606
 msgid "Column visibility"
 msgstr ""
 
-#: includes/services.php:2141
+#: includes/services.php:2554
 msgid "Enable pagination"
 msgstr ""
 
-#: includes/services.php:2142
+#: includes/services.php:2555
 msgid "Show per page selector"
 msgstr ""
 
-#: includes/services.php:2143
+#: includes/services.php:2556
 msgid "Show page numbers"
 msgstr ""
 
-#: includes/services.php:2144
+#: includes/services.php:2557
 msgid "Show first/last"
 msgstr ""
 
-#: includes/services.php:2145
+#: includes/services.php:2558
 msgid "Show previous/next"
 msgstr ""
 
-#: includes/services.php:2146
+#: includes/services.php:2559
 msgid "Show search box"
 msgstr ""
 
-#: includes/services.php:2147
+#: includes/services.php:2560
 msgid "Show \"Search In\" dropdown"
 msgstr ""
 
-#: includes/services.php:2148
+#: includes/services.php:2561
 msgid "Show result summary"
 msgstr ""
 
-#: includes/services.php:2149
+#: includes/services.php:2562
 msgid "Summary text"
 msgstr ""
 
-#: includes/services.php:2150
+#: includes/services.php:2563
 msgid "Summary (no results)"
 msgstr ""
 
-#: includes/services.php:2151
+#: includes/services.php:2564
 msgid "Summary (filtered)"
 msgstr ""
 
-#: includes/services.php:2152
+#: includes/services.php:2565
 msgid "Layout: top left"
 msgstr ""
 
-#: includes/services.php:2153
+#: includes/services.php:2566
 msgid "Layout: top right"
 msgstr ""
 
-#: includes/services.php:2154
+#: includes/services.php:2567
 msgid "Layout: bottom left"
 msgstr ""
 
-#: includes/services.php:2155
+#: includes/services.php:2568
 msgid "Layout: bottom right"
 msgstr ""
 
-#: includes/services.php:2156
+#: includes/services.php:2569
 msgid "Show filters title"
 msgstr ""
 
-#: includes/services.php:2157
+#: includes/services.php:2570
 msgid "Filters title text"
 msgstr ""
 
-#: includes/services.php:2158
+#: includes/services.php:2571
 msgid "Allow column sorting"
 msgstr ""
 
-#: includes/services.php:2159
+#: includes/services.php:2572
 msgid "Allow column reordering"
 msgstr ""
 
-#: includes/services.php:2160
+#: includes/services.php:2573
 msgid "Remember table state"
 msgstr ""
 
-#: includes/services.php:2161
+#: includes/services.php:2574
 msgid "Auto-size columns"
 msgstr ""
 
-#: includes/services.php:2162
+#: includes/services.php:2575
 msgid "Enable horizontal scrolling"
 msgstr ""
 
-#: includes/services.php:2163
-msgid "Vertical scroll height (px)"
+#: includes/services.php:2576
+msgid "Fixed scroll height"
 msgstr ""
 
-#: includes/services.php:2164
-msgid "Collapse vertical scroll when shorter"
+#: includes/services.php:2577
+msgid "Height (px)"
 msgstr ""
 
-#: includes/services.php:2165
+#: includes/services.php:2578
+msgid "Collapse when shorter"
+msgstr ""
+
+#: includes/services.php:2579
 msgid "Show zebra stripes"
 msgstr ""
 
-#: includes/services.php:2166
+#: includes/services.php:2580
 msgid "Show row borders"
 msgstr ""
 
-#: includes/services.php:2167
+#: includes/services.php:2581
 msgid "Show cell borders"
 msgstr ""
 
-#: includes/services.php:2168
+#: includes/services.php:2582
 msgid "Highlight rows on hover"
 msgstr ""
 
-#: includes/services.php:2169
+#: includes/services.php:2583
 msgid "Highlight sorted column"
 msgstr ""
 
-#: includes/services.php:2170
+#: includes/services.php:2584
 msgid "Compact density"
 msgstr ""
 
-#: includes/services.php:2171
+#: includes/services.php:2585
 msgid "Rows per page"
 msgstr ""
 
-#: includes/services.php:2172
+#: includes/services.php:2586
 msgid "Maximum rows to load"
 msgstr ""
 
-#: includes/services.php:2173
+#: includes/services.php:2587
 msgid "Rows fetched and rendered, on every data source. Maximum 10,000. Pre-filter larger datasets at the source."
 msgstr ""
 
-#: includes/services.php:2174
+#: includes/services.php:2588
 msgid "Selector prefix"
 msgstr ""
 
-#: includes/services.php:2175
+#: includes/services.php:2589
 msgid "Selector suffix"
 msgstr ""
 
-#: includes/services.php:2176
+#: includes/services.php:2590
 msgid "Pagination label: First"
 msgstr ""
 
-#: includes/services.php:2177
+#: includes/services.php:2591
 msgid "Pagination label: Previous"
 msgstr ""
 
-#: includes/services.php:2178
+#: includes/services.php:2592
 msgid "Pagination label: Next"
 msgstr ""
 
-#: includes/services.php:2179
+#: includes/services.php:2593
 msgid "Pagination label: Last"
 msgstr ""
 
-#: includes/services.php:2180
+#: includes/services.php:2594
 msgid "Search text"
 msgstr ""
 
-#: includes/services.php:2181
+#: includes/services.php:2595
 msgid "Search placeholder"
 msgstr ""
 
-#: includes/services.php:2182
+#: includes/services.php:2596
 msgid "Dropdown button text"
 msgstr ""
 
-#: includes/services.php:2183
+#: includes/services.php:2597
 msgid "Dropdown heading"
 msgstr ""
 
-#: includes/services.php:2185
+#: includes/services.php:2599
 msgid "Table buttons"
 msgstr ""
 
-#: includes/services.php:2186
+#: includes/services.php:2600
 msgid "Add export and column-visibility buttons to the table."
 msgstr ""
 
-#: includes/services.php:2193
+#: includes/services.php:2607
 msgid "Page length button"
 msgstr ""
 
-#: includes/services.php:2195
+#: includes/services.php:2609
 msgid "Copy button text"
 msgstr ""
 
-#: includes/services.php:2196
+#: includes/services.php:2610
 msgid "CSV button text"
 msgstr ""
 
-#: includes/services.php:2197
+#: includes/services.php:2611
 msgid "Excel button text"
 msgstr ""
 
-#: includes/services.php:2198
+#: includes/services.php:2612
 msgid "Print button text"
 msgstr ""
 
-#: includes/services.php:2199
+#: includes/services.php:2613
 msgid "Column visibility button text"
 msgstr ""
 
-#: includes/services.php:2200
+#: includes/services.php:2614
 msgid "Page length button text"
 msgstr ""

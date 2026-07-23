@@ -33,13 +33,39 @@
 		return parsed;
 	}
 
-	if ($.fn.dataTable && $.fn.dataTable.ext) {
+	// Registered lazily, NOT at parse time.
+	//
+	// baratables.js declares only jQuery as a dependency, so WordPress is free to print it BEFORE
+	// dataTables.min.js -- which is exactly what happens on a page carrying several tables. At that
+	// point $.fn.dataTable is undefined, the old parse-time guard failed silently, and the custom
+	// date type was never registered at all: date columns quietly fell back to DataTables' own
+	// detection. Table init cannot suffer the same fate (it runs on DOM ready, and is the moment we
+	// call .DataTable()), so register there instead. Adding the DataTables handle as a dependency
+	// would work too, but would drag ~100KB onto chart-only pages that never load it.
+	var btblDateTypeRegistered = false;
+	function btblRegisterDateType() {
+		if (btblDateTypeRegistered || !$.fn.dataTable || !$.fn.dataTable.ext) {
+			return;
+		}
+		btblDateTypeRegistered = true;
 		$.fn.dataTable.ext.type.detect.unshift(function(d) {
 			var text = btblExtractText(d);
+			// An empty cell must not veto the column's date type. DataTables 2 lets a single
+			// non-matching (null) detection downgrade the whole column, so one blank row in an
+			// otherwise-date column would drop it to string (alphabetical) sorting. Treat blank
+			// as neutral; btbl-date-pre already maps empty/unparseable to 0 for ordering.
+			if (!text) {
+				return 'btbl-date';
+			}
 			// Bare numbers/decimals are NOT dates -- Date.parse() accepts "3.2", "12", "184000",
 			// etc., which would mis-detect numeric columns and sort them by bogus timestamps.
-			// Real dates carry a separator or month name, so let those fall through to Date.parse.
-			if (text && /^[+-]?\d+(\.\d+)?$/.test(text)) {
+			if (/^[+-]?\d+(\.\d+)?$/.test(text)) {
+				return null;
+			}
+			// Neither are measurements. Date.parse() accepts "12.5%" (-> 5 Dec 2001) and "100%"
+			// (-> 1 Jan 0100), so without this a percentage column containing one blank cell types
+			// as a date and sorts by nonsense timestamps. Units bind tighter than the date guess.
+			if (/^[+-]?[\d.,]+\s*(%|px|em|rem|pt|kg|g|lb|mm|cm|m|km|mi|ft|in)$/i.test(text)) {
 				return null;
 			}
 			var parsed = btblParseDate(d);
@@ -145,13 +171,10 @@
 		return String(value).replace(/<[^>]*?>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 	}
 
+	// Zero-defaulting wrapper over btblParseOptionalNumber so the cleanup regex lives in one place.
 	function btblParseNumber(value) {
-		var text = btblExtractText(value);
-		if (text === '') {
-			return 0;
-		}
-		var num = parseFloat(text.replace(/[^0-9.+\-eE]/g, ''));
-		return isNaN(num) ? 0 : num;
+		var num = btblParseOptionalNumber(value);
+		return num === null ? 0 : num;
 	}
 
 	function btblParseOptionalNumber(value) {
@@ -166,6 +189,14 @@
 	function initChart(chartConfig, tableInstance, tableId, slugToIndex) {
 		if (!chartConfig || !chartConfig.enabled || !window.echarts) {
 			return null;
+		}
+		// Chart-only renders read chartConfig.rows, which the server narrows to just the plotted
+		// columns and re-indexes. Its own slug=>index map has to win for those rows; when the chart
+		// is attached to a table the rows come from DataTables in full width, so the table's map
+		// applies. row_slug_index is null when nothing could be narrowed.
+		var usingTableRows = !!(tableInstance && tableInstance.rows);
+		if (!usingTableRows && chartConfig.row_slug_index) {
+			slugToIndex = chartConfig.row_slug_index;
 		}
 		var container = document.getElementById('btbl-chart-' + tableId);
 		if (!container) {
@@ -332,8 +363,10 @@
 				if (progressIdx !== null && progressIdx < row.length) {
 					var progressText = btblExtractText(row[progressIdx]);
 					if (progressText !== '') {
-						var parsedProgress = parseFloat(progressText.replace(/[^0-9.+\-eE]/g, ''));
-						if (!isNaN(parsedProgress)) {
+						var parsedProgress = btblParseOptionalNumber(progressText);
+						// null (not NaN) means unparseable -- isNaN(null) is false, so this must be
+						// an explicit null check or an unreadable value would clamp to 0%.
+						if (parsedProgress !== null) {
 							progressVal = Math.min(100, Math.max(0, parsedProgress));
 						}
 					}
@@ -358,6 +391,16 @@
 			};
 		}
 
+		// Dispose any prior instance on this container before re-initializing (e.g. a page builder
+		// or AJAX swap re-runs the queue). Without this, chart-only renders -- which have no table
+		// 'destroy' hook -- would stack ECharts instances and leak a window resize listener each time.
+		var existingChart = echarts.getInstanceByDom(container);
+		if (existingChart) {
+			if (existingChart.__btblResize) {
+				window.removeEventListener('resize', existingChart.__btblResize);
+			}
+			existingChart.dispose();
+		}
 		var chart = echarts.init(container);
 
 		function render() {
@@ -527,11 +570,20 @@
 			tableInstance.on('draw', render);
 		}
 
+		// Named + stored so the destroy/re-init paths can remove it (see above and the table
+		// 'destroy' handler). The disposed guard stops a resize that fires in the debounce window
+		// after dispose from throwing "instance is disposed".
 		var resizeTimer;
-		window.addEventListener('resize', function() {
+		function onResize() {
 			clearTimeout(resizeTimer);
-			resizeTimer = setTimeout(function() { chart.resize(); }, 150);
-		});
+			resizeTimer = setTimeout(function() {
+				if (!chart.isDisposed || !chart.isDisposed()) {
+					chart.resize();
+				}
+			}, 150);
+		}
+		window.addEventListener('resize', onResize);
+		chart.__btblResize = onResize;
 
 		return chart;
 	}
@@ -752,6 +804,10 @@
 		if (isNaN(scrollY) || scrollY < 0) {
 			scrollY = 0;
 		}
+		// Pre-1.2.3 payloads have no scrollYEnabled flag; for those, height > 0 alone decides.
+		if (resolvedOptions.scrollYEnabled === false) {
+			scrollY = 0;
+		}
 
 		var columnDefs = [];
 		if (Array.isArray(config.hiddenColumns) && config.hiddenColumns.length) {
@@ -938,7 +994,24 @@
 		} else {
 			tableConfig.dom = domString;
 		}
+		btblRegisterDateType();
 		var table = $table.DataTable(tableConfig);
+
+		// Admin-hidden columns carry an inline style="display:none" so they stay hidden during the
+		// pre-init render (before columnDefs {visible:false} takes over). Once DataTables owns
+		// visibility, that inline style is stale AND breaks the Column-visibility button: showing
+		// the column re-attaches the original cell nodes verbatim, so they stay display:none. Clear
+		// it from the header + (possibly detached) cell nodes so colvis can actually reveal them.
+		if (Array.isArray(config.hiddenColumns)) {
+			config.hiddenColumns.forEach(function(colIdx) {
+				var column = table.column(colIdx);
+				if (!column) {
+					return;
+				}
+				$(column.header()).css('display', '');
+				$(column.nodes()).css('display', '');
+			});
+		}
 
 		var stripeEnabled = resolvedOptions.stripe !== false;
 		$table
@@ -1042,13 +1115,17 @@
 				var headingLabelHtml = resolveLabelHtml(resolvedOptions.searchColumnsHeading, defaultHeadingLabel);
 				var $searchColumns = enableSearchColumns ? $('<div class="btbl-search-columns"></div>') : $();
 				var $toggle = enableSearchColumns
-					? $('<button type="button" class="btbl-search-columns-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="' + dropdownId + '"></button>')
+					? $('<button type="button" class="btbl-search-columns-toggle" aria-expanded="false" aria-controls="' + dropdownId + '"></button>')
 						.html(toggleLabelHtml)
 						.attr('aria-label', toggleLabelText)
 					: $();
-				var $dropdown = enableSearchColumns ? $('<div class="btbl-search-columns-dropdown" id="' + dropdownId + '" role="menu"></div>') : $('<div></div>');
+				// role=group, not role=menu: this panel holds checkboxes, and a menu must contain
+				// menuitem/menuitemcheckbox children. Declaring it a menu made assistive tech
+				// announce (and key-navigate) the checkbox list as something it is not. The toggle
+				// keeps aria-expanded + aria-controls, which is the correct disclosure pattern.
+				var $dropdown = enableSearchColumns ? $('<div class="btbl-search-columns-dropdown" id="' + dropdownId + '" role="group" aria-labelledby="' + dropdownId + '-heading"></div>') : $('<div></div>');
 				var $dropdownLabel = enableSearchColumns
-					? $('<div class="btbl-search-columns-heading"></div>').html(headingLabelHtml)
+					? $('<div class="btbl-search-columns-heading" id="' + dropdownId + '-heading"></div>').html(headingLabelHtml)
 					: $('<div></div>');
 				var $list = enableSearchColumns ? $('<div class="btbl-search-columns-list"></div>') : $('<div></div>');
 
@@ -1211,14 +1288,32 @@
 			// teardown/rebuilds -- before the single final draw. Suppress the intermediate draws
 			// and let the reset handler's own table.draw() do the work once.
 			var resettingFilters = false;
-			function applyFilterSearch(column, pattern) {
-				var api = applyColumnSearch(column, pattern);
+			// Filters are wired to a column's ORIGINAL index (data-column / slugToIndex), but the
+			// column() API addresses columns by their CURRENT position. With ColReorder enabled a
+			// live drag makes a cached index point at whatever moved into that slot, so the filter
+			// searches the wrong column. Resolve on every apply instead of caching the API object
+			// (which binds its index at creation and goes stale the same way).
+			// NOTE: row DATA arrays keep their original column order after a reorder, so the scoped
+			// search filter and the chart -- which index into row arrays -- must NOT be transposed.
+			function resolveFilterColumn(originalIdx) {
+				var idx = originalIdx;
+				if (table.colReorder && typeof table.colReorder.transpose === 'function') {
+					try {
+						idx = table.colReorder.transpose(originalIdx, 'toCurrent');
+					} catch (e) {
+						idx = originalIdx;
+					}
+				}
+				return table.column(idx);
+			}
+			function applyFilterSearch(originalIdx, pattern) {
+				var api = applyColumnSearch(resolveFilterColumn(originalIdx), pattern);
 				if (!resettingFilters) {
 					api.draw();
 				}
 			}
-			function clearFilterSearch(column) {
-				var api = column.search('');
+			function clearFilterSearch(originalIdx) {
+				var api = resolveFilterColumn(originalIdx).search('');
 				if (!resettingFilters) {
 					api.draw();
 				}
@@ -1395,7 +1490,6 @@
 		$wrapper.find('.btbl-filter-wrapper .btbl-filter').each(function() {
 			var $filter = $(this);
 			var colIdx = parseInt($filter.data('column'), 10);
-			var column = table.column(colIdx);
 			var slug = $filter.data('slug');
 			var preset = presetFilters[slug] || null;
 			var type = $filter.data('type') || '';
@@ -1417,6 +1511,35 @@
 					dropdownParent: $dropdownParent,
 					closeOnSelect: type === 'dropdown'
 				});
+				// Select2 hides the real <select> (aria-hidden + .select2-hidden-accessible), so the
+				// aria-labelledby the server put there never reaches assistive tech. Its own combobox
+				// points at the rendered VALUE span, which announces "All, combobox" with no hint of
+				// which filter it is. Prepend the filter heading so the name comes first and the value
+				// still follows. Re-applied on open/close because Select2 rewrites the attribute in
+				// its own bind()/render() cycle. Idempotent.
+				var filterLabelId = $select.attr('aria-labelledby') || '';
+				if (filterLabelId) {
+					var applyFilterAccName = function() {
+						$filter.find('.select2-selection').each(function() {
+							var $sel2 = $(this);
+							var existing = $sel2.attr('aria-labelledby') || '';
+							if ((' ' + existing + ' ').indexOf(' ' + filterLabelId + ' ') === -1) {
+								$sel2.attr('aria-labelledby', (filterLabelId + ' ' + existing).trim());
+							}
+						});
+						// Multi-selects need this separately. Select2 writes aria-labelledby only in
+						// SingleSelection.bind, and its inline-search decorator then runs
+						// `$search.attr('tabindex', $selection.attr('tabindex')); $selection.attr('tabindex','-1')`
+						// -- so on a multi the labelled node is unfocusable and the element the user
+						// actually lands on is the search field, which announces only "Search".
+						// Scoped to .select2-selection--multiple so the search box that a single-select
+						// renders inside its own panel (a different field entirely) is never mislabelled.
+						$filter.find('.select2-selection--multiple .select2-search__field')
+							.attr('aria-labelledby', filterLabelId);
+					};
+					applyFilterAccName();
+					$select.on('select2:open select2:close', applyFilterAccName);
+				}
 				if (type === 'dropdown_multi') {
 					var suppressOpen = false;
 					$select.on('select2:unselect select2:clear', function() {
@@ -1439,10 +1562,10 @@
 				$singleSelect.on('change', function() {
 					var val = $(this).val();
 					if (!val || val === '__all') {
-						clearFilterSearch(column);
+						clearFilterSearch(colIdx);
 					} else {
 						var terms = getSearchTermsFromElement($(this).find('option:selected'), val);
-						applyFilterSearch(column, buildMultiValuePattern(terms));
+						applyFilterSearch(colIdx, buildMultiValuePattern(terms));
 					}
 					syncStateToUrl();
 				});
@@ -1480,9 +1603,9 @@
 						return val !== '' && val !== null && val !== undefined;
 					});
 					if (!terms.length) {
-						clearFilterSearch(column);
+						clearFilterSearch(colIdx);
 					} else {
-						applyFilterSearch(column, buildMultiValuePattern(terms));
+						applyFilterSearch(colIdx, buildMultiValuePattern(terms));
 					}
 					syncStateToUrl();
 				});
@@ -1501,10 +1624,10 @@
 						termsCheckbox = termsCheckbox.concat(t);
 					});
 					if (termsCheckbox.length === 0) {
-						clearFilterSearch(column);
+						clearFilterSearch(colIdx);
 					} else {
 						var patternCheckbox = buildMultiValuePattern(termsCheckbox);
-						applyFilterSearch(column, patternCheckbox);
+						applyFilterSearch(colIdx, patternCheckbox);
 					}
 						syncStateToUrl();
 				});
@@ -1522,11 +1645,11 @@
 				$radios.on('change', function() {
 					var val = $(this).val();
 					if (val === '__all') {
-						clearFilterSearch(column);
+						clearFilterSearch(colIdx);
 					} else {
 						var termsRadio = getSearchTermsFromElement($(this), val);
 						var patternRadio = buildMultiValuePattern(termsRadio);
-						applyFilterSearch(column, patternRadio);
+						applyFilterSearch(colIdx, patternRadio);
 					}
 						syncStateToUrl();
 				});
@@ -1594,6 +1717,9 @@
 			var chartInstance = initChart(config.chart, table, tableId, slugToIndex);
 		if (chartInstance && table) {
 			table.on('destroy', function() {
+				if (chartInstance.__btblResize) {
+					window.removeEventListener('resize', chartInstance.__btblResize);
+				}
 				if (chartInstance.dispose) {
 					chartInstance.dispose();
 				}

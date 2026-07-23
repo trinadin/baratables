@@ -25,39 +25,25 @@ class BaraTables_Chart_Service {
 
 	public function build_form_context(?array $chart_definition, ?string $selected_table_id = null): array {
 		$chart_definition = $chart_definition ?? [];
-		$tables = $this->table_repo->get_definitions();
-		$table_choices = [];
-		$tables_by_id = [];
-		foreach ($tables as $table) {
-			if (!is_array($table) || empty($table['id'])) {
-				continue;
-			}
-			$label = $table['name'] ?? $table['id'];
-			$table_choices[$table['id']] = $label;
-			$tables_by_id[$table['id']] = $table;
-		}
+		// Labels only: the dropdown needs id => name, not every table's stored definition.
+		$table_choices = $this->table_repo->get_definition_choices();
 
 		$table_definition = null;
 		$requested_table_id = $selected_table_id ?: ($chart_definition['table_id'] ?? '');
 		if ($requested_table_id !== '') {
-			// get_definitions() already returned every (non-trashed) table's full
-			// definition via the same mapper find_definition() uses, and slugs/ids are
-			// unique, so the in-memory entry is identical to a fresh lookup. Reuse it and
-			// only fall back to a DB round trip if the id isn't in the loaded set.
-			$table_definition = $tables_by_id[$requested_table_id]
-				?? $this->table_repo->find_definition($requested_table_id);
+			$table_definition = $this->table_repo->find_definition($requested_table_id);
 		}
-		if (!$table_definition && !empty($tables)) {
-			$table_definition = $tables[0];
+		if (!$table_definition && !empty($table_choices)) {
+			// No (or unknown) selection: fall back to the first table, matching the previous
+			// title-ordered behaviour -- but hydrate just that one.
+			$first_id = (string) array_key_first($table_choices);
+			$table_definition = $first_id !== '' ? $this->table_repo->find_definition($first_id) : null;
 		}
 
 		$columns = $table_definition['columns'] ?? [];
 		$chart_options_raw = isset($chart_definition['chart']) && is_array($chart_definition['chart'])
 			? $chart_definition['chart']
 			: $this->table_service->get_default_chart_options();
-		if (empty($chart_definition)) {
-			$chart_options_raw['enabled'] = true;
-		}
 		$chart_options = $this->table_service->sanitize_chart_options($chart_options_raw, $columns);
 
 		// R28: when showing the chart's OWN table (not a deliberate ?table switch), report any

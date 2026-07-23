@@ -175,9 +175,16 @@ trait BaraTables_Fields_Discovery_Trait {
 				'no_found_rows' => true,
 				'orderby' => 'modified',
 				'order' => 'DESC',
-				'update_post_meta_cache' => true,
+				// NOT 'update_post_meta_cache' => true: WP_Query's `fields => 'ids'` branch returns
+				// before it primes anything (class-wp-query.php returns at the top of that branch,
+				// ahead of every _prime_post_caches/update_post_caches call), so the flag was a
+				// no-op and each get_post_meta() below was its own query -- 52 queries for 50 posts,
+				// on every editor load and every field-refresh AJAX call. Prime explicitly instead.
 				'update_post_term_cache' => false,
 			]);
+			if (!empty($post_ids)) {
+				update_meta_cache('post', $post_ids);
+			}
 			foreach ($post_ids as $post_id) {
 				$post_meta = get_post_meta((int) $post_id);
 				if (!is_array($post_meta)) {

@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.2.2
+Stable tag: 1.2.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -77,6 +77,31 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 == Changelog ==
 
+= 1.2.3 =
+Improvements:
+
+* Fixed scroll height is now a Table controls option, with its height and collapse settings inside. Existing scroll heights carry over.
+* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading, and the result summary. This includes tables you have already saved, and keeps any wording you typed yourself.
+* Tables load without a flash of unstyled content.
+* Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space to open the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the table layout.
+* Pages with a table and its chart, or the same table twice, load faster on large tables.
+* The "Clear filters" and "Edit Table" buttons are styled consistently on any theme.
+
+Security:
+
+* Password-protected post content is withheld from visitors who have not entered the password.
+* Post passwords cannot be displayed as a column, including through an imported file.
+
+Fixes:
+
+* Hiding a column's heading keeps the custom heading you typed.
+* Sticky posts are excluded, so a table stays within its row limit.
+* Column filters follow their column when a visitor reorders columns.
+* Date columns sort by date, including columns with empty cells.
+* The Column visibility button reveals columns hidden in the table setup.
+* Custom meta keys with capital letters or dots (such as Price_USD) match your data.
+* Media tables list your attachments.
+
 = 1.2.2 =
 New:
 
@@ -86,10 +111,10 @@ Fixes:
 
 * Filtering by category or tag.
 * Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly, and those columns show their title, name, or contents.
-* Manual data grids hold up to 25,000 cells. If your server's form-field limit is too low for a grid that size, the editor now says so instead of saving with cells and settings missing.
+* Manual data grids hold up to 25,000 cells, and the editor tells you when your server's form-field limit is too low for a grid that size.
 * Two tables on the same page each keep their own filters in the shareable link.
 * An import that fails to save can be retried without uploading the file again.
-* Importing a large table keeps more of its rows and columns instead of stopping at a few hundred.
+* Importing a large table keeps more of its rows and columns.
 * Ninja Tables exports apply their saved search, sorting, and pagination settings.
 * Editing an external database connection keeps your column and filter setup.
 * Saved table state keeps sorting, search, page, and page length between visits.
@@ -99,7 +124,7 @@ Fixes:
 * Date columns show the time of day, and timestamps use your site's timezone.
 * Blank lines in a CSV file are skipped.
 * Custom WP Query tables load up to the row limit you set.
-* On CSV and external database tables, row-level access control no longer hides rows a visitor may see when the table has more rows than the limit.
+* On CSV and external database tables, row-level access control shows every row a visitor may see, even when the table has more rows than the limit.
 * Shareable filter links work for a value of 0.
 * Unnamed columns from a headerless CSV follow the site language.
 * The editor preview uses the same export button labels as the published table.
@@ -160,7 +185,10 @@ Fixes:
 
 * Numeric columns sort numerically (e.g. 3.15, 3.2, 3.9 in numeric order).
 * Far-future dates display correctly.
-* Security: hardened admin request handling and input validation.
+
+Security:
+
+* Hardened admin request handling and input validation.
 
 = 1.0.1 =
 * Improved date formatting controls for WordPress date columns, including support for the site's default date format.
@@ -170,6 +198,9 @@ Fixes:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.2.3 =
+Security fixes: password-protected post content and post passwords could be displayed in a table. Also fixes date sorting, sticky posts, and Media tables.
 
 = 1.2.2 =
 Includes a security fix for the table editor. Fixes category and tag filtering, Advanced Custom Fields columns, and settings lost when editing an external database connection. If you use row-level access control, open and re-save those tables: some show no rows until you do.

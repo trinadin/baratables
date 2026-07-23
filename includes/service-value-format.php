@@ -166,10 +166,10 @@ trait BaraTables_Value_Format_Trait {
 	/**
 	 * Apply value-override rules to rows already ordered to match the same column list.
 	 *
-	 * Mirrors the manual-grid loop in get_rows_from_custom(): each row first yields a
-	 * {{slug}} / {{row.slug}} token map, then every cell is run through the rules. Without this
-	 * the "Value overrides (JSON)" control was rendered, validated and persisted for CSV and
-	 * external-DB tables but never changed a single cell.
+	 * Each row first yields a {{slug}} / {{row.slug}} token map, then every cell is run through the
+	 * rules. This is the single implementation for every source -- manual, CSV and external DB.
+	 * get_rows_from_custom() used to carry its own hand-synced copy of these token rules, so a
+	 * change to token semantics had to be made twice or manual tables silently diverged.
 	 */
 	private function apply_ordered_overrides(array $rows, array $columns, array $overrides): array {
 		if (empty($overrides)) {
@@ -339,13 +339,102 @@ trait BaraTables_Value_Format_Trait {
 		}, $text);
 	}
 
+	/**
+	 * WP_Post fields a `core:` column may expose.
+	 *
+	 * The reader used to return ANY property by name, so a column slug of `core:post_password`
+	 * published each post's plaintext password. A slug like that is reachable without the admin
+	 * ever typing it: the importer builds `core:<original_name>` straight from an uploaded file
+	 * (see BaraTables_Import), so a crafted export could hide it behind an innocuous heading.
+	 *
+	 * Allowlist rather than denylist, and deliberately WIDER than the nine keys the picker offers,
+	 * so legacy/imported columns such as `core:post_name` keep working. `post_password` and
+	 * `post_content_filtered` are the sensitive omissions.
+	 */
+	private const ALLOWED_CORE_KEYS = [
+		'ID', 'post_author', 'post_date', 'post_date_gmt', 'post_content', 'post_title',
+		'post_excerpt', 'post_status', 'comment_status', 'ping_status', 'post_name',
+		'post_modified', 'post_modified_gmt', 'post_parent', 'guid', 'menu_order',
+		'post_type', 'post_mime_type', 'comment_count', 'permalink',
+	];
+
 	public function get_core_value(WP_Post $post, string $key) {
+		// Password-protected posts: WordPress lists them publicly but withholds their content, and
+		// core does that inside get_the_title()/get_the_excerpt(). The content branches below read
+		// $post->post_content directly, so without this the table published the protected body --
+		// and the excerpt fast path bypassed the gate get_the_excerpt() used to provide.
+		// Matches core's own semantics: the row still appears, the protected text does not.
+		//
+		// Test order matters enormously. post_password_required() runs a phpass CheckPassword (8
+		// stretching rounds, ~1.1ms MEASURED) for any visitor holding a wp-postpass_ cookie, and
+		// that cookie is site-wide -- unlocking one protected post makes every protected row pay it.
+		// So: cheapest test first (is this even a content column), then the free field check core
+		// itself opens with, and only then the hash. Those two guards take a 4-column protected row
+		// from 4679us to 211us (measured); every remaining call is one a correct answer requires.
+		//
+		// Deliberately NOT memoized. Caching the verdict per post makes this stateful, and the
+		// state it depends on (the wp-postpass_ cookie) is exactly what the caller may change --
+		// a memo returned "locked" to a visitor who had since unlocked the post. The remaining
+		// win was 2x on an already-narrow path; correctness is worth more than that here.
+		if (in_array($key, ['post_content', 'post_excerpt', 'post_content_filtered'], true)
+			&& (string) $post->post_password !== ''
+			&& post_password_required($post)) {
+			return '';
+		}
+
 		switch ($key) {
 			case 'ID':
 				return $post->ID;
 			case 'post_title':
 				return get_the_title($post);
 			case 'post_excerpt':
+				// A manual excerpt is returned as-is by get_the_excerpt(). With no manual excerpt,
+				// get_the_excerpt() auto-generates one by running the FULL the_content filter chain
+				// (do_blocks + every content filter) per row -- the dominant cost on a large table.
+				// Fall back to a cheap content trim in that case, mirroring the post_content branch.
+				if (trim((string) $post->post_excerpt) === '') {
+					// Mirror wp_trim_excerpt()'s own pipeline minus the expensive the_content pass:
+					// honour excerpt_length/excerpt_more (themes very commonly filter these), and
+					// strip block delimiters -- without excerpt_remove_blocks() a post built from
+					// dynamic blocks trims to an EMPTY cell, because its content is all comments.
+					// Everything wp_trim_excerpt() does EXCEPT the the_content pass (which is the
+					// expensive part and the only reason this fast path exists). Each omission below
+					// was a real behaviour difference from core:
+					//   - excerpt_remove_blocks: a dynamic-block post otherwise trims to nothing;
+					//   - excerpt_remove_footnotes: footnote markup otherwise leaks into the cell;
+					//   - _x('55','excerpt_length'): locales (e.g. ja_JP) translate the word count;
+					//   - the excerpt_length / excerpt_more / wp_trim_excerpt / get_the_excerpt
+					//     filters: themes, translation and SEO plugins all hook these, and a table
+					//     column that ignored them showed a different excerpt from the rest of the
+					//     site. All are core's own hook names ON PURPOSE -- a prefixed name would be
+					//     a filter nothing listens to, which is the bug, not the fix.
+					$excerpt_source = strip_shortcodes((string) $post->post_content);
+					if (function_exists('excerpt_remove_blocks')) {
+						$excerpt_source = excerpt_remove_blocks($excerpt_source);
+					}
+					if (function_exists('excerpt_remove_footnotes')) {
+						$excerpt_source = excerpt_remove_footnotes($excerpt_source);
+					}
+					// Both the hook name and the text domain are core's ON PURPOSE. The filter is the one
+					// themes already hook, and _x('55','excerpt_length') is core's own word count, which
+					// some locales translate (ja_JP uses characters). Using our own prefix/domain would
+					// create a filter and a string nobody uses -- reintroducing the divergence this fixes.
+					/** This filter is documented in wp-includes/formatting.php */
+					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound, WordPress.WP.I18n.TextDomainMismatch -- Intentionally core's filter and core's string.
+					$excerpt_length = (int) apply_filters('excerpt_length', (int) _x('55', 'excerpt_length', 'default'));
+					/** This filter is documented in wp-includes/formatting.php */
+					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally core's excerpt_more filter.
+					$excerpt_more = apply_filters('excerpt_more', ' ' . '[&hellip;]');
+					$trimmed = wp_trim_words($excerpt_source, $excerpt_length, $excerpt_more);
+					// Only get_the_excerpt is applied here. Core hooks wp_trim_excerpt ONTO
+					// get_the_excerpt (default-filters.php), so applying both ran the wp_trim_excerpt
+					// filter twice -- verified by diffing against core's own output. Passing
+					// already-trimmed text also makes core's wp_trim_excerpt skip regeneration, so
+					// the_content is still never invoked.
+					/** This filter is documented in wp-includes/post-template.php */
+					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally core's get_the_excerpt filter.
+					return apply_filters('get_the_excerpt', $trimmed, $post);
+				}
 				return get_the_excerpt($post);
 			case 'post_content':
 				return wp_trim_words($post->post_content, 40);
@@ -360,6 +449,9 @@ trait BaraTables_Value_Format_Trait {
 			case 'permalink':
 				return get_permalink($post);
 			default:
+				if (!in_array($key, self::ALLOWED_CORE_KEYS, true)) {
+					return '';
+				}
 				return isset($post->$key) ? $post->$key : '';
 		}
 	}

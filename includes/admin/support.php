@@ -29,9 +29,6 @@ class BaraTables_Post_Input {
 		return isset($_POST[$key]) ? array_map('sanitize_text_field', (array) wp_unslash($_POST[$key])) : []; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 	}
 
-	public static function key(string $key, string $default = ''): string {
-		return isset($_POST[$key]) ? sanitize_key(wp_unslash($_POST[$key])) : $default; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-	}
 }
 
 
@@ -297,27 +294,20 @@ class BaraTables_Admin_Page_Utils {
 		<?php
 	}
 
-	public static function render_title_section(string $label, string $field_name, string $title_value, string $shortcode, bool $include_title, string $after_shortcode = ''): void {
-		if ($include_title) : ?>
-			<div id="titlediv">
-				<div id="titlewrap">
-					<label class="screen-reader-text" id="title-prompt-text" for="title"><?php echo esc_html($label); ?></label>
-					<input type="text" name="<?php echo esc_attr($field_name); ?>" size="30" value="<?php echo esc_attr($title_value); ?>" id="title" spellcheck="true" autocomplete="off" required />
-				</div>
-				<?php if ($shortcode !== '') : ?>
-					<div class="inside">
-						<div id="edit-slug-box" class="hide-if-no-js btbl-shortcode-row">
-							<?php echo self::render_shortcode_display($shortcode); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_shortcode_display(). ?>
-							<?php echo $after_shortcode; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_id_editor() escapes its own output. ?>
-						</div>
-					</div>
-				<?php endif; ?>
-			</div>
-		<?php else :
-			if ($shortcode !== '') : ?>
-				<div class="btbl-shortcode-row btbl-shortcode-row-inline"><?php echo self::render_shortcode_display($shortcode); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_shortcode_display(). ?><?php echo $after_shortcode; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_id_editor() escapes its own output. ?></div>
-			<?php endif;
-		endif;
+	/**
+	 * The shortcode + ID-editor row shown under the post title.
+	 *
+	 * $label/$field_name/$title_value are gone with the standalone builder page: both editors are
+	 * metaboxes now, so WordPress renders the real title field and this only ever emitted the
+	 * inline shortcode row.
+	 */
+	public static function render_title_section(string $shortcode, string $after_shortcode = ''): void {
+		if ($shortcode === '') {
+			return;
+		}
+		?>
+		<div class="btbl-shortcode-row btbl-shortcode-row-inline"><?php echo self::render_shortcode_display($shortcode); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_shortcode_display(). ?><?php echo $after_shortcode; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_id_editor() escapes its own output. ?></div>
+		<?php
 	}
 }
 
@@ -580,18 +570,24 @@ class BaraTables_Admin_Assets {
 			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/admin.css')
 		);
 
-		if ($is_btbl_editor || $is_btbl_list) {
-			if ($is_btbl_editor) {
-				wp_enqueue_media();
-			}
-			wp_enqueue_script(
-				'baratables-admin',
-				$this->plugin_url . 'assets/admin.js',
-				['jquery'],
-				BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/admin.js'),
-				true
-			);
+		// Only the TABLE editor has a media control -- the CSV "Choose file" button. The chart
+		// editor renders no media UI, so enqueueing here pulled ~660KB of media-library JS plus its
+		// inline templates onto every chart edit screen for nothing.
+		if ($is_btbl_editor && $hook_post_type === BaraTables_Repository::CPT) {
+			wp_enqueue_media();
 		}
+
+		// admin.js on all three screens. The Import page needs it for the "hide help text" toggle,
+		// whose handler (and the AJAX call that persists the preference) lives there -- without it
+		// the toggle is inert and help hidden from the editor can never be restored on that screen.
+		// (No condition here: the early return above already guarantees one of the three matched.)
+		wp_enqueue_script(
+			'baratables-admin',
+			$this->plugin_url . 'assets/admin.js',
+			['jquery'],
+			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/admin.js'),
+			true
+		);
 	}
 }
 

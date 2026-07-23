@@ -7,20 +7,6 @@
 	--btbl-radius-pill: 999px;
 }
 
-.btbl-admin .btbl-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-	gap: 16px;
-}
-
-.btbl-admin .card {
-	max-width: none;
-	background: #fff;
-	border: 1px solid #ccd0d4;
-	padding: 16px;
-	box-shadow: 0 1px 1px rgba(0,0,0,0.04);
-}
-
 .btbl-admin .btbl-small-heading {
 	display: block;
 	margin-bottom: 6px;
@@ -232,6 +218,13 @@
 	color: #fff;
 }
 
+/* The real checkbox is visually hidden (opacity:0), so without this a keyboard user tabbing
+   through term chips gets no focus indication at all. Mirrors .btbl-chip's focus ring. */
+.btbl-term-chip input:focus-visible + span {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
 .btbl-flag-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -371,11 +364,6 @@
 	color: #1d2327;
 }
 
-.btbl-flag.is-disabled {
-	opacity: 0.6;
-	pointer-events: none;
-}
-
 .btbl-page-length-row.is-hidden {
     display: none;
 }
@@ -422,15 +410,6 @@
 
 .btbl-inline.is-hidden {
 	display: none;
-}
-
-/* Checkbox and its wording on one line. Matches .btbl-inline's weight so the label does not
-   read as a sub-heading of the control above it. */
-.btbl-checkbox-inline {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-weight: normal;
 }
 
 .btbl-filter-values-row textarea {
@@ -695,12 +674,26 @@
 	cursor: pointer;
 }
 
+/* A real <button>: it is a disclosure control, so it must announce as a button and activate on
+   both Enter and Space (an <a href="#"> does neither). Reset the UA button chrome so it keeps
+   looking like the bare gear icon it always was. */
 .btbl-options-toggle {
 	margin-left: 8px;
 	text-decoration: none;
 	display: inline-flex;
 	align-items: center;
 	color: #2271b1;
+	background: none;
+	border: 0;
+	padding: 0;
+	font: inherit;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.btbl-options-toggle:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
 }
 
 .btbl-options-toggle:hover,
@@ -832,19 +825,6 @@
 
 .btbl-submit-row {
 	margin-top: 16px;
-}
-
-.btbl-admin .submitdelete {
-	background: none;
-	border: 0;
-	color: #b32d2e;
-	cursor: pointer;
-	padding: 0;
-	text-decoration: none;
-}
-
-.btbl-admin .submitdelete:hover {
-	color: #dc3232;
 }
 
 .btbl-chart-preview-trigger {
@@ -1169,7 +1149,7 @@
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: #646970;
-	border-bottom: 1px solid var(--btbl-line, #e0e0e0);
+	border-bottom: 1px solid #e0e0e0;
 	padding-bottom: 3px;
 }
 .btbl-field-options-body .btbl-gear-section-heading:first-child {

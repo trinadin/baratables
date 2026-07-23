@@ -28,6 +28,50 @@ class BaraTables_Frontend {
 		}
 
 		$this->assets_registered = true;
+		$this->enqueue_base_style_early();
+	}
+
+	/**
+	 * Put the small base stylesheet in <head> when the page is going to render a table.
+	 *
+	 * Everything else is enqueued from render_shortcode(), i.e. during the_content -- long after
+	 * wp_head -- so core prints it with the footer styles. That left the server-rendered table
+	 * (up to rowLimit rows) painting completely unstyled first, and the .is-loading mask that is
+	 * supposed to hide it until DataTables initializes is itself defined in that late CSS.
+	 *
+	 * Only the ~3KB base file moves; the DataTables/Select2 vendor CSS stays on-demand so pages
+	 * without those features keep their current payload. This is best-effort by design: shortcodes
+	 * coming from widgets, blocks or templates are not detected here and simply fall back to the
+	 * existing late enqueue, exactly as before.
+	 */
+	private function enqueue_base_style_early(): void {
+		if (is_admin() || !$this->content_in_main_query_has_table()) {
+			return;
+		}
+		wp_enqueue_style('baratables');
+	}
+
+	private function content_in_main_query_has_table(): bool {
+		$has = static function ($content): bool {
+			$content = (string) $content;
+			return $content !== ''
+				&& (has_shortcode($content, 'bara_table') || has_shortcode($content, 'bara_chart'));
+		};
+
+		if (is_singular()) {
+			$queried = get_queried_object();
+			return $queried instanceof WP_Post && $has($queried->post_content);
+		}
+
+		$posts = $GLOBALS['wp_query']->posts ?? null;
+		if (is_array($posts)) {
+			foreach ($posts as $post) {
+				if ($post instanceof WP_Post && $has($post->post_content)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	public function render_shortcode($atts): string {
@@ -85,8 +129,8 @@ class BaraTables_Frontend {
 		$instance_base = (string) ($chart_definition['id'] ?? $definition['id'] ?? $atts['id'] ?? 'chart');
 		$instance_id = $this->get_render_instance_id('chart-' . $instance_base);
 		// No edit link on the chart-only render: render_table_view only surfaces it on the table
-		// path ($render_table), so computing get_chart_post_id()/get_edit_post_link() here was a
-		// dead query on every chart view, for every visitor.
+		// path ($render_table), so resolving the chart's post id and edit link here was a dead
+		// query on every chart view, for every visitor.
 		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, $render_table);
 	}
 
@@ -336,6 +380,23 @@ class BaraTables_Frontend {
 	}
 
 	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $instance_id, bool $render_table): string {
+		// Row-level access control filters rows per visitor, so this response is user-specific and
+		// must never be stored by a page cache. Most caches already bypass on the logged-in cookie,
+		// but a host configured to cache authenticated responses (edge rules, or a "cache logged-in
+		// users" option) would otherwise hand one user's permitted rows to another. nocache_headers()
+		// self-guards on headers_sent(); DONOTCACHEPAGE is the signal page-cache plugins read at
+		// shutdown, which is what actually matters this late in the request.
+		if (!empty($definition['access_control'])) {
+			// DONOTCACHEPAGE is the de-facto cross-plugin contract every major page cache reads
+			// (W3TC, WP Super Cache, WP Rocket, LiteSpeed). The name is the interface -- a prefixed
+			// constant would be read by nothing and the response would still be cached.
+			if (!defined('DONOTCACHEPAGE')) {
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Established shared constant; the exact name is the contract.
+				define('DONOTCACHEPAGE', true);
+			}
+			nocache_headers();
+		}
+
 		// Only the table markup consumes $filters. A [bara_chart] render always passes
 		// $render_table = false, so building them there walks every row, normalizes, decorates and
 		// sorts each option, then throws the result away -- cheap on a small table, ~600ms on a
@@ -357,12 +418,7 @@ class BaraTables_Frontend {
 		$default_sort = $this->service->get_default_sort_order($definition);
 		$table_options = $this->service->localize_frontend_table_labels($this->service->get_table_options($definition));
 		$wrapper_compact_class = !empty($table_options['compact']) ? ' is-compact' : '';
-		$table_classes = ['btbl-table'];
-		foreach (BaraTables_Service::TABLE_STYLE_CLASS_MAP as $option_key => $class_name) {
-			if (!empty($table_options[$option_key])) {
-				$table_classes[] = $class_name;
-			}
-		}
+		$table_classes = array_merge(['btbl-table'], BaraTables_Service::table_style_classes($table_options));
 		$table_class_attr = implode(' ', $table_classes);
 
 		$inline_payload = [
@@ -379,9 +435,16 @@ class BaraTables_Frontend {
 		];
 
 		if ($chart_enabled) {
+			// Ship only the columns the chart actually plots. This payload is inlined into the page
+			// and previously carried every column of every row (up to rowLimit) -- including
+			// HTML-heavy cells the chart discards -- when a chart reads at most an axis, its series
+			// and the five gantt slugs. Rows are re-indexed, so the matching slug=>index map goes
+			// with them (the front end prefers it over the table's map for this payload).
+			$projection = $this->project_rows_for_chart($rows, $definition['columns'], $chart_options);
 			$inline_payload['chart'] = array_merge($chart_options, [
 				'enabled' => $chart_enabled,
-				'rows' => $rows,
+				'rows' => $projection['rows'],
+				'row_slug_index' => $projection['slug_index'],
 				'columns' => $this->service->build_column_slug_label_list($definition['columns']),
 			]);
 		}
@@ -407,9 +470,13 @@ class BaraTables_Frontend {
 			$chart_id = 'btbl-chart-' . $table_id;
 			$chart_height = isset($chart_options['height']) ? (int) $chart_options['height'] : 360;
 			$chart_style = $chart_height > 0 ? ' style="height:' . esc_attr((string) $chart_height) . 'px;"' : '';
+			// Built once: the chart container is emitted from three mutually exclusive branches
+			// (above the table, below it, and the chart-only render). Both interpolations are
+			// escaped here, so the echo sites need no further escaping.
+			$chart_div_html = '<div id="' . esc_attr($chart_id) . '" class="btbl-chart"' . $chart_style . '></div>';
 			if ($chart_enabled && ($chart_options['position'] ?? 'above') === 'above') :
 				?>
-				<div id="<?php echo esc_attr($chart_id); ?>" class="btbl-chart"<?php echo $chart_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: height value is cast to int and passed through esc_attr(). ?>></div>
+				<?php echo $chart_div_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d. ?>
 			<?php endif; ?>
 			<?php if ($render_table && !empty($filters)) : ?>
 				<?php
@@ -429,9 +496,15 @@ class BaraTables_Frontend {
 					</div>
 					<?php foreach ($filters as $filter) : ?>
 						<div class="btbl-filter btbl-filter-<?php echo esc_attr($filter['type']); ?><?php echo esc_attr($filter['type'] === 'dropdown_multi' ? ' btbl-filter-dropdown-multi' : ''); ?>" data-column="<?php echo esc_attr($filter['column_index']); ?>" data-slug="<?php echo esc_attr($filter['slug']); ?>" data-type="<?php echo esc_attr($filter['type']); ?>">
-							<?php $filter_label = isset($filter['label']) ? (string) $filter['label'] : ''; ?>
+							<?php
+							$filter_label = isset($filter['label']) ? (string) $filter['label'] : '';
+							// Stable id so each control can point its accessible name at this heading.
+							$filter_label_id = $filter_label !== ''
+								? 'btbl-filter-label-' . $table_id . '-' . $filter['column_index']
+								: '';
+							?>
 							<?php if ($filter_label !== '') : ?>
-								<div class="btbl-filter-label"><?php echo wp_kses($filter_label, $allowed_inline); ?></div>
+								<div class="btbl-filter-label" id="<?php echo esc_attr($filter_label_id); ?>"><?php echo wp_kses($filter_label, $allowed_inline); ?></div>
 							<?php endif; ?>
 							<div class="btbl-filter-control-wrapper">
 								<?php if ($filter['type'] === 'dropdown') : ?>
@@ -439,30 +512,35 @@ class BaraTables_Frontend {
 										'include_empty' => true,
 										'include_all' => true,
 										'placeholder' => __('All', 'baratables'),
+										'labelledby' => $filter_label_id,
 									]); ?>
 								<?php elseif ($filter['type'] === 'dropdown_plain') : ?>
 									<?php $this->render_filter_select($filter['options'], [
 										'include_all' => true,
+										'labelledby' => $filter_label_id,
 									]); ?>
 								<?php elseif ($filter['type'] === 'dropdown_multi') : ?>
 									<?php $this->render_filter_select($filter['options'], [
 										'include_empty' => true,
 										'multiple' => true,
 										'placeholder' => __('Select options', 'baratables'),
+										'labelledby' => $filter_label_id,
 									]); ?>
 								<?php elseif ($filter['type'] === 'dropdown_plain_multi') : ?>
 									<?php $this->render_filter_select($filter['options'], [
 										'include_empty' => true,
 										'multiple' => true,
+										'labelledby' => $filter_label_id,
 									]); ?>
 								<?php elseif ($filter['type'] === 'checkbox') : ?>
-									<?php $this->render_filter_option_inputs($filter['options'], 'checkbox'); ?>
+									<?php $this->render_filter_option_inputs($filter['options'], 'checkbox', '', false, $filter_label_id); ?>
 								<?php elseif ($filter['type'] === 'radio') : ?>
 									<?php $this->render_filter_option_inputs(
 										$filter['options'],
 										'radio',
 										'btbl-filter-' . $table_id . '-' . $filter['column_index'],
-										true
+										true,
+										$filter_label_id
 									); ?>
 								<?php endif; ?>
 							</div>
@@ -501,17 +579,18 @@ class BaraTables_Frontend {
 							<?php endforeach; ?>
 						</tbody>
 					</table>
-					<?php if ($chart_enabled && ($chart_options['position'] ?? 'above') === 'below') : ?>
-						<div id="<?php echo esc_attr($chart_id); ?>" class="btbl-chart"<?php echo $chart_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: height value is cast to int and passed through esc_attr(). ?>></div>
-					<?php endif; ?>
 					<div class="btbl-empty-state" aria-live="polite"><?php esc_html_e('No results match these filters.', 'baratables'); ?></div>
 					<?php
 					// Only logged-in users can ever have an edit capability, so skip the
 					// get_definition_post_id() meta_query for anonymous visitors (the common case
 					// for a public table) instead of running it on every render.
+					// Pre-gate on the plugin's own capability before the lookup: the CPT maps its
+					// edit caps to manage_options, so a subscriber can never pass the edit_post
+					// check below. Without this, every logged-in visitor on a membership site paid
+					// for an uncached meta_query per table render just to be told "no".
 					$post_id = 0;
 					$can_edit = false;
-					if (is_user_logged_in()) {
+					if (is_user_logged_in() && current_user_can('manage_options')) {
 						$defn_id = $definition['id'] ?? $table_id;
 						$post_id = $defn_id ? $this->service->get_definition_post_id($defn_id) : 0;
 						$can_edit = $post_id ? current_user_can('edit_post', $post_id) : current_user_can('manage_options');
@@ -531,7 +610,7 @@ class BaraTables_Frontend {
 					<?php endif; ?>
 				</div>
 			<?php elseif ($chart_enabled && ($chart_options['position'] ?? 'above') === 'below') : ?>
-				<div id="<?php echo esc_attr($chart_id); ?>" class="btbl-chart"<?php echo $chart_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: height value is cast to int and passed through esc_attr(). ?>></div>
+				<?php echo $chart_div_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d. ?>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -542,14 +621,71 @@ class BaraTables_Frontend {
 		return $this->service->normalize_filter_option($option);
 	}
 
+	/**
+	 * Narrow the inline chart payload to the columns the chart actually plots.
+	 *
+	 * @return array{rows: array<int, array<int, mixed>>, slug_index: array<string, int>}
+	 *         Rows re-indexed to the kept columns, plus the slug => new-index map for them.
+	 *         Falls back to the untouched rows (and the full map) if nothing can be narrowed,
+	 *         so a chart referencing an unknown slug still behaves exactly as before.
+	 */
+	private function project_rows_for_chart(array $rows, array $columns, array $chart_options): array {
+		$wanted = [];
+		foreach (['x_axis', 'gantt_label', 'gantt_start', 'gantt_end', 'gantt_group', 'gantt_progress'] as $key) {
+			$slug = isset($chart_options[$key]) ? (string) $chart_options[$key] : '';
+			if ($slug !== '') {
+				$wanted[$slug] = true;
+			}
+		}
+		foreach ((array) ($chart_options['series'] ?? []) as $slug) {
+			$slug = (string) $slug;
+			if ($slug !== '') {
+				$wanted[$slug] = true;
+			}
+		}
+
+		$keep = [];
+		$slug_index = [];
+		foreach ($this->service->column_slugs_in_order($columns) as $idx => $slug) {
+			if ($slug !== '' && isset($wanted[$slug]) && !isset($slug_index[$slug])) {
+				$slug_index[$slug] = count($keep);
+				$keep[] = $idx;
+			}
+		}
+
+		// Nothing matched (unknown slugs, or a definition whose columns are not resolvable):
+		// keep the original payload rather than shipping a chart that cannot find its data.
+		if (empty($keep) || count($keep) >= count($columns)) {
+			return ['rows' => $rows, 'slug_index' => null];
+		}
+
+		$projected = [];
+		foreach ($rows as $row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			$new_row = [];
+			foreach ($keep as $idx) {
+				$new_row[] = $row[$idx] ?? '';
+			}
+			$projected[] = $new_row;
+		}
+
+		return ['rows' => $projected, 'slug_index' => $slug_index];
+	}
+
 	private function render_filter_select(array $options, array $args = []): void {
 		$include_empty = !empty($args['include_empty']);
 		$include_all = !empty($args['include_all']);
 		$multiple = !empty($args['multiple']);
 		$placeholder = $args['placeholder'] ?? '';
 		$all_label = $args['all_label'] ?? __('All', 'baratables');
+		// Without this the control has no accessible name -- a screen reader announces every filter
+		// on the table identically as just "combo box". Points at the visible filter heading.
+		$labelledby = isset($args['labelledby']) ? (string) $args['labelledby'] : '';
+		$labelledby_attr = $labelledby !== '' ? ' aria-labelledby="' . esc_attr($labelledby) . '"' : '';
 		?>
-		<select class="btbl-filter-control"<?php echo $multiple ? ' multiple' : ''; ?><?php echo $placeholder !== '' ? ' data-placeholder="' . esc_attr($placeholder) . '"' : ''; ?>>
+		<select class="btbl-filter-control"<?php echo $multiple ? ' multiple' : ''; ?><?php echo $labelledby_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through esc_attr(). ?><?php echo $placeholder !== '' ? ' data-placeholder="' . esc_attr($placeholder) . '"' : ''; ?>>
 			<?php if ($include_empty) : ?>
 				<option value=""></option>
 			<?php endif; ?>
@@ -570,10 +706,15 @@ class BaraTables_Frontend {
 		}
 	}
 
-	private function render_filter_option_inputs(array $options, string $input_type, string $name = '', bool $include_all = false): void {
+	private function render_filter_option_inputs(array $options, string $input_type, string $name = '', bool $include_all = false, string $labelledby = ''): void {
 		$name_attr = $name !== '' ? ' name="' . esc_attr($name) . '"' : '';
+		// role=group + a name so the set of checkboxes/radios is announced as "<filter>, group"
+		// rather than as loose controls with no indication of which filter they belong to.
+		$group_attr = $labelledby !== ''
+			? ' role="group" aria-labelledby="' . esc_attr($labelledby) . '"'
+			: '';
 		?>
-		<div class="btbl-filter-options">
+		<div class="btbl-filter-options"<?php echo $group_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through esc_attr(). ?>>
 			<?php if ($include_all) : ?>
 				<label>
 					<input type="<?php echo esc_attr($input_type); ?>"<?php echo $name_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: name value passed through esc_attr(). ?> value="__all" checked />

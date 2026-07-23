@@ -1,7 +1,6 @@
 jQuery(function($) {
 	var columnOrderController;
 	var filterOrderController;
-	var isBuilderPage = $('.btbl-admin').length > 0 && !$('.btbl-admin-embed').length;
 
 	function updateSortVisibility($label) {
 		var checked = $label.find('input[type="checkbox"][name="btbl_columns[]"]').is(':checked');
@@ -9,7 +8,6 @@ jQuery(function($) {
 		var sortEnabled = $sortToggle.is(':checked') && checked;
 		var $sortPriority = $label.find('.btbl-sort-priority');
 		var $row = $label.find('.btbl-sort-priority').closest('.btbl-options-row');
-		$row.data('sort-enabled', sortEnabled);
 		$row.toggleClass('is-hidden', !sortEnabled);
 		// When sort is enabled but no priority is set yet, default it to 1 -- the same default the
 		// server applies in ui.php so an enabled column always has a concrete priority.
@@ -20,6 +18,18 @@ jQuery(function($) {
 			}
 		}
 		$sortToggle.closest('.btbl-inline').toggleClass('is-hidden', !checked);
+	}
+
+	// The four AJAX refreshes (post type, chart table, CSV preview, custom query) all need the same
+	// pair: the editor nonce and the post id, resolved from the control's own form with #post as the
+	// fallback. Kept in one place so a fix to the lookup cannot land in only three of them.
+	function btblFormAuth($control) {
+		var $form = $control && $control.length ? $control.closest('form') : $();
+		if (!$form.length) { $form = $('#post'); }
+		return {
+			nonce: $form.find('input[name="_baratables_nonce"]').val() || '',
+			postId: $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0
+		};
 	}
 
 	function isActivationEvent(e) {
@@ -271,16 +281,6 @@ jQuery(function($) {
 	// Legacy full-page reload -- used as a graceful fallback if the AJAX refresh fails.
 	function legacyPostTypeReload(typeParam) {
 		var url = new URL(window.location.href);
-		if (isBuilderPage) {
-			var editId = $postTypeSelect.data('edit-id');
-			var pageSlug = $postTypeSelect.data('page') || 'baratables';
-			url.searchParams.set('page', pageSlug);
-			if (editId) {
-				url.searchParams.set('id', editId);
-			} else {
-				url.searchParams.delete('id');
-			}
-		}
 		url.searchParams.set('type', typeParam || '');
 		window.location.href = url.toString();
 	}
@@ -289,10 +289,9 @@ jQuery(function($) {
 	// instead of reloading the whole editor.
 	var fieldRefreshSeq = 0;
 	function refreshSourceFields(typeParam) {
-		var $form = $postTypeSelect.closest('form');
-		if (!$form.length) { $form = $('#post'); }
-		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
-		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		var auth = btblFormAuth($postTypeSelect);
+		var nonce = auth.nonce;
+		var postId = auth.postId;
 		var source = $sourceSelect.length ? ($sourceSelect.val() || 'wp_query') : 'wp_query';
 		// CSV columns come from the selected file (id/delimiter/header), not the post type. The
 		// generic fields refresh doesn't carry those params, so it would blank the columns while
@@ -388,19 +387,12 @@ jQuery(function($) {
 	function legacyChartReload(tableId) {
 		var url = new URL(window.location.href);
 		if (tableId) { url.searchParams.set('table', tableId); } else { url.searchParams.delete('table'); }
-		if (isBuilderPage) {
-			var editId = $('#btbl_chart_id').val() || '';
-			var pageSlug = $chartTableSelect.data('page') || 'wp-btbl-charts-add';
-			url.searchParams.set('page', pageSlug);
-			if (editId) { url.searchParams.set('id', editId); }
-		}
 		window.location.href = url.toString();
 	}
 	function refreshChartFields(tableId) {
-		var $form = $chartTableSelect.closest('form');
-		if (!$form.length) { $form = $('#post'); }
-		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
-		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		var auth = btblFormAuth($chartTableSelect);
+		var nonce = auth.nonce;
+		var postId = auth.postId;
 		if (!nonce || !window.ajaxurl) { legacyChartReload(tableId); return; }
 		var seq = ++chartRefreshSeq;
 		$.post(window.ajaxurl, {
@@ -652,14 +644,14 @@ jQuery(function($) {
 			$target.val('');
 		}
 		$(this).hide();
-		triggerCsvPreviewRefresh(false, { clearCsv: true });
+		triggerCsvPreviewRefresh({ clearCsv: true });
 	});
 
-	function triggerCsvPreviewRefresh(forceWpQuery, options) {
+	function triggerCsvPreviewRefresh(options) {
 		var opts = options || {};
 		var clearCsv = !!opts.clearCsv;
 		var source = $sourceSelect.length ? $sourceSelect.val() || 'wp_query' : 'wp_query';
-		if (!forceWpQuery && source !== 'csv' && !clearCsv) {
+		if (source !== 'csv' && !clearCsv) {
 			return;
 		}
 		var csvId = clearCsv ? '0' : ($('#btbl_csv_attachment_id').val() || '');
@@ -687,10 +679,9 @@ jQuery(function($) {
 			window.location.href = url.toString();
 		}
 		// Infer the CSV columns in place via the shared fields endpoint instead of reloading.
-		var $form = $('#btbl_csv_attachment_id').closest('form');
-		if (!$form.length) { $form = $('#post'); }
-		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
-		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		var auth = btblFormAuth($('#btbl_csv_attachment_id'));
+		var nonce = auth.nonce;
+		var postId = auth.postId;
 		if (!nonce || !window.ajaxurl) { legacyCsvReload(); return; }
 		var typeVal = $postTypeSelect.length ? $postTypeSelect.val() : '';
 		var payload = {
@@ -1071,10 +1062,9 @@ jQuery(function($) {
 			return;
 		}
 		var raw = $customQueryInput.val() || '';
-		var $form = $customQueryInput.closest('form');
-		if (!$form.length) { $form = $('#post'); }
-		var nonce = $form.find('input[name="_baratables_nonce"]').val() || '';
-		var postId = $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0;
+		var auth = btblFormAuth($customQueryInput);
+		var nonce = auth.nonce;
+		var postId = auth.postId;
 		if (!nonce || !window.ajaxurl) {
 			// Fallback: legacy full-page reload.
 			var url = new URL(window.location.href);
@@ -1385,10 +1375,9 @@ jQuery(function($) {
 		toggleTableFlagOptions();
 	});
 
-	$(document).on('click keydown', '.btbl-flag-options-toggle', function(e) {
-		if (!isActivationEvent(e)) {
-			return;
-		}
+	// Click only: the gear is a real <button>, which already fires click for both Enter and Space.
+	// Keeping a keydown handler here would toggle twice per Enter (keydown, then the native click).
+	$(document).on('click', '.btbl-flag-options-toggle', function(e) {
 		e.preventDefault();
 		var $toggle = $(this);
 		var $card = $toggle.closest('.btbl-checkbox, .btbl-flag-card');
@@ -1537,6 +1526,50 @@ jQuery(function($) {
 			syncLayoutInputs();
 			updateLayoutAvailability(); syncLayoutResetVisibility();
 		}
+
+		// Keyboard parity with drag-and-drop: the layout builder was mouse-only, so a keyboard
+		// user could focus a chip but never move it. Left/Right move a chip between zones (the
+		// palette is the last zone, so chips can be removed too); Up/Down reorder within a zone,
+		// matching the arrow-key convention the sortable column lists already use.
+		$builder.on('keydown', '.btbl-layout-chip', function(e) {
+			var horizontal = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+			var vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+			if (!horizontal && !vertical) {
+				return;
+			}
+			e.preventDefault();
+			var $chip = $(this);
+			var $zones = $builder.find('.btbl-layout-drop');
+			var $currentZone = $chip.closest('.btbl-layout-drop');
+
+			if (vertical) {
+				var $siblings = $currentZone.find('.btbl-layout-chip');
+				var idx = $siblings.index($chip);
+				var newIdx = e.key === 'ArrowUp' ? idx - 1 : idx + 1;
+				if (newIdx < 0 || newIdx >= $siblings.length) {
+					return;
+				}
+				if (e.key === 'ArrowUp') {
+					$chip.insertBefore($siblings.eq(newIdx));
+				} else {
+					$chip.insertAfter($siblings.eq(newIdx));
+				}
+			} else {
+				var zoneIdx = $zones.index($currentZone);
+				var targetIdx = e.key === 'ArrowLeft' ? zoneIdx - 1 : zoneIdx + 1;
+				if (targetIdx < 0 || targetIdx >= $zones.length) {
+					return;
+				}
+				$zones.eq(targetIdx).append($chip);
+			}
+
+			syncLayoutInputs();
+			updateLayoutAvailability();
+			syncLayoutResetVisibility();
+			// The chip node moved in the DOM, which drops focus -- put it back on the chip the
+			// user is steering so repeated presses keep working.
+			$chip.trigger('focus');
+		});
 
 		$builder.on('dragstart', '.btbl-layout-chip', function(e) {
 			dragItem = this;
@@ -2136,24 +2169,24 @@ jQuery(function($) {
 		$.post(window.ajaxurl, { action: 'btbl_toggle_help', hide: hide ? '1' : '0', _wpnonce: $t.data('nonce') });
 	});
 
-	// R6: validate the Value overrides JSON on blur so a typo doesn't silently discard rules.
-	$(document).on('blur', '#btbl_value_overrides_json', function() {
+	// R6: validate a JSON textarea on blur so a typo doesn't silently discard what was typed.
+	// Both JSON inputs in the editor fail the same way -- invalid JSON is discarded at save with
+	// no visible sign -- so they share one validator instead of only Value overrides having it.
+	// Opt in with class="btbl-json-check" + data-error-target="<id of the message element>".
+	$(document).on('blur', '.btbl-json-check', function() {
 		var $ta = $(this);
-		var $err = $('#btbl_value_overrides_error');
+		var $err = $('#' + ($ta.data('error-target') || ''));
 		var val = ($ta.val() || '').trim();
-		if (val === '') {
-			$err.prop('hidden', true);
-			$ta.removeClass('btbl-invalid');
-			return;
+		var valid = true;
+		if (val !== '') {
+			try {
+				JSON.parse(val);
+			} catch (err) {
+				valid = false;
+			}
 		}
-		try {
-			JSON.parse(val);
-			$err.prop('hidden', true);
-			$ta.removeClass('btbl-invalid');
-		} catch (err) {
-			$err.prop('hidden', false);
-			$ta.addClass('btbl-invalid');
-		}
+		$err.prop('hidden', valid);
+		$ta.toggleClass('btbl-invalid', !valid);
 	});
 
 	// R15/R45: show the Refresh-preview button only while the builder differs from the

@@ -132,7 +132,7 @@ class BaraTables_Service {
 		],
 		'filtersTitleText' => [
 			'type' => 'text_html',
-			'default' => 'Filters',
+			'default' => '',
 			'label' => null,
 			'description' => null,
 		],
@@ -161,10 +161,15 @@ class BaraTables_Service {
 			'default' => false,
 			'label' => null,
 		],
+		'scrollYEnabled' => [
+			'type' => 'checkbox',
+			'default' => false,
+			'label' => null,
+		],
 		'scrollY' => [
 			'type' => 'number',
-			'default' => 0,
-			'min' => 0,
+			'default' => 300,
+			'min' => 1,
 			'max' => 2000,
 			'label' => null,
 			'description' => null,
@@ -222,13 +227,13 @@ class BaraTables_Service {
 		],
 		'lengthMenuPrefix' => [
 			'type' => 'text_html',
-			'default' => 'Show',
+			'default' => '',
 			'label' => null,
 			'description' => null,
 		],
 		'lengthMenuSuffix' => [
 			'type' => 'text_html',
-			'default' => 'entries',
+			'default' => '',
 			'label' => null,
 			'description' => null,
 		],
@@ -258,7 +263,7 @@ class BaraTables_Service {
 		],
 		'searchText' => [
 			'type' => 'text_html',
-			'default' => 'Search:',
+			'default' => '',
 			'label' => null,
 			'description' => null,
 		],
@@ -270,13 +275,13 @@ class BaraTables_Service {
 		],
 		'searchColumnsLabel' => [
 			'type' => 'text_html',
-			'default' => 'Columns',
+			'default' => '',
 			'label' => null,
 			'description' => null,
 		],
 		'searchColumnsHeading' => [
 			'type' => 'text_html',
-			'default' => 'Search in',
+			'default' => '',
 			'label' => null,
 			'description' => null,
 		],
@@ -393,6 +398,24 @@ class BaraTables_Service {
 			'transform' => [],
 		],
 	];
+	/**
+	 * DataTables style classes for a table's options.
+	 *
+	 * One implementation for both the front end and the editor preview: they used to apply the
+	 * same map with different predicates (`!empty()` vs `($opt ?? true) !== false`), which agree
+	 * only while options arrive fully merged. If a key ever went missing the preview would show a
+	 * style the front end did not.
+	 */
+	public static function table_style_classes(array $options): array {
+		$classes = [];
+		foreach (self::TABLE_STYLE_CLASS_MAP as $option_key => $class_name) {
+			if (!empty($options[$option_key])) {
+				$classes[] = $class_name;
+			}
+		}
+		return $classes;
+	}
+
 	public const TABLE_STYLE_CLASS_MAP = [
 		'stripe' => 'stripe',
 		'rowBorder' => 'row-border',
@@ -436,7 +459,33 @@ class BaraTables_Service {
 	// Ceiling on terms fetched per taxonomy for the editor's term picker. Already-selected terms
 	// are always merged in on top of this, so the cap can never drop an existing selection.
 	public const MAX_TERM_PICKER_TERMS = 200;
+	public const LABEL_I18N_MIGRATION_OPTION = 'btbl_label_i18n_migrated';
+	/**
+	 * The English label defaults that TABLE_OPTION_SCHEMA carried before 1.2.3, and that the
+	 * editor therefore baked into its input fields as a VALUE and persisted on every save. Any
+	 * table saved under 1.0.0-1.2.2 has these literals stored, which is why those six controls
+	 * rendered in English on localized sites no matter what the translation said.
+	 *
+	 * These are deliberately hardcoded English, never __(). The stored value is the untranslated
+	 * literal, so the comparison must be too -- running these through __() on a German site would
+	 * compare "Suchen:" against a stored "Search:" and match nothing.
+	 *
+	 * Every published tag (1.0.0 through 1.2.2) shipped exactly this set with exactly these
+	 * strings -- verified against baratables-svn/tags/* -- so there is no second generation of
+	 * literals to recognise. The other nine frontend_label_defaults() keys always defaulted to
+	 * '' in the schema, were never baked in, and so need no migration.
+	 */
+	private const LEGACY_ENGLISH_LABEL_DEFAULTS = [
+		'searchText'           => 'Search:',
+		'lengthMenuPrefix'     => 'Show',
+		'lengthMenuSuffix'     => 'entries',
+		'filtersTitleText'     => 'Filters',
+		'searchColumnsLabel'   => 'Columns',
+		'searchColumnsHeading' => 'Search in',
+	];
 	private ?array $last_inferred_columns = null;
+	/** Per-request row cache: cache key => ['rows' => array, 'inferred' => ?array]. */
+	private array $row_cache = [];
 	private BaraTables_Repository $repo;
 
 	public function __construct(BaraTables_Repository $repo) {
@@ -658,8 +707,28 @@ class BaraTables_Service {
 	 * string, so non-English sites no longer fall back to the hardcoded English text in JS.
 	 * The source strings match the JS fallbacks exactly, so en_US output is unchanged.
 	 */
-	public function localize_frontend_table_labels(array $options): array {
-		$label_defaults = [
+	/**
+	 * Translated defaults for every visitor-facing control label. Single source of truth: the
+	 * front end substitutes these when the stored value is blank, and the editor shows the same
+	 * string as the field's placeholder, so what an admin sees is what a visitor gets.
+	 *
+	 * These MUST stay blank in TABLE_OPTION_SCHEMA. A non-empty English default there is baked
+	 * into the editor field as a value and persisted on save, which is why "Search:", "Show",
+	 * "entries" and "Filters" used to render untranslated on non-English sites no matter what.
+	 */
+	public static function frontend_label_defaults(): array {
+		return [
+			'searchText'           => __('Search:', 'baratables'),
+			'lengthMenuPrefix'     => __('Show', 'baratables'),
+			'lengthMenuSuffix'     => __('entries', 'baratables'),
+			'filtersTitleText'     => __('Filters', 'baratables'),
+			// The result summary. These were the last visitor-facing labels still absent here, so
+			// they shipped blank and DataTables rendered its OWN English -- while the editor
+			// placeholder and the admin preview both showed the plugin's translated string. Same
+			// screen, two answers, and English on every localized site.
+			'infoText'             => __('Showing _START_ to _END_ of _TOTAL_ entries', 'baratables'),
+			'infoEmpty'            => __('Showing 0 to 0 of 0 entries', 'baratables'),
+			'infoFiltered'         => __('(filtered from _MAX_ total entries)', 'baratables'),
 			'searchColumnsLabel'   => __('Columns', 'baratables'),
 			'searchColumnsHeading' => __('Search in', 'baratables'),
 			'buttonTextCopy'       => __('Copy', 'baratables'),
@@ -669,12 +738,99 @@ class BaraTables_Service {
 			'buttonTextColvis'     => __('Column visibility', 'baratables'),
 			'buttonTextPagelength' => __('Page length', 'baratables'),
 		];
-		foreach ($label_defaults as $key => $default) {
+	}
+
+	/**
+	 * Default pagination glyphs, keyed by their table_options key.
+	 *
+	 * Deliberately NOT part of frontend_label_defaults(): those get substituted into the front-end
+	 * payload when blank, but a blank paginate* option must STAY blank so DataTables renders its
+	 * own built-in arrows. These exist only so the two places that have to show the admin what a
+	 * blank field will produce -- the editor's placeholder and the admin preview's buttons -- agree
+	 * with each other. They were duplicated literals in both spots; a maintainer changing one and
+	 * not the other made the editor promise one arrow while the preview drew another, which is the
+	 * same "one screen, two answers" defect the label defaults were consolidated to prevent.
+	 *
+	 * Not translated: these are typographic glyphs, identical in every locale.
+	 */
+	public static function paginate_glyph_defaults(): array {
+		return [
+			'paginateFirst'    => '«',
+			'paginatePrevious' => '‹',
+			'paginateNext'     => '›',
+			'paginateLast'     => '»',
+		];
+	}
+
+	public function localize_frontend_table_labels(array $options): array {
+		foreach (self::frontend_label_defaults() as $key => $default) {
 			if (!isset($options[$key]) || $options[$key] === '') {
 				$options[$key] = $default;
 			}
 		}
 		return $options;
+	}
+
+	/**
+	 * One-time upgrade: clear stored control labels that are byte-identical to the English
+	 * defaults the pre-1.2.3 editor baked into its own fields, so localize_frontend_table_labels()
+	 * can substitute the translated string instead.
+	 *
+	 * Blanking the schema defaults in 1.2.3 only fixes tables saved AFTER the upgrade; every table
+	 * that already exists still holds the English literal, and a stored value always wins over the
+	 * translation. Without this pass the i18n fix reaches no existing table on any site.
+	 *
+	 * On an English site this is output-identical: the value removed and the value substituted in
+	 * its place are the same string. A translated site gets the translation, which is the point.
+	 * The one behaviour change worth naming: an admin who deliberately typed the English word back
+	 * in is indistinguishable from the baked default, so their table starts following the locale
+	 * too -- correct for the overwhelming majority, and re-typing it is not how you pin a label
+	 * anyway (a value that differs by even one character is left untouched).
+	 *
+	 * Idempotent and gated by an option; safe to call on every admin load.
+	 */
+	public function migrate_legacy_english_labels(): void {
+		if (get_option(self::LABEL_I18N_MIGRATION_OPTION)) {
+			return;
+		}
+		// Include 'trash' (which get_posts excludes under 'any') for the same reason
+		// rewrite_chart_table_id() does: a trashed table that is later restored must come back
+		// migrated, not carrying literals this pass will never run again to clear.
+		$ids = get_posts([
+			'post_type' => BaraTables_Repository::CPT,
+			'post_status' => ['publish', 'draft', 'pending', 'future', 'private', 'trash'],
+			'numberposts' => -1, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page -- One-time migration must visit every table once.
+			'fields' => 'ids',
+			'no_found_rows' => true,
+		]);
+		if (!empty($ids)) {
+			_prime_post_caches($ids, false, true);
+		}
+		foreach ($ids as $id) {
+			$defn = get_post_meta((int) $id, BaraTables_Repository::META_KEY, true);
+			if (!is_array($defn) || empty($defn['table_options']) || !is_array($defn['table_options'])) {
+				continue;
+			}
+			$changed = false;
+			foreach (self::LEGACY_ENGLISH_LABEL_DEFAULTS as $key => $legacy_english) {
+				if (!array_key_exists($key, $defn['table_options'])) {
+					continue;
+				}
+				// Compare the raw stored scalar. No trim() and no case folding: a label the admin
+				// altered even by a space is theirs, and clearing it would silently discard their
+				// wording rather than fix a translation.
+				$stored = $defn['table_options'][$key];
+				if (!is_string($stored) || $stored !== $legacy_english) {
+					continue;
+				}
+				$defn['table_options'][$key] = '';
+				$changed = true;
+			}
+			if ($changed) {
+				update_post_meta((int) $id, BaraTables_Repository::META_KEY, $defn);
+			}
+		}
+		update_option(self::LABEL_I18N_MIGRATION_OPTION, 1, false);
 	}
 
 	public function get_default_table_options(): array {
@@ -711,6 +867,12 @@ class BaraTables_Service {
 				$choices = isset($config['choices']) && is_array($config['choices']) ? array_keys($config['choices']) : [];
 				$options[$key] = $this->sanitize_checkbox_multi($options_raw[$key], $choices);
 			}
+		}
+
+		// Tables saved before 1.2.3 stored the vertical-scroll on/off state in the height itself
+		// (0 = off); when the flag is absent, derive it so those tables keep their behavior.
+		if (!array_key_exists('scrollYEnabled', $options_raw)) {
+			$options['scrollYEnabled'] = ((int) ($options_raw['scrollY'] ?? 0)) > 0;
 		}
 
 		return $options;
@@ -861,7 +1023,15 @@ class BaraTables_Service {
 
 		$custom_meta = array_filter(array_map('trim', explode(',', $custom_meta_raw)));
 		foreach ($custom_meta as $meta_key) {
-			$columns[] = 'meta:' . sanitize_key($meta_key);
+			// Meta keys are case-sensitive free-form strings (e.g. "Price_USD", "product.price").
+			// sanitize_key() would lowercase and strip them into a key that matches no stored meta,
+			// producing a permanently empty column. Only strip control chars/tags; the source:key
+			// slug is re-split colon-safe in normalize_column().
+			$meta_key = sanitize_text_field($meta_key);
+			if ($meta_key === '') {
+				continue;
+			}
+			$columns[] = 'meta:' . $meta_key;
 		}
 
 		$columns = array_unique(array_filter($columns));
@@ -987,6 +1157,19 @@ class BaraTables_Service {
 			'format_date' => $format_date,
 			'date_format' => $date_format,
 		];
+	}
+
+	/**
+	 * Ordered slugs for a column list, one entry per column (empty string where unresolvable).
+	 * Public so render-layer code can align a projected row array with its columns without
+	 * re-implementing the slug rules.
+	 */
+	public function column_slugs_in_order(array $columns): array {
+		$slugs = [];
+		foreach (array_values($columns) as $col) {
+			$slugs[] = is_array($col) ? $this->resolve_column_slug($col) : '';
+		}
+		return $slugs;
 	}
 
 	private function resolve_column_slug(array $col): string {
@@ -1431,7 +1614,79 @@ class BaraTables_Service {
 		return $this->repo->get_post_id_by_slug($id);
 	}
 
+	/**
+	 * Rows for a definition, memoized for the lifetime of the request.
+	 *
+	 * A page holding a table plus a chart sourced from it (or the same shortcode twice) used to run
+	 * the whole pipeline once per render: two WP_Query passes, or two CSV parses, or two external
+	 * MySQL connections and SELECTs, plus the override/date/access work each time.
+	 *
+	 * Deliberately request-scoped only -- never a transient. Rows depend on the current visitor
+	 * through row-level access control and on live sources that can change between requests.
+	 *
+	 * get_rows() also PUBLISHES state: it sets $last_inferred_columns, which ensure_columns_inferred()
+	 * reads afterwards. A cache that returned rows alone would leave that pointing at whichever
+	 * definition was fetched most recently, so a second table on the page could inherit the first
+	 * one's inferred columns. The inferred set is therefore cached and restored with the rows.
+	 */
 	public function get_rows(array $definition, int $limit = -1): array {
+		$cache_key = $this->row_cache_key($definition, $limit);
+		if ($cache_key !== '' && array_key_exists($cache_key, $this->row_cache)) {
+			$this->last_inferred_columns = $this->row_cache[$cache_key]['inferred'];
+			return $this->row_cache[$cache_key]['rows'];
+		}
+		$rows = $this->get_rows_uncached($definition, $limit);
+		if ($cache_key !== '') {
+			$this->row_cache[$cache_key] = [
+				'rows' => $rows,
+				'inferred' => $this->last_inferred_columns,
+			];
+		}
+		return $rows;
+	}
+
+	/**
+	 * Identity of a row fetch.
+	 *
+	 * Hashes the WHOLE definition, deliberately. An earlier version listed the fields thought to
+	 * affect the row set (access_control, columns, custom_query, value_overrides) and silently
+	 * served the wrong rows whenever two definitions shared an id but differed in a field that was
+	 * not on the list -- post_types, the taxonomy filter, csv_attachment_id/delimiter/header, the
+	 * external_db config, date formats. The editor previews an UNSAVED definition under the saved
+	 * table's id, which is exactly that shape. A hand-maintained allowlist here is a bug waiting to
+	 * be re-introduced every time the definition grows a field, so hash everything: a missed field
+	 * can then only ever cost a cache miss, never a wrong answer.
+	 *
+	 * The current user is part of the key because row-level access control filters per visitor.
+	 * Returns '' when there is no id, i.e. nothing stable to cache against.
+	 */
+	private function row_cache_key(array $definition, int $limit): string {
+		$id = isset($definition['id']) ? (string) $definition['id'] : '';
+		if ($id === '') {
+			return '';
+		}
+		// custom_data carries its rows INSIDE the definition (up to MAX_CUSTOM_CELLS), so
+		// fingerprinting it would cost an encode+hash of the entire dataset on every call -- more
+		// than get_rows_from_custom() spends doing the work, which is pure array manipulation with
+		// no I/O. Nothing to memoize, so don't.
+		if (BaraTables_Source_Type::is_custom_data($definition['source_type'] ?? '')) {
+			return '';
+		}
+		$fingerprint = wp_json_encode($definition);
+		if (!is_string($fingerprint)) {
+			// Unencodable definition (a resource or closure smuggled in): do not cache rather than
+			// risk keying two different fetches identically.
+			return '';
+		}
+		return implode('|', [
+			$id,
+			(string) $limit,
+			(string) get_current_user_id(),
+			md5($fingerprint),
+		]);
+	}
+
+	private function get_rows_uncached(array $definition, int $limit = -1): array {
 		$this->last_inferred_columns = null;
 		$definition['source_type'] = BaraTables_Source_Type::normalize($definition['source_type'] ?? BaraTables_Source_Type::WP_QUERY, BaraTables_Source_Type::WP_QUERY);
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
@@ -1475,7 +1730,16 @@ class BaraTables_Service {
 			'post_type'      => $post_types,
 			'posts_per_page' => $per_page,
 			'no_found_rows'  => true,
-			'post_status'    => 'publish',
+			// Attachments are 'inherit', not 'publish' -- see post_status_for_types().
+			'post_status'    => self::post_status_for_types($post_types),
+			// A table is not the blog home. Without this, WP_Query prepends the site's sticky posts
+			// to every wp_query-source table -- pushing the row count PAST the configured limit and
+			// showing rows the table was never asked for. It bites here because post_type is always
+			// an array, so parse_query() never sets is_post_type_archive and falls through to
+			// is_home = true. The custom-query path already set this; the builder path did not, so
+			// the two disagreed. (is_admin is in core's same guard, which is why the editor preview
+			// looked correct while the published table did not.)
+			'ignore_sticky_posts' => true,
 		];
 
 		if ($definition['source_type'] === BaraTables_Source_Type::CUSTOM_QUERY) {
@@ -1514,19 +1778,55 @@ class BaraTables_Service {
 			}
 		}
 
+		// WP's default bulk priming of the post meta and term caches is deliberately left ON.
+		//
+		// An earlier version derived `update_post_meta_cache`/`update_post_term_cache` from a scan
+		// of the column sources, to skip two queries for a core-columns-only table. That trade is
+		// backwards: each flag saves ONE bulk query but, when the scan is wrong, costs one query
+		// PER ROW -- up to the 10,000-row ceiling. And the scan is wrong more often than it looks:
+		//   - resolve_value() routes every source that is not core/tax to get_meta_value(), so ACF
+		//     and other custom sources need meta even though their source is not literally 'meta';
+		//   - third-party callbacks on the_title / get_the_excerpt / post_link / get_the_date
+		//     (translation, SEO, membership plugins) commonly call get_post_meta();
+		//   - get_permalink() on a /%category%/ permastruct calls get_the_category() per post,
+		//     which needs the term cache.
+		// Only the two additive primes below are kept: they can add work but can never remove a
+		// cache WP would have populated.
+		$wants_author = false;
+		$wants_permalink = false;
+		foreach ((isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : []) as $col) {
+			if (!is_array($col) || ($col['source'] ?? '') !== 'core') {
+				continue;
+			}
+			$col_key = (string) ($col['key'] ?? '');
+			if ($col_key === 'post_author') {
+				$wants_author = true;
+			} elseif ($col_key === 'permalink') {
+				$wants_permalink = true;
+			}
+		}
+
 		$query = new WP_Query($query_args);
 
 		// If an author column is selected, prime the author user-caches in one query so the
 		// get_the_author_meta() call in the row loop is not a per-author lookup (mild N+1).
-		$wants_author = false;
-		foreach ($definition['columns'] as $col) {
-			if (($col['source'] ?? '') === 'core' && ($col['key'] ?? '') === 'post_author') {
-				$wants_author = true;
-				break;
-			}
-		}
 		if ($wants_author && !empty($query->posts)) {
 			cache_users(array_unique(array_map('intval', wp_list_pluck($query->posts, 'post_author'))));
+		}
+
+		// get_permalink() on a hierarchical type walks ancestors via get_page_uri(), querying once
+		// per uncached parent. Prime one level in a single query (shared ancestors then hit cache).
+		if ($wants_permalink && !empty($query->posts)) {
+			$parent_ids = [];
+			foreach ($query->posts as $post) {
+				$parent_id = (int) ($post->post_parent ?? 0);
+				if ($parent_id > 0 && is_post_type_hierarchical($post->post_type)) {
+					$parent_ids[$parent_id] = true;
+				}
+			}
+			if (!empty($parent_ids)) {
+				_prime_post_caches(array_keys($parent_ids), false, false);
+			}
 		}
 
 		$rows = [];
@@ -1543,7 +1843,10 @@ class BaraTables_Service {
 			$rows[] = $row;
 		}
 
-		wp_reset_postdata();
+		// No wp_reset_postdata() here: nothing in this loop calls setup_postdata()/the_post() --
+		// every core call is passed its $post explicitly. Resetting would act on the GLOBAL
+		// $wp_query, clobbering $GLOBALS['post'] for a theme that renders this shortcode inside its
+		// own secondary loop.
 		return $rows;
 	}
 
@@ -1596,34 +1899,16 @@ class BaraTables_Service {
 					$normalized[$idx] = $this->format_date_value($normalized[$idx] ?? '', $date_format_map[$slug]);
 				}
 			}
-			if (!empty($overrides)) {
-				$row_tokens = [];
-				foreach ($column_slugs as $idx => $slug) {
-					if ($slug === '') {
-						continue;
-					}
-					$value = $normalized[$idx] ?? '';
-					$lower_slug = strtolower($slug);
-					$row_tokens[$lower_slug] = $value;
-					if (strpos($slug, ':') !== false) {
-						$key = substr($slug, strpos($slug, ':') + 1);
-						if ($key !== '') {
-							$row_tokens[strtolower($key)] = $value;
-						}
-					}
-				}
-				foreach ($column_slugs as $idx => $slug) {
-					if ($slug === '') {
-						continue;
-					}
-					$normalized[$idx] = $this->apply_overrides_for_row($normalized[$idx] ?? '', $slug, $overrides, $row_tokens);
-				}
-			}
 			$rows[] = $normalized;
 			if ($limit > 0 && count($rows) >= $limit) {
 				break;
 			}
 		}
+
+		// Overrides run against $column_defs order and BEFORE reorder_rows_by_slug_map() re-orders
+		// rows to match $definition['columns'] -- the same position the inline per-row loop used.
+		// Shared with the CSV/external paths so the {{slug}}/{{key}} token rules live in one place.
+		$rows = $this->apply_ordered_overrides($rows, $column_defs, $overrides);
 
 		if (!empty($definition['columns'])) {
 			$slug_map = $this->build_slug_index_map($column_defs);
@@ -1661,35 +1946,76 @@ class BaraTables_Service {
 		// bounded to MAX_CSV_BYTES above) and apply the limit after filtering, below. Without
 		// access control, keep stopping at the limit so a large file is never fully read.
 		$defer_limit = $access_enabled && !empty($access_policy['csv_column']);
-		$rows = [];
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- fgetcsv requires a file handle; WP_Filesystem has no CSV parsing equivalent.
-		$handle = fopen($path, 'rb');
-		if ($handle !== false) {
-			$count = 0;
-			while (true) {
-				$data = fgetcsv($handle, self::MAX_CSV_LINE_LENGTH, $delimiter, '"', '\\');
-				if ($data === false) {
-					break;
-				}
-				// fgetcsv() yields [null] for a blank physical line (a trailing newline, or a
-				// spacer row). Counting it would render an all-empty <tr> and, worse, spend one
-				// of the row-limit slots on it. The importer's own reader already skips this.
-				if ($data === [null]) {
-					continue;
-				}
-				if ($has_header && $count === 0) {
-					$this->infer_columns_from_header($data);
+
+		// Parsed rows are cached BEFORE access filtering, which is per-visitor and must never be
+		// cached. filemtime + size are in the key, so an edited file can never serve stale rows.
+		// Note this parse also publishes $last_inferred_columns (via infer_columns_from_header),
+		// so the cache carries that too -- returning rows alone would leave a later
+		// ensure_columns_inferred() reading whichever file was parsed most recently.
+		// Only meaningful on sites with a persistent object cache; elsewhere it is request-scoped
+		// and the per-request row cache in get_rows() has already collapsed repeat reads.
+		// filemtime has 1-second granularity, so mtime+size alone cannot see a same-second in-place
+		// replacement of identical length. Fold in the attachment's own modified time (WordPress
+		// media flows bump it) and keep the entry short-lived, so the residual window for an
+		// out-of-band overwrite is minutes rather than an hour.
+		$csv_cache_key = 'csv_rows_' . md5(implode('|', [
+			(string) $attachment_id,
+			(string) filemtime($path),
+			(string) $file_size,
+			(string) get_post_modified_time('U', true, $attachment_id),
+			$delimiter,
+			$has_header ? '1' : '0',
+			$defer_limit ? 'all' : (string) $limit,
+		]));
+		$cached = wp_cache_get($csv_cache_key, 'baratables');
+		if (is_array($cached) && array_key_exists('rows', $cached)) {
+			$this->last_inferred_columns = $cached['inferred'];
+			$rows = $cached['rows'];
+		} else {
+			$rows = [];
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- fgetcsv requires a file handle; WP_Filesystem has no CSV parsing equivalent.
+			$handle = fopen($path, 'rb');
+			if ($handle !== false) {
+				$count = 0;
+				while (true) {
+					$data = fgetcsv($handle, self::MAX_CSV_LINE_LENGTH, $delimiter, '"', '\\');
+					if ($data === false) {
+						break;
+					}
+					// fgetcsv() yields [null] for a blank physical line (a trailing newline, or a
+					// spacer row). Counting it would render an all-empty <tr> and, worse, spend one
+					// of the row-limit slots on it. The importer's own reader already skips this.
+					if ($data === [null]) {
+						continue;
+					}
+					if ($has_header && $count === 0) {
+						$this->infer_columns_from_header($data);
+						$count++;
+						continue;
+					}
+					$rows[] = $data;
 					$count++;
-					continue;
+					if (!$defer_limit && $limit > 0 && $count >= $limit + ($has_header ? 1 : 0)) {
+						break;
+					}
 				}
-				$rows[] = $data;
-				$count++;
-				if (!$defer_limit && $limit > 0 && $count >= $limit + ($has_header ? 1 : 0)) {
-					break;
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing handle opened for fgetcsv; WP_Filesystem has no CSV parsing equivalent.
+				fclose($handle);
+				// Only worth writing when a persistent backend can actually serve it on a LATER
+				// request -- without one, wp_cache_set() just retains up to 5MB for the rest of this
+				// request that nothing can read back (get_rows()'s own per-request cache already
+				// short-circuits the repeat). Gate on BYTES, not row count: the hazard is a
+				// backend's per-item ceiling (memcached defaults to 1MB), and 5,000 wide rows blow
+				// past that while passing a row-count test.
+				if (wp_using_ext_object_cache() && $file_size <= 256 * KB_IN_BYTES && count($rows) <= 5000) {
+					wp_cache_set(
+						$csv_cache_key,
+						['rows' => $rows, 'inferred' => $this->last_inferred_columns],
+						'baratables',
+						5 * MINUTE_IN_SECONDS
+					);
 				}
 			}
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing handle opened for fgetcsv; WP_Filesystem has no CSV parsing equivalent.
-			fclose($handle);
 		}
 
 		if (empty($this->last_inferred_columns)) {
@@ -1816,6 +2142,77 @@ class BaraTables_Service {
 		return $key === null ? null : (int) $csv_index_map[$key];
 	}
 
+	/**
+	 * The external columns a render actually needs, or [] to mean "SELECT *".
+	 *
+	 * Returns [] when the definition has no columns (the reader infers them from the result keys,
+	 * so it must see every column) or when any wanted name fails identifier validation.
+	 */
+	private function external_select_columns(array $definition, array $access_policy): array {
+		$columns = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
+		if (empty($columns)) {
+			return [];
+		}
+		$wanted = [];
+		foreach ($columns as $col) {
+			// Every column must be a real external column. A definition carrying a core:* column
+			// (imports, hand-edited meta) would otherwise put a non-existent name in the SELECT,
+			// so every render took the error+fallback path -- an extra round trip AND a
+			// "WordPress database error" in the PHP log on every single page view.
+			if (!is_array($col) || ($col['source'] ?? '') !== 'external') {
+				return [];
+			}
+			$clean = $this->sanitize_external_identifier((string) ($col['key'] ?? ''));
+			if ($clean === '') {
+				return [];
+			}
+			$wanted[$clean] = true;
+		}
+		// The access-token column is never displayed but IS read to filter rows, so it has to be
+		// fetched too. Its stored name is matched loosely against the real keys, so a narrowed
+		// fetch is re-checked by the caller and falls back to SELECT * if the token goes missing.
+		$token = (string) ($access_policy['external_column'] ?? '');
+		if ($token !== '') {
+			$clean_token = $this->sanitize_external_identifier($token);
+			if ($clean_token === '') {
+				return [];
+			}
+			$wanted[$clean_token] = true;
+		}
+		return array_keys($wanted);
+	}
+
+	/**
+	 * One external fetch. $columns empty means SELECT *. Returns null on any DB error so the
+	 * caller can fall back -- a column list that has drifted from the real schema must degrade to
+	 * today's SELECT * behaviour, never to a broken table.
+	 */
+	private function fetch_external_rows($ext_db, string $table, int $fetch_limit, array $columns): ?array {
+		// ONE prepared statement for both shapes -- '*' when nothing can be narrowed, otherwise one
+		// %i identifier placeholder per column. Only the NUMBER of placeholders is dynamic; every
+		// value, including each column name, is bound by prepare(). Kept as a single call so the
+		// suite's first-party-DB-call tripwire stays tight (see local-tests/run-tests.sh).
+		$select_list = empty($columns) ? '*' : implode(', ', array_fill(0, count($columns), '%i'));
+		$args = array_merge($columns, [$table, $fetch_limit]);
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Format string is built only from literal '%i' placeholders; all values are bound.
+		$sql = $ext_db->prepare('SELECT ' . $select_list . ' FROM %i LIMIT %d', ...$args);
+		if (!is_string($sql) || $sql === '') {
+			return null;
+		}
+		// Suppress while probing: a narrowed SELECT is allowed to fail (that is what the caller's
+		// SELECT * fallback is for), and wpdb::print_error() would otherwise write to the PHP error
+		// log on every render for a definition whose columns drifted from the schema.
+		$suppressed = $ext_db->suppress_errors(true);
+		$ext_db->last_error = '';
+		$results = $ext_db->get_results($sql, ARRAY_A);
+		$failed = $ext_db->last_error !== '';
+		$ext_db->suppress_errors($suppressed);
+		if ($failed) {
+			return null;
+		}
+		return is_array($results) ? $results : null;
+	}
+
 	private function get_rows_from_external(array $definition, int $limit = -1, array $access_policy = []): array {
 		$config = isset($definition['external_db']) && is_array($definition['external_db']) ? $definition['external_db'] : [];
 		$host = $config['host'] ?? '';
@@ -1851,11 +2248,27 @@ class BaraTables_Service {
 		$access_active = !empty($access_policy['external_column']);
 		$fetch_limit = $access_active ? max($per_page, (int) self::TABLE_OPTION_SCHEMA['rowLimit']['max']) : $per_page;
 
-		$sql = $ext_db->prepare('SELECT * FROM %i LIMIT %d', $table, $fetch_limit);
-		if (!is_string($sql) || $sql === '') {
-			return [];
+		// Fetch only the columns this table renders (plus the access-token column) instead of
+		// SELECT *. On a wide source that is the difference between pulling every column of up to
+		// 10,000 rows and pulling the two or three actually shown. Any drift between the saved
+		// column list and the real schema falls back to SELECT *, so behaviour never regresses.
+		$select_columns = $this->external_select_columns($definition, $access_policy);
+		$results = empty($select_columns)
+			? null
+			: $this->fetch_external_rows($ext_db, $table, $fetch_limit, $select_columns);
+
+		// A narrowed fetch that SUCCEEDS but lacks the token column would make the access filter
+		// deny every row -- an empty table, silently. Re-check and fall back if so.
+		if (is_array($results) && !empty($results) && $access_active) {
+			$probe = reset($results);
+			if (!is_array($probe) || $this->resolve_external_row_key($probe, (string) $access_policy['external_column']) === null) {
+				$results = null;
+			}
 		}
-		$results = $ext_db->get_results($sql, ARRAY_A);
+
+		if (!is_array($results)) {
+			$results = $this->fetch_external_rows($ext_db, $table, $fetch_limit, []);
+		}
 		if (!is_array($results) || empty($results)) {
 			return [];
 		}
@@ -2160,8 +2573,9 @@ class BaraTables_Service {
 		$schema['stateSave']['label'] = __('Remember table state', 'baratables');
 		$schema['autoWidth']['label'] = __('Auto-size columns', 'baratables');
 		$schema['scrollX']['label'] = __('Enable horizontal scrolling', 'baratables');
-		$schema['scrollY']['label'] = __('Vertical scroll height (px)', 'baratables');
-		$schema['scrollCollapse']['label'] = __('Collapse vertical scroll when shorter', 'baratables');
+		$schema['scrollYEnabled']['label'] = __('Fixed scroll height', 'baratables');
+		$schema['scrollY']['label'] = __('Height (px)', 'baratables');
+		$schema['scrollCollapse']['label'] = __('Collapse when shorter', 'baratables');
 		$schema['stripe']['label'] = __('Show zebra stripes', 'baratables');
 		$schema['rowBorder']['label'] = __('Show row borders', 'baratables');
 		$schema['cellBorder']['label'] = __('Show cell borders', 'baratables');

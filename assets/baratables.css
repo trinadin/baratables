@@ -96,7 +96,13 @@
 	position: relative;
 }
 
-.btbl-search-columns-toggle {
+/* Self-contained front-end control styling. The "Clear filters" and "Edit Table" controls carry
+   wp-admin's .button classes, which only exist on the front end if the active theme happens to
+   define them -- on themes that don't, they rendered as unstyled UA buttons right next to this
+   fully-styled toggle. The wp classes stay on the markup as progressive enhancement. */
+.btbl-search-columns-toggle,
+.btbl-reset-button,
+.btbl-edit-link {
 	border: 1px solid #d0d7de;
 	background: #fff;
 	border-radius: 4px;
@@ -104,9 +110,14 @@
 	font-size: 13px;
 	cursor: pointer;
 	line-height: 1.2;
+	display: inline-block;
+	color: inherit;
+	text-decoration: none;
 }
 
-.btbl-search-columns-toggle:focus {
+.btbl-search-columns-toggle:focus,
+.btbl-reset-button:focus,
+.btbl-edit-link:focus {
 	outline: 2px solid #2271b1;
 	outline-offset: 1px;
 }

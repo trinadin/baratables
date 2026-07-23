@@ -23,25 +23,18 @@ class BaraTables_Admin_Pages {
 		$this->tab_advanced = new BaraTables_Admin_Tab_Advanced();
 	}
 
-	public function render_table_form(array $context, ?array $editing_defn, string $page_slug, bool $wrap_form = true, bool $include_title = true, string $title_fallback = ''): void {
-		$form_action = $context['form_action'] ?? '';
+	public function render_table_form(array $context, ?array $editing_defn): void {
 		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
 		$table_id = $editing_defn['id'] ?? '';
 		$shortcode = $table_id !== '' ? '[bara_table id="' . sanitize_text_field((string) $table_id) . '"]' : '';
-		$title_value = $editing_defn['name'] ?? $title_fallback;
 		$nav_class = static function (string $tab) use ($active_tab): string {
 			$base = 'nav-tab btbl-tab-link';
 			return $active_tab === $tab ? 'nav-tab nav-tab-active btbl-tab-link' : $base;
 		};
 		?>
-		<?php if ($wrap_form) : ?>
-			<form method="post" autocomplete="off">
-		<?php endif; ?>
 			<?php wp_nonce_field($this->nonce_action, $this->nonce_field); ?>
-			<?php if ($wrap_form) : ?>
-				<input type="hidden" name="btbl_action" value="<?php echo esc_attr($form_action); ?>" />
-			<?php endif; ?>
-			<input type="hidden" name="btbl_active_tab" id="btbl_active_tab" value="<?php echo esc_attr($active_tab); ?>" />
+			<?php // id only: read client-side by admin.js to restore the active tab. Never posted. ?>
+			<input type="hidden" id="btbl_active_tab" value="<?php echo esc_attr($active_tab); ?>" />
 			<?php
 			$id_editor_html = '';
 			if ($editing_defn) {
@@ -49,14 +42,7 @@ class BaraTables_Admin_Pages {
 				BaraTables_Admin_Page_Utils::render_id_editor('btbl_table_id', (string) $table_id, __('Table ID', 'baratables'), '[bara_table]');
 				$id_editor_html = (string) ob_get_clean();
 			}
-			BaraTables_Admin_Page_Utils::render_title_section(
-				__('Table name', 'baratables'),
-				'btbl_name',
-				$title_value,
-				$shortcode,
-				$include_title,
-				$id_editor_html
-			);
+			BaraTables_Admin_Page_Utils::render_title_section($shortcode, $id_editor_html);
 			?>
 			<?php BaraTables_Help::render_toggle(); ?>
 			<?php if (!$editing_defn && BaraTables_Help::is_first_table()) : ?>
@@ -78,7 +64,7 @@ class BaraTables_Admin_Pages {
 				</h2>
 
 				<?php
-				$this->tab_general->render($context, $editing_defn, $page_slug);
+				$this->tab_general->render($context, $editing_defn);
 				$this->tab_columns->render($context);
 				$this->tab_table->render($context);
 				$this->tab_advanced->render($context);
@@ -94,16 +80,7 @@ class BaraTables_Admin_Pages {
 			// request was cut short and must not be treated as the user's intent.
 			?>
 			<input type="hidden" name="<?php echo esc_attr(BaraTables_Admin_Action_Guard::COMPLETE_FIELD); ?>" value="1" />
-			<?php if ($wrap_form) : ?>
-				<p class="btbl-submit-row">
-					<button type="submit" class="button button-primary">
-						<?php echo $editing_defn ? esc_html__('Update Table', 'baratables') : esc_html__('Publish Table', 'baratables'); ?>
-					</button>
-				</p>
-			<?php endif; ?>
-		<?php if ($wrap_form) : ?>
-			</form>
-		<?php endif;
+		<?php
 	}
 
 	/** Render just the Columns & Filters panel (used by the no-reload field refresh). */
@@ -114,9 +91,9 @@ class BaraTables_Admin_Pages {
 	}
 
 	/** Render just the Source panel (used by the no-reload field refresh). */
-	public function render_source_panel(array $context, ?array $editing_defn, string $page_slug): string {
+	public function render_source_panel(array $context, ?array $editing_defn): string {
 		ob_start();
-		$this->tab_general->render($context, $editing_defn, $page_slug);
+		$this->tab_general->render($context, $editing_defn);
 		return (string) ob_get_clean();
 	}
 
@@ -124,12 +101,7 @@ class BaraTables_Admin_Pages {
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
 		$allowed_inline = BaraTables_Service::allowed_inline_html();
 		$table_options = $this->service->get_table_options($definition);
-		$table_classes = ['widefat', 'btbl-preview-table'];
-		foreach (BaraTables_Service::TABLE_STYLE_CLASS_MAP as $option_key => $class_name) {
-			if (($table_options[$option_key] ?? true) !== false) {
-				$table_classes[] = $class_name;
-			}
-		}
+		$table_classes = array_merge(['widefat', 'btbl-preview-table'], BaraTables_Service::table_style_classes($table_options));
 		$preview_rows = $rows;
 		if (!empty($table_options['paging'])) {
 			$page_length = isset($table_options['pageLength']) ? (int) $table_options['pageLength'] : 0;
@@ -149,8 +121,11 @@ class BaraTables_Admin_Pages {
 		}
 		$info_text = '';
 		if (!empty($table_options['info'])) {
-			$default_info = __('Showing _START_ to _END_ of _TOTAL_ entries', 'baratables');
-			$default_empty = __('Showing 0 to 0 of 0 entries', 'baratables');
+			// Same source as the front end, so the preview cannot promise a string the table
+			// does not render.
+			$info_defaults = BaraTables_Service::frontend_label_defaults();
+			$default_info = $info_defaults['infoText'];
+			$default_empty = $info_defaults['infoEmpty'];
 			$template = $display_rows > 0
 				? (string) ($table_options['infoText'] ?? '')
 				: (string) ($table_options['infoEmpty'] ?? '');
@@ -175,10 +150,16 @@ class BaraTables_Admin_Pages {
 			'info' => !empty($table_options['info']) && $info_text !== '',
 			'paging' => !empty($table_options['paging']),
 		];
-		$search_label = (string) ($table_options['searchText'] ?? '');
+		// Same helper the front end uses. These schema defaults are '' so a translated default can
+		// be supplied at output; reading the raw option here left the preview rendering a bare
+		// search box and a bare length selector while the published table showed "Search:" and
+		// "Show ... entries" -- the same screen disagreeing with itself, which is exactly the drift
+		// the button labels below were already fixed for.
+		$label_options = $this->service->localize_frontend_table_labels($table_options);
+		$search_label = (string) ($label_options['searchText'] ?? '');
 		$search_placeholder = (string) ($table_options['searchPlaceholder'] ?? '');
-		$length_prefix = (string) ($table_options['lengthMenuPrefix'] ?? '');
-		$length_suffix = (string) ($table_options['lengthMenuSuffix'] ?? '');
+		$length_prefix = (string) ($label_options['lengthMenuPrefix'] ?? '');
+		$length_suffix = (string) ($label_options['lengthMenuSuffix'] ?? '');
 		$page_length = isset($table_options['pageLength']) ? (int) $table_options['pageLength'] : 10;
 		$length_choices = array_unique(array_filter([$page_length, 10, 25, 50, 100]));
 		sort($length_choices);
@@ -188,7 +169,7 @@ class BaraTables_Admin_Pages {
 		// "Export Excel" / "Column visibility" -- so the same screen disagreed with itself.
 		// localize_frontend_table_labels() returns the user's custom text when set and the
 		// translated default otherwise, so one lookup covers both cases.
-		$button_label_options = $this->service->localize_frontend_table_labels($table_options);
+		$button_label_options = $label_options;
 		$button_labels = [
 			'copy'       => (string) ($button_label_options['buttonTextCopy'] ?? ''),
 			'csv'        => (string) ($button_label_options['buttonTextCsv'] ?? ''),
@@ -197,10 +178,11 @@ class BaraTables_Admin_Pages {
 			'colvis'     => (string) ($button_label_options['buttonTextColvis'] ?? ''),
 			'pagelength' => (string) ($button_label_options['buttonTextPagelength'] ?? ''),
 		];
-		$paginate_defaults = ['first' => '«', 'previous' => '‹', 'next' => '›', 'last' => '»'];
 		$paginate_labels = [];
-		foreach ($paginate_defaults as $key => $fallback) {
-			$custom = (string) ($table_options['paginate' . ucfirst($key)] ?? '');
+		foreach (BaraTables_Service::paginate_glyph_defaults() as $option_key => $fallback) {
+			// paginateFirst -> first: the preview markup below keys off the short name.
+			$key = lcfirst(substr($option_key, strlen('paginate')));
+			$custom = (string) ($table_options[$option_key] ?? '');
 			$paginate_labels[$key] = $custom !== '' ? $custom : $fallback;
 		}
 

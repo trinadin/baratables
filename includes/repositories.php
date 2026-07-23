@@ -64,7 +64,10 @@ abstract class BaraTables_Base_Repository {
 			'show_in_rest'       => false,
 			'menu_icon'          => $menu_icon,
 			'menu_position'      => $menu_position,
-			'supports'           => ['title', 'revisions'],
+			// No 'revisions': the table/chart definition lives in post meta that is not revisioned,
+			// so every save stored a title-only revision that could never restore anything useful
+			// while the rows accumulated without bound.
+			'supports'           => ['title'],
 			'capability_type'    => [$cpt, $cpt . 's'],
 			'capabilities'        => [
 				'edit_post'              => 'edit_' . $cpt,
@@ -213,6 +216,14 @@ abstract class BaraTables_Base_Repository {
 	}
 
 	private function get_meta_allowed_html(): array {
+		// Called once per string value while sanitizing a definition -- up to 25,000 times for a
+		// full manual grid. wp_kses_allowed_html('post') runs an apply_filters over ~60 tags and
+		// the merge loop rebuilds the same table every call, so memoize it per request. The result
+		// is deterministic within a request (kses filters are registered once), so caching is safe.
+		static $allowed = null;
+		if ($allowed !== null) {
+			return $allowed;
+		}
 		$allowed = wp_kses_allowed_html('post');
 		if (class_exists('BaraTables_Service')) {
 			foreach (BaraTables_Service::allowed_inline_html() as $tag => $attrs) {
@@ -351,6 +362,49 @@ class BaraTables_Repository extends BaraTables_Abstract_CPT_Repository {
 
 	public function get_definitions(bool $include_trash = false): array {
 		return $this->get_items($include_trash);
+	}
+
+	/**
+	 * id => name for every table, without unserializing a single definition.
+	 *
+	 * The chart editor only needs labels to build its source-table dropdown. Going through
+	 * get_definitions() for that hydrated EVERY table's full definition -- including manual grids
+	 * of up to 25,000 cells -- on each editor load and on each source-switch AJAX refresh.
+	 */
+	public function get_definition_choices(bool $include_trash = false): array {
+		$query = new WP_Query([
+			'post_type'              => static::CPT,
+			'post_status'            => $this->get_statuses($include_trash),
+			'posts_per_page'         => -1,
+			'orderby'                => 'title',
+			'order'                  => 'ASC',
+			'no_found_rows'          => true,
+			'update_post_term_cache' => false,
+			// Without this WP_Query still bulk-loads every table's serialized _btbl_definition --
+			// which is the entire cost this method exists to avoid. Only post_title/post_name are read.
+			'update_post_meta_cache' => false,
+			// Only posts that actually carry a definition. A first save truncated past
+			// max_input_vars bails before persist(), leaving a titled post with a post_name but no
+			// definition meta; listing it would offer a table that find_definition() cannot resolve,
+			// and it could even become the editor's default selection. Filtering in the query keeps
+			// this compatible with the disabled meta cache (no per-post meta read).
+			'meta_query'             => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Existence filter; the alternative is a per-post meta read.
+				[
+					'key'     => static::META_SLUG,
+					'compare' => 'EXISTS',
+				],
+			],
+		]);
+
+		$choices = [];
+		foreach ($query->posts as $post) {
+			$slug = (string) $post->post_name;
+			if ($slug === '') {
+				continue;
+			}
+			$choices[$slug] = $post->post_title !== '' ? $post->post_title : $slug;
+		}
+		return $choices;
 	}
 
 	public function find_definition(string $slug, bool $include_trash = false): ?array {

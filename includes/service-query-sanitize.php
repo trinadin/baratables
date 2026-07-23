@@ -32,6 +32,18 @@ trait BaraTables_Query_Sanitize_Trait {
 		return $post_types;
 	}
 
+	/**
+	 * The post_status a set of post types needs.
+	 *
+	 * Attachments are always 'inherit'; everything else the plugin lists is 'publish'. Kept in one
+	 * place so the builder path and the custom-query path cannot disagree about it.
+	 */
+	private static function post_status_for_types(array $post_types) {
+		return in_array('attachment', $post_types, true)
+			? ['publish', 'inherit']
+			: 'publish';
+	}
+
 	private function sanitize_wp_query_args(array $args): array {
 		if (empty($args)) {
 			return [];
@@ -42,6 +54,15 @@ trait BaraTables_Query_Sanitize_Trait {
 			'no_found_rows' => true,
 			'ignore_sticky_posts' => true,
 		];
+		// Attachments are stored as post_status 'inherit', never 'publish', so a Media source
+		// matched nothing at all. Widen the status ONLY when attachments are actually requested,
+		// so every other table keeps its strict publish-only filter.
+		$clean['post_status'] = self::post_status_for_types(
+			$this->sanitize_public_post_types(
+				is_array($args['post_type'] ?? null) ? $args['post_type'] : [$args['post_type'] ?? 'post'],
+				false
+			)
+		);
 		$has_supported_arg = false;
 
 		$post_type_requested = array_key_exists('post_type', $args);

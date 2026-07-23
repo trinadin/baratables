@@ -263,7 +263,9 @@ trait BaraTables_Filter_Options_Trait {
 		$columns = [];
 		if (!empty($raw_cols)) {
 			if (is_array($raw_cols)) {
-				$columns = self::filter_non_empty(array_map('sanitize_text_field', wp_unslash($raw_cols)));
+				// Already unslashed + sanitized via map_deep() above; a second wp_unslash() here
+				// would strip backslashes out of legitimate values.
+				$columns = self::filter_non_empty($raw_cols);
 			} else {
 				$parts = array_map('trim', explode(',', (string) $raw_cols));
 				$columns = self::filter_non_empty(array_map('sanitize_text_field', $parts));

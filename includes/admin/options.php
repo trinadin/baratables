@@ -208,6 +208,12 @@ class BaraTables_Admin_Options {
 		?>
 		<div class="wrap btbl-admin">
 			<h1><?php esc_html_e('Import a Table', 'baratables'); ?></h1>
+			<?php
+			// The "hide help text" preference is global (admin_body_class) and the CSS blanks every
+			// .description inside .btbl-admin. Without the toggle rendered here, a user who hid help
+			// in the table editor lost this page's guidance with no way to bring it back.
+			BaraTables_Help::render_toggle();
+			?>
 			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, CSV, or TXT. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
 			<?php foreach ($errors as $message) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php echo esc_html($message); ?></p></div>
@@ -253,6 +259,26 @@ class BaraTables_Admin_Options {
 						<?php if (!empty($preview['columns'])) : ?>
 							<p><strong><?php esc_html_e('Column labels:', 'baratables'); ?></strong> <?php echo esc_html(implode(', ', $preview['columns'])); ?></p>
 						<?php endif; ?>
+						<?php
+						// Show the actual table, not just a description of it. This is the moment the
+						// user decides whether to create it, and the editor already has a renderer that
+						// reflects the saved options -- reuse it instead of describing the shape in prose.
+						$import_definition = $analysis['definitions'][0] ?? null;
+						if (is_array($import_definition)) {
+							$import_rows = $this->service->get_rows($import_definition, 25);
+							$import_definition = $this->service->ensure_columns_inferred($import_definition);
+							if (!empty($import_definition['columns'])) {
+								$import_pages = new BaraTables_Admin_Pages(
+									$this->service,
+									BaraTables_Admin::NONCE_ACTION,
+									BaraTables_Admin::NONCE_FIELD
+								);
+								echo '<div class="btbl-admin btbl-admin-embed">';
+								$import_pages->render_preview_panel($import_definition, $import_rows);
+								echo '</div>';
+							}
+						}
+						?>
 						<?php if (!empty($analysis['warnings'])) : ?>
 							<div class="notice notice-warning inline">
 								<p><strong><?php esc_html_e('Notes:', 'baratables'); ?></strong></p>

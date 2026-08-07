@@ -70,19 +70,12 @@ final class BaraTables_Crypto {
 	}
 
 	private static function decrypt_gcm(string $payload): string {
-		if (!function_exists('openssl_decrypt') || !function_exists('openssl_cipher_iv_length')) {
+		$decoded = self::decode_encrypted_payload($payload, self::CIPHER, self::TAG_LENGTH);
+		if ($decoded === null) {
 			return '';
 		}
+		[$raw, $iv_length] = $decoded;
 		$key = self::get_key();
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decodes binary IV/tag/ciphertext stored by encrypt().
-		$raw = base64_decode($payload, true);
-		if ($raw === false) {
-			return '';
-		}
-		$iv_length = openssl_cipher_iv_length(self::CIPHER);
-		if (!is_int($iv_length) || strlen($raw) < ($iv_length + self::TAG_LENGTH)) {
-			return '';
-		}
 		$iv = substr($raw, 0, $iv_length);
 		$tag = substr($raw, $iv_length, self::TAG_LENGTH);
 		$ciphertext = substr($raw, $iv_length + self::TAG_LENGTH);
@@ -91,23 +84,30 @@ final class BaraTables_Crypto {
 	}
 
 	private static function decrypt_legacy_cbc(string $payload): string {
-		if (!function_exists('openssl_decrypt') || !function_exists('openssl_cipher_iv_length')) {
+		$decoded = self::decode_encrypted_payload($payload, self::LEGACY_CIPHER);
+		if ($decoded === null) {
 			return '';
 		}
+		[$raw, $iv_length] = $decoded;
 		$key = self::get_key();
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decodes legacy binary IV/ciphertext stored by previous encrypt().
-		$raw = base64_decode($payload, true);
-		if ($raw === false) {
-			return '';
-		}
-		$iv_length = openssl_cipher_iv_length(self::LEGACY_CIPHER);
-		if (!is_int($iv_length) || strlen($raw) < $iv_length) {
-			return '';
-		}
 		$iv = substr($raw, 0, $iv_length);
 		$ciphertext = substr($raw, $iv_length);
 		$decrypted = openssl_decrypt($ciphertext, self::LEGACY_CIPHER, $key, OPENSSL_RAW_DATA, $iv);
 		return $decrypted !== false ? $decrypted : '';
+	}
+
+	/** @return array{0:string,1:int}|null Decoded bytes and IV length. */
+	private static function decode_encrypted_payload(string $payload, string $cipher, int $minimum_after_iv = 0): ?array {
+		if (!function_exists('openssl_decrypt') || !function_exists('openssl_cipher_iv_length')) {
+			return null;
+		}
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decodes authenticated/legacy encrypted binary stored by this plugin.
+		$raw = base64_decode($payload, true);
+		$iv_length = openssl_cipher_iv_length($cipher);
+		if ($raw === false || !is_int($iv_length) || strlen($raw) < ($iv_length + $minimum_after_iv)) {
+			return null;
+		}
+		return [$raw, $iv_length];
 	}
 }
 
@@ -146,7 +146,7 @@ final class BaraTables_Source_Type {
 	}
 
 	public static function supports_post_type_selection(string $source): bool {
-		return in_array($source, [self::WP_QUERY, self::CUSTOM_QUERY], true);
+		return self::uses_builder_fields($source);
 	}
 
 	public static function is_csv(string $source): bool {

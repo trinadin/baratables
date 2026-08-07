@@ -5,11 +5,14 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Field + taxonomy discovery for BaraTables_Service: enumerating the post types, taxonomies
- * and meta fields the table editor offers as columns. Extracted from the service class; runs
- * in the class scope via the trait.
+ * Field + taxonomy discovery for the post types, taxonomies and meta fields offered by the editor.
  */
-trait BaraTables_Fields_Discovery_Trait {
+final class BaraTables_Fields_Discovery {
+	private BaraTables_Query_Sanitizer $query_sanitizer;
+
+	public function __construct(BaraTables_Query_Sanitizer $query_sanitizer) {
+		$this->query_sanitizer = $query_sanitizer;
+	}
 	public function get_supported_post_types(): array {
 		$pts = get_post_types(['public' => true], 'objects');
 		$out = [];
@@ -67,12 +70,12 @@ trait BaraTables_Fields_Discovery_Trait {
 				'hide_empty'   => false,
 				'hierarchical' => false,
 				'fields'       => 'id=>name',
-				'number'       => self::MAX_TERM_PICKER_TERMS,
+				'number'       => BaraTables_Service::MAX_TERM_PICKER_TERMS,
 				'orderby'      => 'name',
 				'order'        => 'ASC',
 			]);
 			$term_map = is_wp_error($terms) ? [] : $terms;
-			$truncated = count($term_map) >= self::MAX_TERM_PICKER_TERMS;
+			$truncated = count($term_map) >= BaraTables_Service::MAX_TERM_PICKER_TERMS;
 
 			if (!empty($selected_by_tax[$tax_obj->name])) {
 				$term_map = $term_map + $selected_by_tax[$tax_obj->name];
@@ -101,7 +104,7 @@ trait BaraTables_Fields_Discovery_Trait {
 	}
 
 	public function get_taxonomies_for_post_types(array $post_types, array $include_term_ids = []): array {
-		$post_types = $this->sanitize_post_types($post_types, 'wp_query');
+		$post_types = $this->query_sanitizer->sanitize_public_post_types($post_types, true);
 		$combined = [];
 		foreach ($post_types as $pt) {
 			$items = $this->get_taxonomies_for_post_type($pt, $include_term_ids);
@@ -207,9 +210,7 @@ trait BaraTables_Fields_Discovery_Trait {
 			wp_cache_set($cache_key, $meta_keys, 'baratables', 5 * MINUTE_IN_SECONDS);
 		}
 
-		$meta_keys = array_map(static function ($key) {
-			return (string) $key;
-		}, (array) $meta_keys);
+		$meta_keys = array_map('strval', (array) $meta_keys);
 
 		if (!empty($wc_allowed_meta)) {
 			$meta_keys = array_values(array_unique(array_merge($meta_keys, $wc_allowed_meta)));
@@ -219,13 +220,11 @@ trait BaraTables_Fields_Discovery_Trait {
 
 		$tax_fields = [];
 		$tax_objects = get_object_taxonomies($post_type, 'objects');
-		if (is_array($tax_objects)) {
-			foreach ($tax_objects as $tax_obj) {
-				if (!$tax_obj->show_ui) {
-					continue;
-				}
-				$tax_fields[$tax_obj->name] = $tax_obj->labels->singular_name;
+		foreach ($tax_objects as $tax_obj) {
+			if (!$tax_obj->show_ui) {
+				continue;
 			}
+			$tax_fields[$tax_obj->name] = $tax_obj->labels->singular_name;
 		}
 
 		return [
@@ -236,10 +235,7 @@ trait BaraTables_Fields_Discovery_Trait {
 	}
 
 	public function get_available_fields_for_post_types(array $post_types): array {
-		$post_types = $this->sanitize_post_types($post_types, 'wp_query');
-		if (empty($post_types)) {
-			return ['core' => [], 'meta' => [], 'tax' => [], 'meta_sources' => [], 'tax_sources' => []];
-		}
+		$post_types = $this->query_sanitizer->sanitize_public_post_types($post_types, true);
 		$core = [];
 		$meta = [];
 		$meta_sources = [];
@@ -254,13 +250,11 @@ trait BaraTables_Fields_Discovery_Trait {
 				$meta[] = $meta_key;
 				$meta_sources[$meta_key][] = $pt;
 			}
-			if (!empty($fields['tax'])) {
-				foreach ($fields['tax'] as $slug => $label) {
-					if (!isset($tax[$slug])) {
-						$tax[$slug] = $label;
-					}
-					$tax_sources[$slug][] = $pt;
+			foreach ($fields['tax'] as $slug => $label) {
+				if (!isset($tax[$slug])) {
+					$tax[$slug] = $label;
 				}
+				$tax_sources[$slug][] = $pt;
 			}
 		}
 		$meta = array_values(array_unique($meta));

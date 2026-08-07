@@ -4,19 +4,31 @@ if (!defined('ABSPATH')) {
 	exit;
 }
 
+/** Owns the table editor tabs; preview rendering lives in BaraTables_Admin_Preview_Renderer. */
 class BaraTables_Admin_Pages {
-	private BaraTables_Service $service;
 	private string $nonce_action;
 	private string $nonce_field;
+	private ?BaraTables_Admin_Preview_Renderer $legacy_preview_renderer = null;
 	private BaraTables_Admin_Tab_General $tab_general;
 	private BaraTables_Admin_Tab_Columns $tab_columns;
 	private BaraTables_Admin_Tab_Table $tab_table;
 	private BaraTables_Admin_Tab_Advanced $tab_advanced;
 
-	public function __construct(BaraTables_Service $service, string $nonce_action, string $nonce_field) {
-		$this->service = $service;
-		$this->nonce_action = $nonce_action;
-		$this->nonce_field = $nonce_field;
+	/**
+	 * @param BaraTables_Service|string $service_or_nonce_action The legacy service argument or nonce action.
+	 */
+	public function __construct($service_or_nonce_action, string $nonce_action_or_field, ?string $nonce_field = null) {
+		if ($service_or_nonce_action instanceof BaraTables_Service) {
+			// Compatibility for integrations that constructed this public class before preview
+			// rendering moved to its own lightweight object. The main admin path uses the new
+			// two-string form and therefore does not rebuild the old object graph.
+			$this->legacy_preview_renderer = new BaraTables_Admin_Preview_Renderer($service_or_nonce_action);
+			$this->nonce_action = $nonce_action_or_field;
+			$this->nonce_field = (string) $nonce_field;
+		} else {
+			$this->nonce_action = (string) $service_or_nonce_action;
+			$this->nonce_field = $nonce_action_or_field;
+		}
 		$this->tab_general = new BaraTables_Admin_Tab_General();
 		$this->tab_columns = new BaraTables_Admin_Tab_Columns();
 		$this->tab_table = new BaraTables_Admin_Tab_Table();
@@ -32,17 +44,19 @@ class BaraTables_Admin_Pages {
 			return $active_tab === $tab ? 'nav-tab nav-tab-active btbl-tab-link' : $base;
 		};
 		?>
-			<?php wp_nonce_field($this->nonce_action, $this->nonce_field); ?>
-			<?php // id only: read client-side by admin.js to restore the active tab. Never posted. ?>
-			<input type="hidden" id="btbl_active_tab" value="<?php echo esc_attr($active_tab); ?>" />
 			<?php
-			$id_editor_html = '';
-			if ($editing_defn) {
-				ob_start();
-				BaraTables_Admin_Page_Utils::render_id_editor('btbl_table_id', (string) $table_id, __('Table ID', 'baratables'), '[bara_table]');
-				$id_editor_html = (string) ob_get_clean();
-			}
-			BaraTables_Admin_Page_Utils::render_title_section($shortcode, $id_editor_html);
+			BaraTables_Admin_Page_Utils::render_editor_header(
+				$this->nonce_action,
+				$this->nonce_field,
+				$active_tab,
+				$shortcode,
+				$editing_defn ? [
+					'field' => 'btbl_table_id',
+					'value' => $table_id,
+					'label' => __('Table ID', 'baratables'),
+					'embed_tag' => '[bara_table]',
+				] : null
+			);
 			?>
 			<?php BaraTables_Help::render_toggle(); ?>
 			<?php if (!$editing_defn && BaraTables_Help::is_first_table()) : ?>
@@ -97,306 +111,19 @@ class BaraTables_Admin_Pages {
 		return (string) ob_get_clean();
 	}
 
+	/** @deprecated Use BaraTables_Admin_Preview_Renderer::render(). */
 	public function render_preview_panel(array $definition, array $rows): void {
-		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
-		$allowed_inline = BaraTables_Service::allowed_inline_html();
-		$table_options = $this->service->get_table_options($definition);
-		$table_classes = array_merge(['widefat', 'btbl-preview-table'], BaraTables_Service::table_style_classes($table_options));
-		$preview_rows = $rows;
-		if (!empty($table_options['paging'])) {
-			$page_length = isset($table_options['pageLength']) ? (int) $table_options['pageLength'] : 0;
-			if ($page_length > 0) {
-				$preview_rows = array_slice($rows, 0, $page_length);
-			}
+		if (!$this->legacy_preview_renderer) {
+			throw new LogicException('Preview rendering requires the legacy service constructor argument.');
 		}
-		$total_rows = count($rows);
-		$display_rows = count($preview_rows);
-		$sorted_columns = [];
-		if (!empty($table_options['orderColumn']) && !empty($table_options['ordering'])) {
-			foreach ($this->resolve_preview_sort_rules($definition) as $rule) {
-				if (!array_key_exists($rule['index'], $sorted_columns)) {
-					$sorted_columns[$rule['index']] = $rule['direction'];
-				}
-			}
-		}
-		$info_text = '';
-		if (!empty($table_options['info'])) {
-			// Same source as the front end, so the preview cannot promise a string the table
-			// does not render.
-			$info_defaults = BaraTables_Service::frontend_label_defaults();
-			$default_info = $info_defaults['infoText'];
-			$default_empty = $info_defaults['infoEmpty'];
-			$template = $display_rows > 0
-				? (string) ($table_options['infoText'] ?? '')
-				: (string) ($table_options['infoEmpty'] ?? '');
-			$template = $template !== '' ? $template : ($display_rows > 0 ? $default_info : $default_empty);
-			$info_text = str_replace(
-				['_START_', '_END_', '_TOTAL_', '_MAX_'],
-				[$display_rows > 0 ? 1 : 0, $display_rows, $total_rows, $total_rows],
-				$template
-			);
-		}
-		$layout_zones = [
-			'topStart' => $table_options['layoutTopStart'] ?? [],
-			'topEnd' => $table_options['layoutTopEnd'] ?? [],
-			'bottomStart' => $table_options['layoutBottomStart'] ?? [],
-			'bottomEnd' => $table_options['layoutBottomEnd'] ?? [],
-		];
-		$layout_seen = [];
-		$layout_controls = [
-			'pagelength' => !empty($table_options['lengthChange']),
-			'search' => !empty($table_options['searchBox']),
-			'buttons' => !empty($table_options['buttons']),
-			'info' => !empty($table_options['info']) && $info_text !== '',
-			'paging' => !empty($table_options['paging']),
-		];
-		// Same helper the front end uses. These schema defaults are '' so a translated default can
-		// be supplied at output; reading the raw option here left the preview rendering a bare
-		// search box and a bare length selector while the published table showed "Search:" and
-		// "Show ... entries" -- the same screen disagreeing with itself, which is exactly the drift
-		// the button labels below were already fixed for.
-		$label_options = $this->service->localize_frontend_table_labels($table_options);
-		$search_label = (string) ($label_options['searchText'] ?? '');
-		$search_placeholder = (string) ($table_options['searchPlaceholder'] ?? '');
-		$length_prefix = (string) ($label_options['lengthMenuPrefix'] ?? '');
-		$length_suffix = (string) ($label_options['lengthMenuSuffix'] ?? '');
-		$page_length = isset($table_options['pageLength']) ? (int) $table_options['pageLength'] : 10;
-		$length_choices = array_unique(array_filter([$page_length, 10, 25, 50, 100]));
-		sort($length_choices);
-		// Take the effective button text from the same helper the front end uses, rather than a
-		// second local copy of the defaults. The copies had drifted -- the preview rendered
-		// "CSV" / "Excel" / "Columns" where the published table renders "Export CSV" /
-		// "Export Excel" / "Column visibility" -- so the same screen disagreed with itself.
-		// localize_frontend_table_labels() returns the user's custom text when set and the
-		// translated default otherwise, so one lookup covers both cases.
-		$button_label_options = $label_options;
-		$button_labels = [
-			'copy'       => (string) ($button_label_options['buttonTextCopy'] ?? ''),
-			'csv'        => (string) ($button_label_options['buttonTextCsv'] ?? ''),
-			'excel'      => (string) ($button_label_options['buttonTextExcel'] ?? ''),
-			'print'      => (string) ($button_label_options['buttonTextPrint'] ?? ''),
-			'colvis'     => (string) ($button_label_options['buttonTextColvis'] ?? ''),
-			'pagelength' => (string) ($button_label_options['buttonTextPagelength'] ?? ''),
-		];
-		$paginate_labels = [];
-		foreach (BaraTables_Service::paginate_glyph_defaults() as $option_key => $fallback) {
-			// paginateFirst -> first: the preview markup below keys off the short name.
-			$key = lcfirst(substr($option_key, strlen('paginate')));
-			$custom = (string) ($table_options[$option_key] ?? '');
-			$paginate_labels[$key] = $custom !== '' ? $custom : $fallback;
-		}
-
-		$zone_context = [
-			'table_options' => $table_options,
-			'allowed_inline' => $allowed_inline,
-			'layout_controls' => $layout_controls,
-			'length_prefix' => $length_prefix,
-			'length_suffix' => $length_suffix,
-			'length_choices' => $length_choices,
-			'page_length' => $page_length,
-			'button_labels' => $button_labels,
-			'search_label' => $search_label,
-			'search_placeholder' => $search_placeholder,
-			'info_text' => $info_text,
-			'paginate_labels' => $paginate_labels,
-		];
-		?>
-		<?php if (empty($definition['columns'])) : ?>
-			<p><?php esc_html_e('No columns selected yet for this table.', 'baratables'); ?></p>
-		<?php elseif (empty($preview_rows)) : ?>
-			<p><?php esc_html_e('No data available for this table yet.', 'baratables'); ?></p>
-		<?php else : ?>
-			<div class="btbl-preview-layout">
-				<div class="btbl-preview-layout-row btbl-preview-layout-top">
-					<div class="btbl-preview-layout-zone btbl-preview-layout-start">
-						<?php $this->render_layout_zone_items((array) $layout_zones['topStart'], $layout_seen, $zone_context); ?>
-					</div>
-					<div class="btbl-preview-layout-zone btbl-preview-layout-end">
-						<?php $this->render_layout_zone_items((array) $layout_zones['topEnd'], $layout_seen, $zone_context); ?>
-					</div>
-				</div>
-				<div class="btbl-preview-table-wrapper">
-					<table class="<?php echo esc_attr(implode(' ', $table_classes)); ?>">
-						<thead>
-							<tr>
-								<?php foreach ($definition['columns'] as $idx => $col) : ?>
-									<?php if (!empty($col['hidden'])) { continue; } ?>
-									<?php
-									$header_class = [];
-									$sort_dir = $sorted_columns[$idx] ?? null;
-									if ($sort_dir !== null) {
-										$header_class[] = 'btbl-preview-sorted';
-										$header_class[] = 'btbl-preview-sorted-' . $sort_dir;
-									}
-									?>
-									<th<?php echo !empty($header_class) ? ' class="' . esc_attr(implode(' ', $header_class)) . '"' : ''; ?>>
-										<?php echo !empty($col['hide_title']) ? '&nbsp;' : wp_kses($this->service->display_column_label($col, (int) $idx, (string) ($definition['source_type'] ?? '')), $allowed_inline); ?>
-									</th>
-								<?php endforeach; ?>
-							</tr>
-						</thead>
-						<tbody>
-							<?php foreach ($preview_rows as $row) : ?>
-								<tr>
-									<?php foreach ($definition['columns'] as $idx => $col) : ?>
-										<?php if (!empty($col['hidden'])) { continue; } ?>
-										<?php $cell = $row[$idx] ?? ''; ?>
-										<?php
-										$cell_class = [];
-										if (array_key_exists($idx, $sorted_columns)) {
-											$cell_class[] = 'btbl-preview-sorted';
-										}
-										?>
-										<td<?php echo !empty($cell_class) ? ' class="' . esc_attr(implode(' ', $cell_class)) . '"' : ''; ?>>
-											<?php echo wp_kses_post($cell); ?>
-										</td>
-									<?php endforeach; ?>
-								</tr>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
-				</div>
-				<div class="btbl-preview-layout-row btbl-preview-layout-bottom">
-					<div class="btbl-preview-layout-zone btbl-preview-layout-start">
-						<?php $this->render_layout_zone_items((array) $layout_zones['bottomStart'], $layout_seen, $zone_context); ?>
-					</div>
-					<div class="btbl-preview-layout-zone btbl-preview-layout-end">
-						<?php $this->render_layout_zone_items((array) $layout_zones['bottomEnd'], $layout_seen, $zone_context); ?>
-					</div>
-				</div>
-			</div>
-		<?php endif;
+		$this->legacy_preview_renderer->render($definition, $rows);
 	}
 
+	/** @deprecated Use BaraTables_Admin_Preview_Renderer::sort(). */
 	public function apply_preview_sort(array $rows, array $definition): array {
-		$resolved_rules = $this->resolve_preview_sort_rules($definition);
-		if (empty($resolved_rules) || empty($rows)) {
-			return $rows;
+		if (!$this->legacy_preview_renderer) {
+			throw new LogicException('Preview sorting requires the legacy service constructor argument.');
 		}
-
-		usort($rows, static function ($a, $b) use ($resolved_rules) {
-			foreach ($resolved_rules as $rule) {
-				$idx = $rule['index'];
-				$dir = $rule['direction'];
-				$valA = $a[$idx] ?? '';
-				$valB = $b[$idx] ?? '';
-
-				if ($valA === $valB) {
-					continue;
-				}
-
-				$cmp = 0;
-				if (is_numeric($valA) && is_numeric($valB)) {
-					$cmp = (float) $valA < (float) $valB ? -1 : 1;
-				} else {
-					$cmp = strnatcasecmp((string) $valA, (string) $valB);
-				}
-
-				return $dir === 'desc' ? -$cmp : $cmp;
-			}
-
-			return 0;
-		});
-
-		return $rows;
-	}
-
-	private function render_layout_zone_items(array $items, array &$layout_seen, array $ctx): void {
-		$table_options = $ctx['table_options'];
-		$allowed_inline = $ctx['allowed_inline'];
-		$layout_controls = $ctx['layout_controls'];
-
-		foreach ($items as $item) {
-			$item = sanitize_key((string) $item);
-			if ($item === '' || !empty($layout_seen[$item]) || empty($layout_controls[$item])) {
-				continue;
-			}
-			$layout_seen[$item] = true;
-
-			if ($item === 'pagelength') : ?>
-				<div class="btbl-preview-control btbl-preview-length">
-					<label>
-						<?php if ($ctx['length_prefix'] !== '') : ?>
-							<span class="btbl-preview-label"><?php echo wp_kses($ctx['length_prefix'], $allowed_inline); ?></span>
-						<?php endif; ?>
-						<select disabled>
-							<?php foreach ($ctx['length_choices'] as $choice) : ?>
-								<option value="<?php echo esc_attr($choice); ?>" <?php selected($choice === $ctx['page_length']); ?>>
-									<?php echo esc_html((string) $choice); ?>
-								</option>
-							<?php endforeach; ?>
-						</select>
-						<?php if ($ctx['length_suffix'] !== '') : ?>
-							<span class="btbl-preview-label"><?php echo wp_kses($ctx['length_suffix'], $allowed_inline); ?></span>
-						<?php endif; ?>
-					</label>
-				</div>
-			<?php elseif ($item === 'buttons') : ?>
-				<div class="btbl-preview-control btbl-preview-buttons">
-					<div class="btbl-preview-button-group">
-						<?php foreach ((array) ($table_options['buttons'] ?? []) as $choice) :
-							$choice = sanitize_key((string) $choice);
-							if (!isset($ctx['button_labels'][$choice])) {
-								continue;
-							}
-							$label = $ctx['button_labels'][$choice];
-							?>
-							<button type="button" class="button button-small" disabled><?php echo wp_kses($label, $allowed_inline); ?></button>
-						<?php endforeach; ?>
-					</div>
-				</div>
-			<?php elseif ($item === 'search') : ?>
-				<div class="btbl-preview-control btbl-preview-search">
-					<label>
-						<?php if ($ctx['search_label'] !== '') : ?>
-							<span class="btbl-preview-label"><?php echo wp_kses($ctx['search_label'], $allowed_inline); ?></span>
-						<?php endif; ?>
-						<input type="search" placeholder="<?php echo esc_attr($ctx['search_placeholder']); ?>" disabled />
-					</label>
-				</div>
-			<?php elseif ($item === 'info') : ?>
-				<div class="btbl-preview-control btbl-preview-info"><?php echo wp_kses_post($ctx['info_text']); ?></div>
-			<?php elseif ($item === 'paging') : ?>
-				<div class="btbl-preview-control btbl-preview-paging">
-					<?php if (!empty($table_options['pagingFirstLast'])) : ?>
-						<button type="button" class="btbl-preview-page" disabled><?php echo wp_kses($ctx['paginate_labels']['first'], $allowed_inline); ?></button>
-					<?php endif; ?>
-					<?php if (!empty($table_options['pagingPreviousNext'])) : ?>
-						<button type="button" class="btbl-preview-page" disabled><?php echo wp_kses($ctx['paginate_labels']['previous'], $allowed_inline); ?></button>
-					<?php endif; ?>
-					<?php if (!empty($table_options['pagingNumbers'])) : ?>
-						<button type="button" class="btbl-preview-page is-current" disabled>1</button>
-						<button type="button" class="btbl-preview-page" disabled>2</button>
-						<button type="button" class="btbl-preview-page" disabled>3</button>
-					<?php endif; ?>
-					<?php if (!empty($table_options['pagingPreviousNext'])) : ?>
-						<button type="button" class="btbl-preview-page" disabled><?php echo wp_kses($ctx['paginate_labels']['next'], $allowed_inline); ?></button>
-					<?php endif; ?>
-					<?php if (!empty($table_options['pagingFirstLast'])) : ?>
-						<button type="button" class="btbl-preview-page" disabled><?php echo wp_kses($ctx['paginate_labels']['last'], $allowed_inline); ?></button>
-					<?php endif; ?>
-				</div>
-			<?php endif;
-		}
-	}
-
-	private function resolve_preview_sort_rules(array $definition): array {
-		$order_rules = $this->service->get_default_sort_order($definition);
-		if (empty($order_rules)) {
-			return [];
-		}
-		$slug_to_index = $this->service->map_column_slug_to_index($definition);
-		$resolved_rules = [];
-		foreach ($order_rules as $rule) {
-			$slug = $rule['slug'] ?? '';
-			if (!array_key_exists($slug, $slug_to_index)) {
-				continue;
-			}
-			$resolved_rules[] = [
-				'index' => $slug_to_index[$slug],
-				'direction' => $rule['direction'] === 'desc' ? 'desc' : 'asc',
-			];
-		}
-		return $resolved_rules;
+		return $this->legacy_preview_renderer->sort($rows, $definition);
 	}
 }

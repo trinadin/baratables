@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.2.3
+Stable tag: 1.2.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,7 +26,7 @@ Tables can include search, sorting, pagination, filters, export buttons, column 
 * Reorder columns and control column visibility
 * Restrict rows by user role or user metadata with row-level access control
 * Remember table state between visits, and control scrolling, column sizing, and row loading limits
-* Create bar, horizontal bar, line, area, pie, donut, scatter, bubble, funnel, and Gantt charts with ECharts
+* Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts with ECharts
 * Customize table controls, labels, layout, and display options
 * Light frontend styles that are easy to override with CSS
 * Import an existing table from another plugin or a spreadsheet (JSON, XML, CSV, or TXT)
@@ -76,6 +76,10 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 4. Chart builder and chart-type gallery with all supported chart types.
 
 == Changelog ==
+
+= 1.2.4 =
+
+* Adds radar, heatmap, and treemap charts.
 
 = 1.2.3 =
 Improvements:
@@ -198,6 +202,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.2.4 =
+Adds radar, heatmap, and treemap charts.
 
 = 1.2.3 =
 Security fixes: password-protected post content and post passwords could be displayed in a table. Also fixes date sorting, sticky posts, and Media tables.

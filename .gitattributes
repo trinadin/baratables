@@ -1,0 +1,36 @@
+# The WordPress.org package is built with git archive. Keep repository and
+# agent/development metadata out even if one of these files is later tracked.
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/.serena export-ignore
+/.serena/** export-ignore
+/.codex export-ignore
+/.codex/** export-ignore
+/.claude export-ignore
+/.claude/** export-ignore
+/.github export-ignore
+/.github/** export-ignore
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/docs export-ignore
+/docs/** export-ignore
+/local-tests export-ignore
+/local-tests/** export-ignore
+/node_modules export-ignore
+/node_modules/** export-ignore
+/tests export-ignore
+/tests/** export-ignore
+/tools export-ignore
+/tools/** export-ignore
+/wordpress-org export-ignore
+/wordpress-org/** export-ignore
+/vendor export-ignore
+/vendor/** export-ignore
+/composer.json export-ignore
+/composer.lock export-ignore
+/package.json export-ignore
+/package-lock.json export-ignore
+/pnpm-lock.yaml export-ignore
+/yarn.lock export-ignore
+/phpunit.xml export-ignore
+/phpunit.xml.dist export-ignore

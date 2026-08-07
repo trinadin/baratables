@@ -5,6 +5,63 @@ if (!defined('ABSPATH')) {
 }
 
 class BaraTables_Admin_Action_Handler {
+	private const INPUT_FIELDS = [
+		'name' => ['text', 'btbl_name'],
+		'post_title' => ['text', 'post_title'],
+		'post_types' => ['array_raw', 'btbl_post_type'],
+		'source_type' => ['raw', 'btbl_source_type'],
+		'csv_attachment_id' => ['int', 'btbl_csv_attachment_id'],
+		'csv_has_header' => ['bool', 'btbl_csv_has_header'],
+		'csv_delimiter' => ['text', 'btbl_csv_delimiter'],
+		'columns' => ['array_text', 'btbl_columns'],
+		'column_order' => ['text', 'btbl_column_order'],
+		'custom_columns' => ['array_raw', 'btbl_custom_columns'],
+		'custom_rows' => ['array_raw', 'btbl_custom_data'],
+		'custom_rows_count' => ['int', 'btbl_custom_rows_count'],
+		'custom_cols_count' => ['int', 'btbl_custom_columns_count'],
+		'filter_order' => ['text', 'btbl_filter_order'],
+		'custom_meta' => ['text', 'btbl_custom_meta'],
+		'taxonomy' => ['array_raw', 'btbl_taxonomy'],
+		'taxonomy_terms' => ['array_raw', 'btbl_tax_terms'],
+		'custom_query_raw' => ['raw', 'btbl_custom_query_json'],
+		'value_overrides_raw' => ['raw', 'btbl_value_overrides_json'],
+		'table_options' => ['array_raw', 'btbl_table_options'],
+	];
+	private const COLUMN_INPUT_FIELDS = [
+		'filters' => ['array_raw', 'btbl_filters'],
+		'dropdown_multi' => ['array_raw', 'btbl_dropdown_multi'],
+		'dropdown_search' => ['array_raw', 'btbl_dropdown_search'],
+		'filter_sorts' => ['array_raw', 'btbl_filter_sort'],
+		'filter_type_priority' => ['array_raw', 'btbl_filter_type_priority'],
+		'filter_values' => ['array_raw', 'btbl_filter_values'],
+		'custom_labels' => ['array_raw', 'btbl_custom_labels'],
+		'filter_labels' => ['array_raw', 'btbl_filter_labels'],
+		'searchable' => ['array_raw', 'btbl_searchable'],
+		'hide_titles' => ['array_raw', 'btbl_hide_title'],
+		'hidden_columns' => ['array_raw', 'btbl_hide_column'],
+		'sort_priority' => ['array_raw', 'btbl_sort_priority'],
+		'sort_direction' => ['array_raw', 'btbl_sort_direction'],
+		'sort_enabled' => ['array_raw', 'btbl_sort_enabled'],
+		'sortable' => ['array_raw', 'btbl_sortable'],
+		'format_date_flags' => ['array_raw', 'btbl_format_date'],
+		'date_formats' => ['array_raw', 'btbl_date_format'],
+	];
+	private const ACCESS_INPUT_FIELDS = [
+		'access_user_meta' => ['raw', 'btbl_access_user_meta'],
+		'access_post_meta' => ['raw', 'btbl_access_post_meta'],
+		'access_csv_column' => ['raw', 'btbl_access_csv_column'],
+		'access_external_column' => ['raw', 'btbl_access_external_column'],
+		'access_logged_out' => ['raw', 'btbl_access_logged_out'],
+	];
+	private const EXTERNAL_INPUT_FIELDS = [
+		'external_host' => ['raw', 'btbl_external_host'],
+		'external_name' => ['raw', 'btbl_external_name'],
+		'external_user' => ['raw', 'btbl_external_user'],
+		'external_pass' => ['raw', 'btbl_external_pass'],
+		'external_table' => ['raw', 'btbl_external_table'],
+		'external_charset' => ['raw', 'btbl_external_charset'],
+		'external_port' => ['raw', 'btbl_external_port'],
+	];
 	private BaraTables_Service $service;
 
 	public function __construct(BaraTables_Service $service) {
@@ -26,179 +83,100 @@ class BaraTables_Admin_Action_Handler {
 		return (string) wp_check_invalid_utf8($clean, true);
 	}
 
+	private function collect_table_input(): array {
+		return BaraTables_Post_Input::collect(array_merge(
+			self::INPUT_FIELDS,
+			self::COLUMN_INPUT_FIELDS,
+			self::ACCESS_INPUT_FIELDS,
+			self::EXTERNAL_INPUT_FIELDS
+		));
+	}
+
+	private function build_custom_request(array $input, string $source_type): array {
+		$dataset = $this->service->sanitize_custom_data(
+			$input['custom_columns'],
+			$input['custom_rows'],
+			$input['custom_rows_count'],
+			$input['custom_cols_count']
+		);
+		$columns_raw = $input['columns'];
+		if (BaraTables_Source_Type::is_custom_data($source_type) && !empty($dataset['slugs'])) {
+			$columns_raw = array_values(array_intersect($columns_raw, $dataset['slugs']));
+			foreach ($dataset['slugs'] as $slug) {
+				if (!in_array($slug, $columns_raw, true)) {
+					$columns_raw[] = $slug;
+				}
+			}
+		}
+		return ['dataset' => $dataset, 'columns_raw' => $columns_raw];
+	}
+
+	private function build_requested_column_records(array $input, array $columns, array $custom_dataset, string $source_type): array {
+		$records = $this->service->build_column_records_from_request(
+			array_intersect_key($input, self::COLUMN_INPUT_FIELDS),
+			$columns
+		);
+		if (BaraTables_Source_Type::is_custom_data($source_type)) {
+			foreach ($custom_dataset['slugs'] as $index => $slug) {
+				if (isset($records[$slug]) && $records[$slug]['custom_label'] === '') {
+					$records[$slug]['custom_label'] = $custom_dataset['columns'][$index] ?? '';
+				}
+			}
+		}
+		return $records;
+	}
+
 	public function collect_table_request_data(): array {
-		$p = BaraTables_Post_Input::class;
-
-		$name = $p::text('btbl_name');
-		if ($name === '') {
-			$name = $p::text('post_title');
-		}
-		$post_types_raw = $p::array_raw('btbl_post_type');
-		$source_type = BaraTables_Source_Type::normalize($p::raw('btbl_source_type', BaraTables_Source_Type::WP_QUERY), BaraTables_Source_Type::WP_QUERY);
-		$csv_attachment_id = $p::int('btbl_csv_attachment_id');
-		$csv_has_header = $p::bool('btbl_csv_has_header');
-		$csv_delimiter_raw = $p::text('btbl_csv_delimiter');
-		$csv_delimiter = $csv_delimiter_raw !== '' ? substr($csv_delimiter_raw, 0, 1) : ',';
-		$columns_raw = $p::array_text('btbl_columns');
-		$column_order_raw = $p::text('btbl_column_order');
-		$custom_columns_raw = $p::array_raw('btbl_custom_columns');
-		$custom_rows_raw = $p::array_raw('btbl_custom_data');
-		$custom_rows_count_raw = $p::int('btbl_custom_rows_count');
-		$custom_cols_count_raw = $p::int('btbl_custom_columns_count');
-		$filter_order_raw = $p::text('btbl_filter_order');
-		$custom_meta_raw = $p::text('btbl_custom_meta');
-		$filters_raw = $p::array_raw('btbl_filters');
-		$dropdown_multi_raw = $p::array_raw('btbl_dropdown_multi');
-		$dropdown_search_raw = $p::array_raw('btbl_dropdown_search');
-		$filter_sorts_raw = $p::array_raw('btbl_filter_sort');
-		$filter_type_priority_raw = $p::array_raw('btbl_filter_type_priority');
-		$filter_values_raw = $p::array_raw('btbl_filter_values');
-		$custom_labels_raw = $p::array_raw('btbl_custom_labels');
-		$filter_labels_raw = $p::array_raw('btbl_filter_labels');
-		$searchable_raw = $p::array_raw('btbl_searchable');
-		$hide_titles_raw = $p::array_raw('btbl_hide_title');
-		$hide_columns_raw = $p::array_raw('btbl_hide_column');
-		$sort_priority_raw = $p::array_raw('btbl_sort_priority');
-		$sort_direction_raw = $p::array_raw('btbl_sort_direction');
-		$sort_enabled_raw = $p::array_raw('btbl_sort_enabled');
-		$sortable_raw = $p::array_raw('btbl_sortable');
-		$format_date_raw = $p::array_raw('btbl_format_date');
-		$date_format_raw = $p::array_raw('btbl_date_format');
-		// btbl_taxonomy is a multi-select (`name="btbl_taxonomy[]"`), so it must be read with
-		// array_raw(); raw() would stringify the array to the literal "Array" and the filter
-		// would be silently discarded by sanitize_taxonomy_filter().
-		$taxonomy_raw = $p::array_raw('btbl_taxonomy');
-		$taxonomy_terms_raw = $p::array_raw('btbl_tax_terms');
-		$custom_query_raw = $p::raw('btbl_custom_query_json');
-		$value_overrides_raw = $p::raw('btbl_value_overrides_json');
-		$table_options_raw = $p::array_raw('btbl_table_options');
-		$access_user_meta_raw = $p::raw('btbl_access_user_meta');
-		$access_post_meta_raw = $p::raw('btbl_access_post_meta');
-		$access_csv_column_raw = $p::raw('btbl_access_csv_column');
-		$access_external_column_raw = $p::raw('btbl_access_external_column');
-		$access_logged_out_raw = $p::raw('btbl_access_logged_out');
-		$external_host_raw = $p::raw('btbl_external_host');
-		$external_name_raw = $p::raw('btbl_external_name');
-		$external_user_raw = $p::raw('btbl_external_user');
-		$external_pass_raw = $p::raw('btbl_external_pass');
-		$external_table_raw = $p::raw('btbl_external_table');
-		$external_charset_raw = $p::raw('btbl_external_charset');
-		$external_port_raw = $p::raw('btbl_external_port');
-
-		// A blank heading now means "use the column's default" (captured as auto_label),
-		// NOT "hide the header" -- hiding is controlled by the explicit btbl_hide_title
-		// checkbox, so the two are independent.
-
-		$post_types = $this->service->sanitize_post_types($post_types_raw, $source_type);
-		$post_type = reset($post_types) ?: 'post';
-
-		$custom_dataset = $this->service->sanitize_custom_data($custom_columns_raw, $custom_rows_raw, $custom_rows_count_raw, $custom_cols_count_raw);
-		$custom_columns = $custom_dataset['columns'];
-		$custom_rows = $custom_dataset['rows'];
-		$custom_slugs = $custom_dataset['slugs'];
-		if (BaraTables_Source_Type::is_custom_data($source_type) && !empty($custom_slugs)) {
-			$columns_raw = array_values(array_intersect($columns_raw, $custom_slugs));
-			if (empty($columns_raw)) {
-				$columns_raw = $custom_slugs;
-			} else {
-				foreach ($custom_slugs as $slug) {
-					if (!in_array($slug, $columns_raw, true)) {
-						$columns_raw[] = $slug;
-					}
-				}
-			}
-		}
-		$columns = $this->service->prepare_columns_from_request($columns_raw, $custom_meta_raw, $column_order_raw);
-		$column_state = $this->service->build_column_state_from_request([
-			'filters' => $filters_raw,
-			'dropdown_multi' => $dropdown_multi_raw,
-			'dropdown_search' => $dropdown_search_raw,
-			'filter_sorts' => $filter_sorts_raw,
-			'filter_type_priority' => $filter_type_priority_raw,
-			'filter_values' => $filter_values_raw,
-			'custom_labels' => $custom_labels_raw,
-			'filter_labels' => $filter_labels_raw,
-			'searchable' => $searchable_raw,
-			'hide_titles' => $hide_titles_raw,
-			'hidden_columns' => $hide_columns_raw,
-			'sort_priority' => $sort_priority_raw,
-			'sort_direction' => $sort_direction_raw,
-			'sort_enabled' => $sort_enabled_raw,
-			'sortable' => $sortable_raw,
-			'format_date_flags' => $format_date_raw,
-			'date_formats' => $date_format_raw,
-		], $columns);
-		$custom_labels = $column_state['custom_labels'];
-		if (BaraTables_Source_Type::is_custom_data($source_type) && !empty($custom_slugs)) {
-			foreach ($custom_slugs as $idx => $slug) {
-				if (!isset($custom_labels[$slug]) || $custom_labels[$slug] === '') {
-					$default_label = $custom_columns[$idx] ?? '';
-					if ($default_label !== '') {
-						$custom_labels[$slug] = $default_label;
-					}
-				}
-			}
-		}
-		$column_state['custom_labels'] = $custom_labels;
-		$taxonomy_filter = $this->service->sanitize_taxonomy_filter($post_types, $taxonomy_raw, $taxonomy_terms_raw);
-		$custom_query = $this->service->sanitize_custom_query_json($custom_query_raw);
-		$value_overrides = $this->service->sanitize_value_overrides($value_overrides_raw);
-		$table_options = $this->service->sanitize_table_options($table_options_raw);
-		$filter_order = $this->service->sanitize_order_list($filter_order_raw);
-		$access_control = $this->service->sanitize_access_control([
-			'user_meta_key' => $access_user_meta_raw,
-			'post_meta_key' => $access_post_meta_raw,
-			'csv_column' => $access_csv_column_raw,
-			'external_column' => $access_external_column_raw,
-			'logged_out' => $access_logged_out_raw,
-		], $source_type);
-		$external_db = $this->service->sanitize_external_db_config([
-			'host' => $external_host_raw,
-			'name' => $external_name_raw,
-			'user' => $external_user_raw,
-			'pass' => $external_pass_raw,
-			'table' => $external_table_raw,
-			'charset' => $external_charset_raw,
-			'port' => $external_port_raw,
-		]);
+		$input = $this->collect_table_input();
+		$name = $input['name'] !== '' ? $input['name'] : $input['post_title'];
+		$source_type = BaraTables_Source_Type::normalize($input['source_type'], BaraTables_Source_Type::WP_QUERY);
+		$post_types = $this->service->sanitize_post_types($input['post_types'], $source_type);
+		$custom = $this->build_custom_request($input, $source_type);
+		$columns = $this->service->prepare_columns_from_request(
+			$custom['columns_raw'],
+			$input['custom_meta'],
+			$input['column_order']
+		);
+		$column_records = $this->build_requested_column_records($input, $columns, $custom['dataset'], $source_type);
+		$csv_delimiter = $input['csv_delimiter'] !== '' ? substr($input['csv_delimiter'], 0, 1) : ',';
 
 		return [
 			'name' => $name,
 			'post_types' => $post_types,
-			'post_type' => $post_type,
+			'post_type' => reset($post_types) ?: 'post',
 			'source_type' => $source_type,
-			'csv_attachment_id' => $csv_attachment_id,
-			'csv_has_header' => $csv_has_header,
+			'csv_attachment_id' => $input['csv_attachment_id'],
+			'csv_has_header' => $input['csv_has_header'],
 			'csv_delimiter' => $csv_delimiter,
 			'columns' => $columns,
-			'filter_types' => $column_state['filter_types'],
-			'filter_sorts' => $column_state['filter_sorts'],
-			'filter_type_priority' => $column_state['filter_type_priority'],
-			'filter_values' => $column_state['filter_values'],
-			'custom_labels' => $column_state['custom_labels'],
-			'filter_labels' => $column_state['filter_labels'],
-			'hide_titles' => $column_state['hide_titles'],
-			'hidden_columns' => $column_state['hidden_columns'],
-			'searchable' => $column_state['searchable'],
-			'sort_priority' => $column_state['sort_priority'],
-			'sort_direction' => $column_state['sort_direction'],
-			'sort_enabled' => $column_state['sort_enabled'],
-			'sortable' => $column_state['sortable'],
-			'date_formats' => $column_state['date_formats'],
-			'format_date_flags' => $column_state['format_date_flags'],
-			'taxonomy_filter' => $taxonomy_filter,
-			'custom_query' => $custom_query,
-			'custom_query_raw' => $custom_query_raw,
-			'value_overrides' => $value_overrides,
-			'value_overrides_raw_input' => $value_overrides_raw,
-			'table_options' => $table_options,
-			'filter_order' => $filter_order,
-			'access_control' => $access_control,
-			'external_db' => $external_db,
+			'column_records' => $column_records,
+			'taxonomy_filter' => $this->service->sanitize_taxonomy_filter($post_types, $input['taxonomy'], $input['taxonomy_terms']),
+			'custom_query' => $this->service->sanitize_custom_query_json($input['custom_query_raw']),
+			'custom_query_raw' => $input['custom_query_raw'],
+			'value_overrides' => $this->service->sanitize_value_overrides($input['value_overrides_raw']),
+			'value_overrides_raw_input' => $input['value_overrides_raw'],
+			'table_options' => $this->service->sanitize_table_options($input['table_options']),
+			'filter_order' => $this->service->sanitize_order_list($input['filter_order']),
+			'access_control' => $this->service->sanitize_access_control([
+				'user_meta_key' => $input['access_user_meta'],
+				'post_meta_key' => $input['access_post_meta'],
+				'csv_column' => $input['access_csv_column'],
+				'external_column' => $input['access_external_column'],
+				'logged_out' => $input['access_logged_out'],
+			], $source_type),
+			'external_db' => $this->service->sanitize_external_db_config([
+				'host' => $input['external_host'],
+				'name' => $input['external_name'],
+				'user' => $input['external_user'],
+				'pass' => $input['external_pass'],
+				'table' => $input['external_table'],
+				'charset' => $input['external_charset'],
+				'port' => $input['external_port'],
+			]),
 			'custom_data' => [
-				'columns' => $custom_columns,
-				'rows' => $custom_rows,
-				'slugs' => $custom_slugs,
+				'columns' => $custom['dataset']['columns'],
+				'rows' => $custom['dataset']['rows'],
+				'slugs' => $custom['dataset']['slugs'],
 			],
 		];
 	}
@@ -230,45 +208,14 @@ class BaraTables_Admin_Action_Handler {
 			$request_columns = ['core:post_title'];
 		}
 
-		$defn['columns'] = $this->service->build_columns(
-			$request_columns,
-			$request['filter_types'],
-			$request['filter_sorts'],
-			$request['filter_type_priority'],
-			$request['custom_labels'],
-			$request['filter_labels'],
-			$request['hide_titles'],
-			$request['hidden_columns'],
-			$request['searchable'],
-			$request['sort_priority'],
-			$request['sort_direction'],
-			$request['sort_enabled'],
-			$request['sortable'],
-			$request['filter_values'],
-			$request['format_date_flags'],
-			$request['date_formats']
-		);
+		$defn['columns'] = $this->service->build_columns_from_records($request_columns, $request['column_records']);
 
-		if (BaraTables_Source_Type::is_custom_data($request['source_type'])) {
-			$defn['custom_data'] = [
-				'columns' => $request['custom_data']['columns'],
-				'rows' => $request['custom_data']['rows'],
-			];
-		} else {
-			unset($defn['custom_data']);
-		}
-
-		if (!empty($request['external_db'])) {
+		if ($request['source_type'] === BaraTables_Source_Type::EXTERNAL_DB && !empty($request['external_db'])) {
 			$external_db = $request['external_db'];
 			if (empty($external_db['pass']) && !empty($defn['external_db']['pass'])) {
 				$external_db['pass'] = $defn['external_db']['pass'];
 			}
 			$defn['external_db'] = $external_db;
-			$defn['source_type'] = BaraTables_Source_Type::is_external_db($request['source_type'])
-				? BaraTables_Source_Type::EXTERNAL_DB
-				: $defn['source_type'];
-		} else {
-			unset($defn['external_db']);
 		}
 
 		if (!empty($request['access_control'])) {
@@ -323,6 +270,11 @@ class BaraTables_Admin_Action_Handler {
 		}
 		if ($request['source_type'] !== BaraTables_Source_Type::CUSTOM_DATA) {
 			unset($defn['custom_data']);
+		} else {
+			$defn['custom_data'] = [
+				'columns' => $request['custom_data']['columns'],
+				'rows' => $request['custom_data']['rows'],
+			];
 		}
 		if ($request['source_type'] !== BaraTables_Source_Type::CSV) {
 			unset($defn['csv_attachment_id'], $defn['csv_has_header'], $defn['csv_delimiter']);

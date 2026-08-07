@@ -8,333 +8,65 @@ class BaraTables_Service {
 	// Concern clusters split into their own files to keep this class from being a single 4,000-line
 	// god-object. Traits run in this class's scope, so every $this->, self:: constant and private
 	// property below is shared with them exactly as if the methods were still declared inline.
-	use BaraTables_Query_Sanitize_Trait;
 	use BaraTables_Filter_Options_Trait;
 	use BaraTables_Value_Format_Trait;
-	use BaraTables_Fields_Discovery_Trait;
 	use BaraTables_Column_State_Trait;
 
-	private const TABLE_OPTION_SCHEMA = [
-		'paging' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'pagingNumbers' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'pagingFirstLast' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'pagingPreviousNext' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'lengthChange' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'searchBox' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'searchColumns' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'info' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'infoText' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'infoEmpty' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'infoFiltered' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'layoutTopStart' => [
-			'type' => 'checkbox_multi',
-			'default' => ['pagelength', 'buttons'],
-			'choices' => [
-				'pagelength' => null,
-				'buttons' => null,
-				'search' => null,
-				'info' => null,
-				'paging' => null,
-			],
-			'label' => null,
-			'description' => null,
-		],
-		'layoutTopEnd' => [
-			'type' => 'checkbox_multi',
-			'default' => ['search'],
-			'choices' => [
-				'pagelength' => null,
-				'buttons' => null,
-				'search' => null,
-				'info' => null,
-				'paging' => null,
-			],
-			'label' => null,
-			'description' => null,
-		],
-		'layoutBottomStart' => [
-			'type' => 'checkbox_multi',
-			'default' => ['info'],
-			'choices' => [
-				'pagelength' => null,
-				'buttons' => null,
-				'search' => null,
-				'info' => null,
-				'paging' => null,
-			],
-			'label' => null,
-			'description' => null,
-		],
-		'layoutBottomEnd' => [
-			'type' => 'checkbox_multi',
-			'default' => ['paging'],
-			'choices' => [
-				'pagelength' => null,
-				'buttons' => null,
-				'search' => null,
-				'info' => null,
-				'paging' => null,
-			],
-			'label' => null,
-			'description' => null,
-		],
-		'filtersTitle' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'filtersTitleText' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'ordering' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'colReorder' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'stateSave' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'autoWidth' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'scrollX' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'scrollYEnabled' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'scrollY' => [
-			'type' => 'number',
-			'default' => 300,
-			'min' => 1,
-			'max' => 2000,
-			'label' => null,
-			'description' => null,
-		],
-		'scrollCollapse' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'stripe' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'rowBorder' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'cellBorder' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'hover' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'orderColumn' => [
-			'type' => 'checkbox',
-			'default' => true,
-			'label' => null,
-		],
-		'compact' => [
-			'type' => 'checkbox',
-			'default' => false,
-			'label' => null,
-		],
-		'pageLength' => [
-			'type' => 'number',
-			'default' => 25,
-			'min' => 1,
-			'max' => 500,
-			'label' => null,
-			'description' => null,
-		],
-		'rowLimit' => [
-			'type' => 'number',
-			'default' => 1000,
-			'min' => 1,
-			'max' => 10000,
-			'label' => null,
-			'description' => null,
-		],
-		'lengthMenuPrefix' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'lengthMenuSuffix' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'paginateFirst' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'paginatePrevious' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'paginateNext' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'paginateLast' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'searchText' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'searchPlaceholder' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'searchColumnsLabel' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'searchColumnsHeading' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'buttons' => [
-			'type' => 'checkbox_multi',
-			'default' => [],
-			'choices' => [
-				'copy' => null,
-				'csv' => null,
-				'excel' => null,
-				'print' => null,
-				'colvis' => null,
-				'pagelength' => null,
-			],
-			'label' => null,
-			'description' => null,
-		],
-		'buttonTextCopy' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'buttonTextCsv' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'buttonTextExcel' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'buttonTextPrint' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'buttonTextColvis' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
-		'buttonTextPagelength' => [
-			'type' => 'text_html',
-			'default' => '',
-			'label' => null,
-			'description' => null,
-		],
+	/** Compact declarations expanded by build_table_option_schema(). Tuple shapes:
+	 *  checkbox [type, default], text [type, default], number [type, default, min, max],
+	 *  checkbox_multi [type, default, choices]. The order is the editor's canonical option order.
+	 */
+	private const TABLE_OPTION_DEFINITIONS = [
+		'paging'                  => ['checkbox', true],
+		'pagingNumbers'           => ['checkbox', true],
+		'pagingFirstLast'         => ['checkbox', true],
+		'pagingPreviousNext'      => ['checkbox', true],
+		'lengthChange'            => ['checkbox', true],
+		'searchBox'               => ['checkbox', true],
+		'searchColumns'           => ['checkbox', true],
+		'info'                    => ['checkbox', true],
+		'infoText'                => ['text_html', ''],
+		'infoEmpty'               => ['text_html', ''],
+		'infoFiltered'            => ['text_html', ''],
+		'layoutTopStart'          => ['checkbox_multi', ['pagelength', 'buttons'], []],
+		'layoutTopEnd'            => ['checkbox_multi', ['search'], []],
+		'layoutBottomStart'       => ['checkbox_multi', ['info'], []],
+		'layoutBottomEnd'         => ['checkbox_multi', ['paging'], []],
+		'filtersTitle'            => ['checkbox', false],
+		'filtersTitleText'        => ['text_html', ''],
+		'ordering'                => ['checkbox', true],
+		'colReorder'              => ['checkbox', false],
+		'stateSave'               => ['checkbox', false],
+		'autoWidth'               => ['checkbox', true],
+		'scrollX'                 => ['checkbox', false],
+		'scrollYEnabled'          => ['checkbox', false],
+		'scrollY'                 => ['number', 300, 1, 2000],
+		'scrollCollapse'          => ['checkbox', true],
+		'stripe'                  => ['checkbox', true],
+		'rowBorder'               => ['checkbox', true],
+		'cellBorder'              => ['checkbox', false],
+		'hover'                   => ['checkbox', true],
+		'orderColumn'             => ['checkbox', true],
+		'compact'                 => ['checkbox', false],
+		'pageLength'              => ['number', 25, 1, 500],
+		'rowLimit'                => ['number', 1000, 1, 10000],
+		'lengthMenuPrefix'        => ['text_html', ''],
+		'lengthMenuSuffix'        => ['text_html', ''],
+		'paginateFirst'           => ['text_html', ''],
+		'paginatePrevious'        => ['text_html', ''],
+		'paginateNext'            => ['text_html', ''],
+		'paginateLast'            => ['text_html', ''],
+		'searchText'              => ['text_html', ''],
+		'searchPlaceholder'       => ['text_html', ''],
+		'searchColumnsLabel'      => ['text_html', ''],
+		'searchColumnsHeading'    => ['text_html', ''],
+		'buttons'                 => ['checkbox_multi', [], ['copy' => null, 'csv' => null, 'excel' => null, 'print' => null, 'colvis' => null, 'pagelength' => null]],
+		'buttonTextCopy'          => ['text_html', ''],
+		'buttonTextCsv'           => ['text_html', ''],
+		'buttonTextExcel'         => ['text_html', ''],
+		'buttonTextPrint'         => ['text_html', ''],
+		'buttonTextColvis'        => ['text_html', ''],
+		'buttonTextPagelength'    => ['text_html', ''],
 	];
 	private const ALLOWED_INLINE_HTML = [
 		'span' => [
@@ -436,6 +168,9 @@ class BaraTables_Service {
 		'gantt_end' => '',
 		'gantt_group' => '',
 		'gantt_progress' => '',
+		'heatmap_x' => '',
+		'heatmap_y' => '',
+		'heatmap_value' => '',
 	];
 	private const MAX_CSV_BYTES = 5242880;
 	private const MAX_CSV_LINE_LENGTH = 1048576;
@@ -448,6 +183,8 @@ class BaraTables_Service {
 	];
 	public const MAX_CUSTOM_COLUMNS = 100;
 	public const MAX_CUSTOM_ROWS = 1000;
+	public const DEFAULT_ROW_LIMIT = 1000;
+	public const MAX_ROW_LIMIT = 10000;
 	// Cell budget matches the pre-1.2.1 maximum (50 cols x 500 rows) so no manual grid that was
 	// legal in an earlier version is ever silently truncated when its editor is opened or saved;
 	// the per-dimension caps above remain the real guard against pathologically large grids.
@@ -461,7 +198,7 @@ class BaraTables_Service {
 	public const MAX_TERM_PICKER_TERMS = 200;
 	public const LABEL_I18N_MIGRATION_OPTION = 'btbl_label_i18n_migrated';
 	/**
-	 * The English label defaults that TABLE_OPTION_SCHEMA carried before 1.2.3, and that the
+	 * The English label defaults that the table-option schema carried before 1.2.3, and that the
 	 * editor therefore baked into its input fields as a VALUE and persisted on every save. Any
 	 * table saved under 1.0.0-1.2.2 has these literals stored, which is why those six controls
 	 * rendered in English on localized sites no matter what the translation said.
@@ -483,13 +220,44 @@ class BaraTables_Service {
 		'searchColumnsLabel'   => 'Columns',
 		'searchColumnsHeading' => 'Search in',
 	];
-	private ?array $last_inferred_columns = null;
-	/** Per-request row cache: cache key => ['rows' => array, 'inferred' => ?array]. */
+	/** @var array<string,BaraTables_Row_Result> Per-request atomic row results. */
 	private array $row_cache = [];
 	private BaraTables_Repository $repo;
+	private BaraTables_Query_Sanitizer $query_sanitizer;
+	private BaraTables_Fields_Discovery $fields_discovery;
 
 	public function __construct(BaraTables_Repository $repo) {
 		$this->repo = $repo;
+		$this->query_sanitizer = new BaraTables_Query_Sanitizer();
+		$this->fields_discovery = new BaraTables_Fields_Discovery($this->query_sanitizer);
+	}
+
+	public function sanitize_custom_query_json(string $raw_json): array {
+		return $this->query_sanitizer->sanitize_custom_query_json($raw_json);
+	}
+
+	public function sanitize_value_overrides(string $raw_json): array {
+		return $this->query_sanitizer->sanitize_value_overrides($raw_json);
+	}
+
+	public function get_supported_post_types(): array {
+		return $this->fields_discovery->get_supported_post_types();
+	}
+
+	public function get_taxonomies_for_post_type(string $post_type, array $include_term_ids = []): array {
+		return $this->fields_discovery->get_taxonomies_for_post_type($post_type, $include_term_ids);
+	}
+
+	public function get_taxonomies_for_post_types(array $post_types, array $include_term_ids = []): array {
+		return $this->fields_discovery->get_taxonomies_for_post_types($post_types, $include_term_ids);
+	}
+
+	public function get_available_fields(string $post_type): array {
+		return $this->fields_discovery->get_available_fields($post_type);
+	}
+
+	public function get_available_fields_for_post_types(array $post_types): array {
+		return $this->fields_discovery->get_available_fields_for_post_types($post_types);
 	}
 
 	public static function allowed_inline_html(): array {
@@ -572,7 +340,7 @@ class BaraTables_Service {
 	}
 
 	public function sanitize_filter_sorts(array $filter_sorts_raw): array {
-		$allowed = ['asc', 'desc', 'custom', 'none'];
+		$allowed = ['asc', 'desc', 'custom'];
 		$out = [];
 		foreach ($filter_sorts_raw as $key => $sort) {
 			$clean_key = sanitize_text_field($key);
@@ -636,11 +404,11 @@ class BaraTables_Service {
 				$search_source = $line;
 
 				if (strpos($line, '=>') !== false) {
-					[$label_part, $search_part] = array_pad(explode('=>', $line, 2), 2, '');
+					[$label_part, $search_part] = explode('=>', $line, 2);
 					$label = trim($label_part);
 					$search_source = $search_part;
 				} elseif (strpos($line, '|') !== false) {
-					[$label_part, $search_part] = array_pad(explode('|', $line, 2), 2, '');
+					[$label_part, $search_part] = explode('|', $line, 2);
 					$label = trim($label_part);
 					$search_source = $search_part;
 				}
@@ -654,14 +422,11 @@ class BaraTables_Service {
 					}
 					$search_terms[] = sanitize_text_field($chunk);
 				}
-				if (empty($search_terms)) {
-					$search_terms[] = sanitize_text_field($label);
-				}
-				$label = $label !== '' ? $label : (string) ($search_terms[0] ?? '');
+				$label = $label !== '' ? $label : (string) $search_terms[0];
 				if ($label === '') {
 					continue;
 				}
-				$first_term = (string) ($search_terms[0] ?? '');
+				$first_term = (string) $search_terms[0];
 				$value = $first_term !== '' ? $first_term : $label;
 				$values[] = [
 					'label' => $label,
@@ -701,18 +466,11 @@ class BaraTables_Service {
 	}
 
 	/**
-	 * Fill empty front-end control labels with their translated defaults before the options are
-	 * serialized for the renderer. The stored/editor value stays '' (so the editor shows a blank
-	 * field with the default as a placeholder); only the front-end payload gets the localized
-	 * string, so non-English sites no longer fall back to the hardcoded English text in JS.
-	 * The source strings match the JS fallbacks exactly, so en_US output is unchanged.
-	 */
-	/**
 	 * Translated defaults for every visitor-facing control label. Single source of truth: the
 	 * front end substitutes these when the stored value is blank, and the editor shows the same
 	 * string as the field's placeholder, so what an admin sees is what a visitor gets.
 	 *
-	 * These MUST stay blank in TABLE_OPTION_SCHEMA. A non-empty English default there is baked
+	 * These MUST stay blank in TABLE_OPTION_DEFINITIONS. A non-empty English default there is baked
 	 * into the editor field as a value and persisted on save, which is why "Search:", "Show",
 	 * "entries" and "Filters" used to render untranslated on non-English sites no matter what.
 	 */
@@ -938,9 +696,10 @@ class BaraTables_Service {
 		}
 		$options['series'] = $series;
 
-		// Pie, donut, and funnel are single-series: if the user picked an X-axis but no series,
+		$type_capabilities = BaraTables_Chart_Types::get($options['type']);
+		// Single-series charts: if the user picked an X-axis but no series,
 		// auto-pick the first other column so the chart renders instead of showing "not configured".
-		if (in_array($options['type'], ['pie', 'donut', 'funnel'], true) && !empty($options['x_axis']) && empty($options['series']) && !empty($slug_map)) {
+		if ($type_capabilities['single_series'] && !empty($options['x_axis']) && empty($options['series']) && !empty($slug_map)) {
 			foreach (array_keys($slug_map) as $slug) {
 				if ($slug !== $options['x_axis']) {
 					$options['series'] = [$slug];
@@ -949,20 +708,12 @@ class BaraTables_Service {
 			}
 		}
 
-		// Stacking is meaningless for pie-like, point (scatter/bubble), and Gantt charts; force it
-		// off so the saved flag can't diverge from what the renderer actually does.
-		if (in_array($options['type'], ['pie', 'donut', 'funnel', 'scatter', 'bubble', 'gantt'], true)) {
+		if (!$type_capabilities['stackable']) {
 			$options['stack'] = false;
 		}
 
-		$gantt_keys = [
-			'gantt_label',
-			'gantt_start',
-			'gantt_end',
-			'gantt_group',
-			'gantt_progress',
-		];
-		foreach ($gantt_keys as $key) {
+		$special_role_keys = array_values(array_diff(BaraTables_Chart_Types::column_role_keys(), ['x_axis', 'series']));
+		foreach ($special_role_keys as $key) {
 			if (!empty($options_raw[$key])) {
 				$slug = sanitize_text_field((string) $options_raw[$key]);
 				if ($slug !== '' && isset($slug_map[$slug])) {
@@ -1015,7 +766,7 @@ class BaraTables_Service {
 		if (!BaraTables_Source_Type::supports_post_type_selection($source_type)) {
 			return ['post'];
 		}
-		return $this->sanitize_public_post_types($post_types_raw, true);
+		return $this->query_sanitizer->sanitize_public_post_types($post_types_raw, true);
 	}
 
 	public function prepare_columns_from_request(array $columns_raw, string $custom_meta_raw, string $column_order_raw = ''): array {
@@ -1046,10 +797,7 @@ class BaraTables_Service {
 			usort($columns, static function ($a, $b) use ($order_map) {
 				$posA = array_key_exists($a, $order_map) ? $order_map[$a] : PHP_INT_MAX;
 				$posB = array_key_exists($b, $order_map) ? $order_map[$b] : PHP_INT_MAX;
-				if ($posA === $posB) {
-					return 0;
-				}
-				return $posA < $posB ? -1 : 1;
+				return $posA <=> $posB;
 			});
 		}
 
@@ -1068,36 +816,78 @@ class BaraTables_Service {
 		return $out;
 	}
 
+	/**
+	 * Compatibility adapter for the pre-record column API.
+	 *
+	 * @deprecated Build records with build_column_records_from_request(), then call
+	 *             build_columns_from_records().
+	 */
 	public function build_columns(array $columns, array $filter_types, array $filter_sorts = [], array $filter_type_priority = [], array $custom_labels = [], array $filter_labels = [], array $hide_titles = [], array $hidden_columns = [], array $searchable = [], array $sort_priority = [], array $sort_direction = [], array $sort_enabled = [], array $sortable = [], array $filter_values = [], array $format_date_flags = [], array $date_formats = []): array {
+		$records = $this->build_column_records_from_maps($columns, compact(
+			'filter_types',
+			'filter_sorts',
+			'filter_type_priority',
+			'custom_labels',
+			'filter_labels',
+			'hide_titles',
+			'hidden_columns',
+			'searchable',
+			'sort_priority',
+			'sort_direction',
+			'sort_enabled',
+			'sortable',
+			'filter_values',
+			'format_date_flags',
+			'date_formats'
+		));
+		return $this->build_columns_from_records($columns, $records);
+	}
+
+	/**
+	 * Build stored column definitions from canonical per-column records.
+	 */
+	public function build_columns_from_records(array $columns, array $records): array {
 		$out = [];
 		foreach ($columns as $raw) {
-			$filter_type = isset($filter_types[$raw]) ? $filter_types[$raw] : 'none';
-			$filter_sort = isset($filter_sorts[$raw]) ? $filter_sorts[$raw] : 'asc';
-			$data_type_priority = isset($filter_type_priority[$raw]) && is_array($filter_type_priority[$raw]) ? array_values($filter_type_priority[$raw]) : [];
-			$custom_label = isset($custom_labels[$raw]) ? $custom_labels[$raw] : '';
-			$filter_label = array_key_exists($raw, $filter_labels) ? $filter_labels[$raw] : null;
-			$hide_title = !empty($hide_titles[$raw]);
-			$hidden = !empty($hidden_columns[$raw]);
-			$is_searchable = array_key_exists($raw, $searchable) ? (bool) $searchable[$raw] : true;
-			$priority = isset($sort_priority[$raw]) ? (int) $sort_priority[$raw] : 0;
-			$direction = isset($sort_direction[$raw]) ? $sort_direction[$raw] : 'asc';
-			$sort_is_enabled = array_key_exists($raw, $sort_enabled) ? (bool) $sort_enabled[$raw] : ($priority > 0);
-			$is_sortable = array_key_exists($raw, $sortable) ? (bool) $sortable[$raw] : true;
-			if (!$sort_is_enabled) {
-				$priority = 0;
-			}
-			$custom_filter_values = isset($filter_values[$raw]) && is_array($filter_values[$raw]) ? array_values($filter_values[$raw]) : [];
-			if ($filter_type === 'none') {
-				$custom_filter_values = [];
-			}
-			$date_format = isset($date_formats[$raw]) ? (string) $date_formats[$raw] : '';
-			$format_date = $date_format !== '' || !empty($format_date_flags[$raw]);
-			$out[] = $this->normalize_column($raw, $filter_type, $filter_sort, $custom_label, $filter_label, $hide_title, $hidden, $is_searchable, $priority, $direction, $sort_is_enabled, $is_sortable, $custom_filter_values, $data_type_priority, $format_date, $date_format);
+			$record = isset($records[$raw]) && is_array($records[$raw]) ? $records[$raw] : [];
+			$record['slug'] = (string) $raw;
+			$out[] = $this->normalize_column_record($record);
 		}
 		return $out;
 	}
 
+	/**
+	 * Canonical column-definition factory. Callers provide one record instead of maintaining a
+	 * positional argument list whose order previously had to match at every call site.
+	 */
+	public function normalize_column_record(array $record): array {
+		return $this->normalize_column_record_values($record);
+	}
+
+	/** @deprecated Pass a single record to normalize_column_record(). */
 	public function normalize_column(string $raw, string $filter_type = 'none', string $filter_sort = 'asc', string $custom_label = '', ?string $filter_label = null, bool $hide_title = false, bool $hidden = false, bool $searchable = true, int $sort_priority = 0, string $sort_direction = 'asc', bool $sort_enabled = false, bool $sortable = true, array $filter_values = [], array $filter_type_priority = [], bool $format_date = false, string $date_format = ''): array {
+		return $this->normalize_column_record([
+			'slug' => $raw,
+			'filter' => $filter_type,
+			'filter_sort' => $filter_sort,
+			'custom_label' => $custom_label,
+			'filter_label' => $filter_label,
+			'hide_title' => $hide_title,
+			'hidden' => $hidden,
+			'searchable' => $searchable,
+			'sort_priority' => $sort_priority,
+			'sort_direction' => $sort_direction,
+			'sort_enabled' => $sort_enabled,
+			'sortable' => $sortable,
+			'filter_values' => $filter_values,
+			'filter_type_priority' => $filter_type_priority,
+			'format_date' => $format_date,
+			'date_format' => $date_format,
+		]);
+	}
+
+	private function normalize_column_record_values(array $record): array {
+		$raw = (string) ($record['slug'] ?? '');
 		$parts = explode(':', $raw);
 		$source_raw = count($parts) > 1 ? array_shift($parts) : 'core';
 		$source = sanitize_key($source_raw);
@@ -1121,20 +911,29 @@ class BaraTables_Service {
 		// field submits an empty string when left at its placeholder default. No
 		// string-matching of the label text -- the flag is the single source of truth that
 		// display_column_label reads at render.
-		$auto_label = ($source === 'custom' && $custom_label === '');
+		$custom_label = (string) ($record['custom_label'] ?? '');
+		$auto_label = array_key_exists('auto_label', $record)
+			? (bool) $record['auto_label']
+			: ($source === 'custom' && $custom_label === '');
 
-		$label_raw = $custom_label !== '' ? $custom_label : $default_label;
+		$has_explicit_label = array_key_exists('label', $record);
+		$label_raw = $has_explicit_label ? (string) $record['label'] : ($custom_label !== '' ? $custom_label : $default_label);
 		$label = $this->sanitize_inline_html($label_raw);
-		if ($label === '') {
+		if ($label === '' && !$has_explicit_label) {
 			$label = $default_label;
 			$auto_label = ($source === 'custom');
 		}
-		$filter_label_raw = $filter_label === null ? $label : $filter_label;
+		$filter_label = array_key_exists('filter_label', $record) ? $record['filter_label'] : null;
+		$filter_label_raw = $filter_label === null ? $label : (string) $filter_label;
 		$filter_label_clean = $this->sanitize_inline_html($filter_label_raw);
 		$filter_label_value = $filter_label === null ? ($filter_label_clean !== '' ? $filter_label_clean : $label) : $filter_label_clean;
 
+		$filter_sort = (string) ($record['filter_sort'] ?? 'asc');
 		$filter_sort = $filter_sort === 'none' ? 'custom' : $filter_sort;
 		$filter_sort = in_array($filter_sort, ['asc', 'desc', 'custom'], true) ? $filter_sort : 'asc';
+		$filter_type = (string) ($record['filter'] ?? 'none');
+		$sort_priority = (int) ($record['sort_priority'] ?? 0);
+		$sort_direction = (string) ($record['sort_direction'] ?? 'asc');
 
 		return [
 			'key'    => $key,
@@ -1145,17 +944,17 @@ class BaraTables_Service {
 			'filter' => in_array($filter_type, ['dropdown', 'dropdown_multi', 'dropdown_plain', 'dropdown_plain_multi', 'checkbox', 'radio'], true) ? $filter_type : 'none',
 			'filter_sort' => $filter_sort,
 			'slug'   => $source . ':' . $key,
-			'hide_title' => $hide_title,
-			'hidden' => $hidden,
-			'searchable' => $searchable,
+			'hide_title' => !empty($record['hide_title']),
+			'hidden' => !empty($record['hidden']),
+			'searchable' => array_key_exists('searchable', $record) ? (bool) $record['searchable'] : true,
 			'sort_priority' => $sort_priority > 0 ? $sort_priority : 0,
 			'sort_direction' => in_array($sort_direction, ['asc', 'desc'], true) ? $sort_direction : 'asc',
-			'sort_enabled' => $sort_enabled,
-			'sortable' => $sortable,
-			'filter_values' => array_values($filter_values),
-			'filter_type_priority' => $this->normalize_data_type_priority_list($filter_type_priority),
-			'format_date' => $format_date,
-			'date_format' => $date_format,
+			'sort_enabled' => !empty($record['sort_enabled']),
+			'sortable' => array_key_exists('sortable', $record) ? (bool) $record['sortable'] : true,
+			'filter_values' => isset($record['filter_values']) && is_array($record['filter_values']) ? array_values($record['filter_values']) : [],
+			'filter_type_priority' => $this->normalize_data_type_priority_list(isset($record['filter_type_priority']) && is_array($record['filter_type_priority']) ? $record['filter_type_priority'] : []),
+			'format_date' => !empty($record['format_date']),
+			'date_format' => (string) ($record['date_format'] ?? ''),
 		];
 	}
 
@@ -1264,7 +1063,8 @@ class BaraTables_Service {
 			if ($clean_slug === '') {
 				continue;
 			}
-			$clean_dir = in_array(sanitize_key($dir), ['asc', 'desc'], true) ? sanitize_key($dir) : 'asc';
+			$clean_dir = sanitize_key($dir);
+			$clean_dir = in_array($clean_dir, ['asc', 'desc'], true) ? $clean_dir : 'asc';
 			$out[$clean_slug] = $clean_dir;
 		}
 		return $out;
@@ -1290,12 +1090,14 @@ class BaraTables_Service {
 		$column_count = min($column_count, self::MAX_CUSTOM_COLUMNS);
 
 		$columns = [];
+		$slugs = [];
 		for ($i = 0; $i < $column_count; $i++) {
 			$label_raw = $column_labels_raw[$i] ?? '';
 			// Store an empty string for unnamed columns rather than baking "Column N":
 			// the positional default is supplied at render. Keeping it empty preserves the
 			// "the user gave no name" signal so the column is flagged auto_label at save.
 			$columns[] = $this->sanitize_inline_html((string) $label_raw);
+			$slugs[] = 'custom:col_' . ($i + 1);
 		}
 
 		$target_rows = $rows_count > 0 ? $rows_count : count($rows_raw);
@@ -1315,11 +1117,6 @@ class BaraTables_Service {
 				$row[] = $cell;
 			}
 			$rows[] = $row;
-		}
-
-		$slugs = [];
-		for ($i = 0; $i < $column_count; $i++) {
-			$slugs[] = 'custom:col_' . ($i + 1);
 		}
 
 		return [
@@ -1343,11 +1140,7 @@ class BaraTables_Service {
 	 */
 	public function display_column_label(array $col, int $index, string $source_type = ''): string {
 		$label = (string) ($col['label'] ?? '');
-		if ($label === '') {
-			/* translators: %d is the column number. */
-			return sprintf(__('Column %d', 'baratables'), $index + 1);
-		}
-		if (BaraTables_Source_Type::is_custom_data($source_type) && !empty($col['auto_label'])) {
+		if ($label === '' || (BaraTables_Source_Type::is_custom_data($source_type) && !empty($col['auto_label']))) {
 			/* translators: %d is the column number. */
 			return sprintf(__('Column %d', 'baratables'), $index + 1);
 		}
@@ -1431,21 +1224,11 @@ class BaraTables_Service {
 			$label_raw = $labels[$idx] ?? '';
 			/* translators: %d is the column number. */
 			$label = $label_raw !== '' ? (string) $label_raw : sprintf(__('Column %d', 'baratables'), $idx + 1);
-			$columns[] = [
-				'key' => $key,
+			$columns[] = $this->normalize_column_record([
+				'slug' => self::build_slug($source, $key),
 				'label' => $label,
-				'filter' => 'none',
-				'filter_sort' => 'asc',
-				'slug' => $source . ':' . $key,
-				'source' => $source,
-				'hide_title' => false,
-				'hidden' => false,
-				'searchable' => true,
-				'sort_priority' => 0,
-				'sort_direction' => 'asc',
-				'sort_enabled' => false,
-				'sortable' => true,
-			];
+				'auto_label' => $source === 'custom' && $label_raw === '',
+			]);
 		}
 		return $columns;
 	}
@@ -1601,7 +1384,7 @@ class BaraTables_Service {
 		if ($defn['status'] === 'trash') {
 			return null;
 		}
-		if (BaraTables_Source_Type::is_csv($defn['source_type']) && !empty($defn['columns']) && is_array($defn['columns'])) {
+		if (BaraTables_Source_Type::is_csv($defn['source_type']) && !empty($defn['columns'])) {
 			self::normalize_csv_column_sources($defn['columns']);
 		}
 		if ($require_publish && $defn['status'] !== 'publish') {
@@ -1624,25 +1407,23 @@ class BaraTables_Service {
 	 * Deliberately request-scoped only -- never a transient. Rows depend on the current visitor
 	 * through row-level access control and on live sources that can change between requests.
 	 *
-	 * get_rows() also PUBLISHES state: it sets $last_inferred_columns, which ensure_columns_inferred()
-	 * reads afterwards. A cache that returned rows alone would leave that pointing at whichever
-	 * definition was fetched most recently, so a second table on the page could inherit the first
-	 * one's inferred columns. The inferred set is therefore cached and restored with the rows.
+	 * Rows and inferred columns are returned and cached together in BaraTables_Row_Result. get_rows()
+	 * remains the array-returning compatibility facade for callers that need rows only.
 	 */
-	public function get_rows(array $definition, int $limit = -1): array {
+	public function get_row_result(array $definition, int $limit = -1): BaraTables_Row_Result {
 		$cache_key = $this->row_cache_key($definition, $limit);
 		if ($cache_key !== '' && array_key_exists($cache_key, $this->row_cache)) {
-			$this->last_inferred_columns = $this->row_cache[$cache_key]['inferred'];
-			return $this->row_cache[$cache_key]['rows'];
+			return $this->row_cache[$cache_key];
 		}
-		$rows = $this->get_rows_uncached($definition, $limit);
+		$result = $this->get_row_result_uncached($definition, $limit);
 		if ($cache_key !== '') {
-			$this->row_cache[$cache_key] = [
-				'rows' => $rows,
-				'inferred' => $this->last_inferred_columns,
-			];
+			$this->row_cache[$cache_key] = $result;
 		}
-		return $rows;
+		return $result;
+	}
+
+	public function get_rows(array $definition, int $limit = -1): array {
+		return $this->get_row_result($definition, $limit)->rows();
 	}
 
 	/**
@@ -1667,7 +1448,7 @@ class BaraTables_Service {
 		}
 		// custom_data carries its rows INSIDE the definition (up to MAX_CUSTOM_CELLS), so
 		// fingerprinting it would cost an encode+hash of the entire dataset on every call -- more
-		// than get_rows_from_custom() spends doing the work, which is pure array manipulation with
+		// than the custom-data row path spends doing the work, which is pure array manipulation with
 		// no I/O. Nothing to memoize, so don't.
 		if (BaraTables_Source_Type::is_custom_data($definition['source_type'] ?? '')) {
 			return '';
@@ -1686,8 +1467,7 @@ class BaraTables_Service {
 		]);
 	}
 
-	private function get_rows_uncached(array $definition, int $limit = -1): array {
-		$this->last_inferred_columns = null;
+	private function get_row_result_uncached(array $definition, int $limit = -1): BaraTables_Row_Result {
 		$definition['source_type'] = BaraTables_Source_Type::normalize($definition['source_type'] ?? BaraTables_Source_Type::WP_QUERY, BaraTables_Source_Type::WP_QUERY);
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
 		$access = isset($definition['access_control']) && is_array($definition['access_control']) ? $definition['access_control'] : [];
@@ -1699,68 +1479,60 @@ class BaraTables_Service {
 		if (!empty($access)) {
 			$token_field = self::access_token_field_for_source($definition['source_type']);
 			if ($token_field === '' || empty($access[$token_field])) {
-				return [];
+				return new BaraTables_Row_Result();
 			}
 		}
 		$access_policy = $this->build_access_policy($access);
 		$table_options = $this->get_table_options($definition);
-		$configured_limit = max(1, (int) ($table_options['rowLimit'] ?? self::TABLE_OPTION_SCHEMA['rowLimit']['default']));
+		$configured_limit = max(1, (int) ($table_options['rowLimit'] ?? self::DEFAULT_ROW_LIMIT));
 		$row_limit = $limit > 0 ? min($limit, $configured_limit) : $configured_limit;
 
 		if (BaraTables_Source_Type::is_custom_data($definition['source_type'])) {
-			return $this->get_rows_from_custom($definition, $row_limit);
+			return $this->get_row_result_from_custom($definition, $row_limit);
 		}
 
 		if (BaraTables_Source_Type::is_external_db($definition['source_type'])) {
-			return $this->get_rows_from_external($definition, $row_limit, $access_policy);
+			return $this->get_row_result_from_external($definition, $row_limit, $access_policy);
 		}
 
 		if (BaraTables_Source_Type::is_csv($definition['source_type'])) {
-			$csv_access_enabled = !empty($access_policy['csv_column']);
-			return $this->get_rows_from_csv($definition, $row_limit, $access_policy, $csv_access_enabled);
+			return $this->get_row_result_from_csv($definition, $row_limit, $access_policy);
 		}
+		return $this->get_row_result_from_wp_posts($definition, $row_limit, $access_policy);
+	}
 
-		$per_page = $row_limit;
-
+	private function build_wp_source_query_args(array $definition, int $row_limit, array $access_policy): ?array {
 		$post_types_raw = isset($definition['post_types']) && is_array($definition['post_types']) && !empty($definition['post_types'])
 			? array_values(array_filter($definition['post_types']))
 			: [$definition['post_type'] ?? 'post'];
-		$post_types = $this->sanitize_public_post_types($post_types_raw, true);
+		$post_types = $this->query_sanitizer->sanitize_public_post_types($post_types_raw, true);
 		$query_args = [
 			'post_type'      => $post_types,
-			'posts_per_page' => $per_page,
+			'posts_per_page' => $row_limit,
 			'no_found_rows'  => true,
-			// Attachments are 'inherit', not 'publish' -- see post_status_for_types().
-			'post_status'    => self::post_status_for_types($post_types),
-			// A table is not the blog home. Without this, WP_Query prepends the site's sticky posts
-			// to every wp_query-source table -- pushing the row count PAST the configured limit and
-			// showing rows the table was never asked for. It bites here because post_type is always
-			// an array, so parse_query() never sets is_post_type_archive and falls through to
-			// is_home = true. The custom-query path already set this; the builder path did not, so
-			// the two disagreed. (is_admin is in core's same guard, which is why the editor preview
-			// looked correct while the published table did not.)
+			'post_status'    => BaraTables_Query_Sanitizer::post_status_for_types($post_types),
 			'ignore_sticky_posts' => true,
 		];
 
 		if ($definition['source_type'] === BaraTables_Source_Type::CUSTOM_QUERY) {
 			if (empty($definition['custom_query']) || !is_array($definition['custom_query'])) {
-				return [];
+				return null;
 			}
-			$query_args = $this->sanitize_wp_query_args($definition['custom_query']);
+			$query_args = $this->query_sanitizer->sanitize_wp_query_args($definition['custom_query']);
 			if (empty($query_args)) {
-				return [];
+				return null;
 			}
-			if ($per_page > 0) {
+			if ($row_limit > 0) {
 				$query_args['posts_per_page'] = isset($query_args['posts_per_page'])
-					? min((int) $query_args['posts_per_page'], $per_page)
-					: $per_page;
+					? min((int) $query_args['posts_per_page'], $row_limit)
+					: $row_limit;
 			}
 		}
 
 		if (!empty($access_policy['post_meta_key'])) {
 			$meta_query = $this->build_access_meta_query($access_policy['post_meta_key'], $access_policy);
 			if ($meta_query === 'none') {
-				return [];
+				return null;
 			}
 			if (!empty($meta_query)) {
 				$query_args = $this->append_meta_query($query_args, $meta_query);
@@ -1777,24 +1549,13 @@ class BaraTables_Service {
 				}
 			}
 		}
+		return $query_args;
+	}
 
-		// WP's default bulk priming of the post meta and term caches is deliberately left ON.
-		//
-		// An earlier version derived `update_post_meta_cache`/`update_post_term_cache` from a scan
-		// of the column sources, to skip two queries for a core-columns-only table. That trade is
-		// backwards: each flag saves ONE bulk query but, when the scan is wrong, costs one query
-		// PER ROW -- up to the 10,000-row ceiling. And the scan is wrong more often than it looks:
-		//   - resolve_value() routes every source that is not core/tax to get_meta_value(), so ACF
-		//     and other custom sources need meta even though their source is not literally 'meta';
-		//   - third-party callbacks on the_title / get_the_excerpt / post_link / get_the_date
-		//     (translation, SEO, membership plugins) commonly call get_post_meta();
-		//   - get_permalink() on a /%category%/ permastruct calls get_the_category() per post,
-		//     which needs the term cache.
-		// Only the two additive primes below are kept: they can add work but can never remove a
-		// cache WP would have populated.
+	private function get_wp_query_cache_requirements(array $columns): array {
 		$wants_author = false;
 		$wants_permalink = false;
-		foreach ((isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : []) as $col) {
+		foreach ($columns as $col) {
 			if (!is_array($col) || ($col['source'] ?? '') !== 'core') {
 				continue;
 			}
@@ -1805,20 +1566,19 @@ class BaraTables_Service {
 				$wants_permalink = true;
 			}
 		}
+		return ['author' => $wants_author, 'permalink' => $wants_permalink];
+	}
 
-		$query = new WP_Query($query_args);
-
-		// If an author column is selected, prime the author user-caches in one query so the
-		// get_the_author_meta() call in the row loop is not a per-author lookup (mild N+1).
-		if ($wants_author && !empty($query->posts)) {
-			cache_users(array_unique(array_map('intval', wp_list_pluck($query->posts, 'post_author'))));
+	private function prime_wp_query_dependencies(array $posts, array $requirements): void {
+		if (!empty($requirements['author']) && !empty($posts)) {
+			cache_users(array_unique(array_map('intval', wp_list_pluck($posts, 'post_author'))));
 		}
 
 		// get_permalink() on a hierarchical type walks ancestors via get_page_uri(), querying once
 		// per uncached parent. Prime one level in a single query (shared ancestors then hit cache).
-		if ($wants_permalink && !empty($query->posts)) {
+		if (!empty($requirements['permalink']) && !empty($posts)) {
 			$parent_ids = [];
-			foreach ($query->posts as $post) {
+			foreach ($posts as $post) {
 				$parent_id = (int) ($post->post_parent ?? 0);
 				if ($parent_id > 0 && is_post_type_hierarchical($post->post_type)) {
 					$parent_ids[$parent_id] = true;
@@ -1828,9 +1588,11 @@ class BaraTables_Service {
 				_prime_post_caches(array_keys($parent_ids), false, false);
 			}
 		}
+	}
 
+	private function build_wp_post_rows(array $posts, array $definition, array $access_policy): array {
 		$rows = [];
-		foreach ($query->posts as $post) {
+		foreach ($posts as $post) {
 			if (!empty($access_policy['post_meta_key']) && !$this->post_passes_access_policy($post, $access_policy)) {
 				continue;
 			}
@@ -1842,24 +1604,29 @@ class BaraTables_Service {
 			}
 			$rows[] = $row;
 		}
-
-		// No wp_reset_postdata() here: nothing in this loop calls setup_postdata()/the_post() --
-		// every core call is passed its $post explicitly. Resetting would act on the GLOBAL
-		// $wp_query, clobbering $GLOBALS['post'] for a theme that renders this shortcode inside its
-		// own secondary loop.
 		return $rows;
 	}
 
-	private function get_rows_from_custom(array $definition, int $limit = -1): array {
+	private function get_row_result_from_wp_posts(array $definition, int $row_limit, array $access_policy): BaraTables_Row_Result {
+		$query_args = $this->build_wp_source_query_args($definition, $row_limit, $access_policy);
+		if ($query_args === null) {
+			return new BaraTables_Row_Result();
+		}
+		// Leave WordPress' bulk post-meta and term-cache priming enabled. Removing either saves one
+		// query but risks an N+1 through custom fields, callbacks, or category permalinks.
+		$query = new WP_Query($query_args);
+		$requirements = $this->get_wp_query_cache_requirements($definition['columns']);
+		$this->prime_wp_query_dependencies($query->posts, $requirements);
+		return new BaraTables_Row_Result($this->build_wp_post_rows($query->posts, $definition, $access_policy));
+	}
+
+	private function get_row_result_from_custom(array $definition, int $limit): BaraTables_Row_Result {
 		$custom = isset($definition['custom_data']) && is_array($definition['custom_data']) ? $definition['custom_data'] : [];
 		$labels = isset($custom['columns']) && is_array($custom['columns']) ? array_values($custom['columns']) : [];
 		$rows_raw = isset($custom['rows']) && is_array($custom['rows']) ? $custom['rows'] : [];
 
 		$column_defs = $this->build_custom_display_columns($labels);
-		$column_slugs = [];
-		foreach ($column_defs as $col) {
-			$column_slugs[] = $this->resolve_column_slug($col);
-		}
+		$column_slugs = $this->column_slugs_in_order($column_defs);
 		$overrides = isset($definition['value_overrides']) && is_array($definition['value_overrides'])
 			? $definition['value_overrides']
 			: [];
@@ -1877,11 +1644,7 @@ class BaraTables_Service {
 				$date_format_map[$slug] = isset($col['date_format']) ? (string) $col['date_format'] : '';
 			}
 		}
-		$this->last_inferred_columns = $column_defs;
 		$column_count = count($column_defs);
-		if ($column_count === 0) {
-			return [];
-		}
 
 		$rows = [];
 		foreach ($rows_raw as $row) {
@@ -1912,27 +1675,28 @@ class BaraTables_Service {
 
 		if (!empty($definition['columns'])) {
 			$slug_map = $this->build_slug_index_map($column_defs);
-			return $this->reorder_rows_by_slug_map($rows, $definition['columns'], $slug_map);
+			$rows = $this->reorder_rows_by_slug_map($rows, $definition['columns'], $slug_map);
 		}
 
-		return $rows;
+		return new BaraTables_Row_Result($rows, $column_defs);
 	}
 
-	private function get_rows_from_csv(array $definition, int $limit = -1, array $access_policy = [], bool $access_enabled = false): array {
+	private function get_row_result_from_csv(array $definition, int $limit, array $access_policy): BaraTables_Row_Result {
+		$inferred = [];
 		$attachment_id = isset($definition['csv_attachment_id']) ? (int) $definition['csv_attachment_id'] : 0;
 		if ($attachment_id <= 0) {
-			return [];
+			return new BaraTables_Row_Result();
 		}
 		if (!$this->is_valid_csv_attachment($attachment_id)) {
-			return [];
+			return new BaraTables_Row_Result();
 		}
 		$path = get_attached_file($attachment_id);
 		if (!$path || !file_exists($path) || !is_readable($path)) {
-			return [];
+			return new BaraTables_Row_Result();
 		}
 		$file_size = filesize($path);
 		if ($file_size === false || $file_size > self::MAX_CSV_BYTES) {
-			return [];
+			return new BaraTables_Row_Result();
 		}
 
 		$has_header = !empty($definition['csv_has_header']);
@@ -1945,13 +1709,11 @@ class BaraTables_Service {
 		// gets a short or empty table. So when access is enforced, read the whole file (already
 		// bounded to MAX_CSV_BYTES above) and apply the limit after filtering, below. Without
 		// access control, keep stopping at the limit so a large file is never fully read.
-		$defer_limit = $access_enabled && !empty($access_policy['csv_column']);
+		$defer_limit = !empty($access_policy['csv_column']);
 
 		// Parsed rows are cached BEFORE access filtering, which is per-visitor and must never be
 		// cached. filemtime + size are in the key, so an edited file can never serve stale rows.
-		// Note this parse also publishes $last_inferred_columns (via infer_columns_from_header),
-		// so the cache carries that too -- returning rows alone would leave a later
-		// ensure_columns_inferred() reading whichever file was parsed most recently.
+		// The cache carries rows and inferred columns together so a hit is a complete parse result.
 		// Only meaningful on sites with a persistent object cache; elsewhere it is request-scoped
 		// and the per-request row cache in get_rows() has already collapsed repeat reads.
 		// filemtime has 1-second granularity, so mtime+size alone cannot see a same-second in-place
@@ -1969,7 +1731,7 @@ class BaraTables_Service {
 		]));
 		$cached = wp_cache_get($csv_cache_key, 'baratables');
 		if (is_array($cached) && array_key_exists('rows', $cached)) {
-			$this->last_inferred_columns = $cached['inferred'];
+			$inferred = isset($cached['inferred']) && is_array($cached['inferred']) ? $cached['inferred'] : [];
 			$rows = $cached['rows'];
 		} else {
 			$rows = [];
@@ -1989,7 +1751,7 @@ class BaraTables_Service {
 						continue;
 					}
 					if ($has_header && $count === 0) {
-						$this->infer_columns_from_header($data);
+						$inferred = $this->infer_columns_from_header($data);
 						$count++;
 						continue;
 					}
@@ -2010,7 +1772,7 @@ class BaraTables_Service {
 				if (wp_using_ext_object_cache() && $file_size <= 256 * KB_IN_BYTES && count($rows) <= 5000) {
 					wp_cache_set(
 						$csv_cache_key,
-						['rows' => $rows, 'inferred' => $this->last_inferred_columns],
+						['rows' => $rows, 'inferred' => $inferred],
 						'baratables',
 						5 * MINUTE_IN_SECONDS
 					);
@@ -2018,7 +1780,7 @@ class BaraTables_Service {
 			}
 		}
 
-		if (empty($this->last_inferred_columns)) {
+		if (empty($inferred)) {
 			$maxCols = 0;
 			foreach ($rows as $row) {
 				$maxCols = max($maxCols, is_array($row) ? count($row) : 0);
@@ -2027,20 +1789,19 @@ class BaraTables_Service {
 				// Only the count matters: infer_columns_from_header() with $is_header = false
 				// derives its own labels and ignores these values.
 				$headers = array_fill(0, $maxCols, '');
-				$this->infer_columns_from_header($headers, false);
+				$inferred = $this->infer_columns_from_header($headers, false);
 			}
 		}
 
-		$inferred = $this->last_inferred_columns ?: [];
 		$csv_index_map = $this->build_slug_index_map($inferred);
 
 		// Access control is enforced regardless of whether display columns are configured, so
 		// a CSV table with access control but no selected columns never returns unfiltered
 		// rows (matching the external-DB path).
-		if ($access_enabled && !empty($access_policy['csv_column'])) {
+		if ($defer_limit) {
 			$access_index = $this->resolve_csv_access_column_index($csv_index_map, (string) $access_policy['csv_column']);
 			if ($access_index === null) {
-				return [];
+				return new BaraTables_Row_Result([], $inferred);
 			}
 			$rows = array_values(array_filter($rows, static function ($row) use ($access_index) {
 				return is_array($row) && array_key_exists($access_index, $row);
@@ -2057,11 +1818,10 @@ class BaraTables_Service {
 
 		if (!empty($definition['columns'])) {
 			$rows = $this->reorder_rows_by_slug_map($rows, $definition['columns'], $csv_index_map);
-			$rows = $this->apply_ordered_date_formats($rows, $this->build_ordered_date_formats($definition['columns']));
-			$rows = $this->apply_ordered_overrides($rows, $definition['columns'], $definition['value_overrides'] ?? []);
+			$rows = $this->finalize_ordered_rows($rows, $definition['columns'], $definition['value_overrides'] ?? []);
 		}
 
-		return $rows;
+		return new BaraTables_Row_Result($rows, $inferred);
 	}
 
 	private function is_valid_csv_attachment(int $attachment_id): bool {
@@ -2213,31 +1973,16 @@ class BaraTables_Service {
 		return is_array($results) ? $results : null;
 	}
 
-	private function get_rows_from_external(array $definition, int $limit = -1, array $access_policy = []): array {
+	private function get_row_result_from_external(array $definition, int $limit, array $access_policy): BaraTables_Row_Result {
+		$inferred = [];
 		$config = isset($definition['external_db']) && is_array($definition['external_db']) ? $definition['external_db'] : [];
-		$host = $config['host'] ?? '';
-		$dbname = $config['name'] ?? '';
-		$user = $config['user'] ?? '';
-		$password = BaraTables_Crypto::decrypt($config['pass'] ?? '');
-		$table = $config['table'] ?? '';
-		$charset = $config['charset'] ?? '';
-		$port = isset($config['port']) ? (int) $config['port'] : 0;
-		if ($host === '' || $dbname === '' || $user === '' || $table === '') {
-			return [];
+		$source = $this->connect_external_source($config);
+		if ($source === null) {
+			return new BaraTables_Row_Result();
 		}
-		$host_with_port = $port > 0 ? $host . ':' . $port : $host;
-		$ext_db = $this->create_external_db_connection($user, $password, $dbname, $host_with_port);
-		if (!$ext_db) {
-			return [];
-		}
-		if ($charset !== '') {
-			$ext_db->set_charset($ext_db->dbh, $charset);
-		}
-		$per_page = $limit > 0 ? $limit : (int) self::TABLE_OPTION_SCHEMA['rowLimit']['default'];
-		$table = $this->sanitize_external_identifier((string) $table);
-		if ($table === '' || !method_exists($ext_db, 'has_cap') || !$ext_db->has_cap('identifier_placeholders')) {
-			return [];
-		}
+		$ext_db = $source['db'];
+		$table = $source['table'];
+		$per_page = $limit > 0 ? $limit : self::DEFAULT_ROW_LIMIT;
 
 		// With row-level access control the LIMIT must bound the rows the visitor may SEE, not the
 		// table's first N physical rows -- otherwise a visitor whose permitted rows sit past row N
@@ -2246,7 +1991,7 @@ class BaraTables_Service {
 		// superset (capped at the schema's 10,000-row maximum), filter, then slice to $per_page
 		// below. Without access control the plain LIMIT is kept so a large table is never overread.
 		$access_active = !empty($access_policy['external_column']);
-		$fetch_limit = $access_active ? max($per_page, (int) self::TABLE_OPTION_SCHEMA['rowLimit']['max']) : $per_page;
+		$fetch_limit = $access_active ? self::MAX_ROW_LIMIT : $per_page;
 
 		// Fetch only the columns this table renders (plus the access-token column) instead of
 		// SELECT *. On a wide source that is the difference between pulling every column of up to
@@ -2270,7 +2015,7 @@ class BaraTables_Service {
 			$results = $this->fetch_external_rows($ext_db, $table, $fetch_limit, []);
 		}
 		if (!is_array($results) || empty($results)) {
-			return [];
+			return new BaraTables_Row_Result();
 		}
 
 		$columns_for_mapping = $definition['columns'];
@@ -2288,17 +2033,17 @@ class BaraTables_Service {
 				}));
 			}
 			$inferred = $this->build_column_definitions_from_assoc($result_keys, 'external');
-			$this->last_inferred_columns = $inferred;
 			$columns_for_mapping = $inferred;
 		}
 
-		$map = $this->build_slug_map($columns_for_mapping, function ($col) {
-			return $col['key'] ?? '';
-		});
+		$map = [];
+		foreach ($columns_for_mapping as $column) {
+			$map[$this->resolve_column_slug($column)] = $column['key'] ?? '';
+		}
 
 		$eligible_rows = $results;
 
-		if (!empty($access_policy['external_column'])) {
+		if ($access_active) {
 			$first_row = reset($eligible_rows);
 			// Resolve the token column's real key once here; the key set is the same for every
 			// row, and this doubles as the "column is missing -> deny everything" check.
@@ -2306,7 +2051,7 @@ class BaraTables_Service {
 				? $this->resolve_external_row_key($first_row, (string) $access_policy['external_column'])
 				: null;
 			if ($token_key === null) {
-				return [];
+				return new BaraTables_Row_Result([], $inferred);
 			}
 			$eligible_rows = $this->filter_rows_by_access(
 				$eligible_rows,
@@ -2323,8 +2068,41 @@ class BaraTables_Service {
 		}
 
 		$ordered = $this->reorder_external_rows_by_slug_map($eligible_rows, $columns_for_mapping, $map);
-		$ordered = $this->apply_ordered_date_formats($ordered, $this->build_ordered_date_formats($columns_for_mapping));
-		return $this->apply_ordered_overrides($ordered, $columns_for_mapping, $definition['value_overrides'] ?? []);
+		$ordered = $this->finalize_ordered_rows($ordered, $columns_for_mapping, $definition['value_overrides'] ?? []);
+		return new BaraTables_Row_Result($ordered, $inferred);
+	}
+
+	/** Validate and connect an external source before row-fetch policy is applied. */
+	private function connect_external_source(array $config): ?array {
+		$host = $config['host'] ?? '';
+		$dbname = $config['name'] ?? '';
+		$user = $config['user'] ?? '';
+		$password = BaraTables_Crypto::decrypt($config['pass'] ?? '');
+		$table = $config['table'] ?? '';
+		$charset = $config['charset'] ?? '';
+		$port = isset($config['port']) ? (int) $config['port'] : 0;
+		if ($host === '' || $dbname === '' || $user === '' || $table === '') {
+			return null;
+		}
+		$host_with_port = $port > 0 ? $host . ':' . $port : $host;
+		$ext_db = $this->create_external_db_connection($user, $password, $dbname, $host_with_port);
+		if (!$ext_db) {
+			return null;
+		}
+		if ($charset !== '') {
+			$ext_db->set_charset($ext_db->dbh, $charset);
+		}
+		$table = $this->sanitize_external_identifier((string) $table);
+		if ($table === '' || !method_exists($ext_db, 'has_cap') || !$ext_db->has_cap('identifier_placeholders')) {
+			return null;
+		}
+		return ['db' => $ext_db, 'table' => $table];
+	}
+
+	/** Shared finalization once a row source has projected values into display-column order. */
+	private function finalize_ordered_rows(array $rows, array $columns, array $overrides): array {
+		$rows = $this->apply_ordered_date_formats($rows, $this->build_ordered_date_formats($columns));
+		return $this->apply_ordered_overrides($rows, $columns, $overrides);
 	}
 
 	/**
@@ -2390,18 +2168,7 @@ class BaraTables_Service {
 		return $ordered_rows;
 	}
 
-	private function build_slug_map(array $columns, callable $value_resolver): array {
-		$map = [];
-		foreach ($columns as $idx => $col) {
-			$slug = $this->resolve_column_slug($col);
-			$map[$slug] = $value_resolver($col, $idx);
-		}
-		return $map;
-	}
-
 	private function build_slug_index_map(array $columns): array {
-		// Built directly rather than through build_slug_map(): the resolver would only ever be
-		// `fn($col, $idx) => $idx`, and three separate copies of that closure existed before.
 		$map = [];
 		foreach ($columns as $idx => $col) {
 			$map[$this->resolve_column_slug($col)] = $idx;
@@ -2479,7 +2246,7 @@ class BaraTables_Service {
 		);
 	}
 
-	private function infer_columns_from_header(array $header_row, bool $is_header = true): void {
+	private function infer_columns_from_header(array $header_row, bool $is_header = true): array {
 		$keys = [];
 		$labels = [];
 		foreach ($header_row as $idx => $label) {
@@ -2494,15 +2261,10 @@ class BaraTables_Service {
 			// labels and auto-labelled manual columns.
 			$labels[] = $is_header ? (string) $label : '';
 		}
-		$this->last_inferred_columns = $this->build_columns_from_keys_and_labels($keys, $labels, 'csv');
+		return $this->build_columns_from_keys_and_labels($keys, $labels, 'csv');
 	}
 
-	public function get_last_inferred_columns(): ?array {
-		return $this->last_inferred_columns;
-	}
-
-	public function ensure_columns_inferred(array $definition): array {
-		$definition = is_array($definition) ? $definition : [];
+	public function definition_with_inferred_columns(array $definition, BaraTables_Row_Result $result): array {
 		if (!empty($definition['columns'])) {
 			return $definition;
 		}
@@ -2510,7 +2272,7 @@ class BaraTables_Service {
 		if (BaraTables_Source_Type::is_csv($source)) {
 			return $definition;
 		}
-		$inferred = $this->get_last_inferred_columns();
+		$inferred = $result->inferred_columns();
 		if (!empty($inferred)) {
 			$definition['columns'] = $inferred;
 		}
@@ -2518,30 +2280,48 @@ class BaraTables_Service {
 	}
 
 	/**
-	 * Same result as ensure_columns_inferred(), but without requiring the caller to have fetched
-	 * rows first.
-	 *
-	 * ensure_columns_inferred() can only report what the LAST get_rows() call left behind, so its
-	 * answer silently depends on whether something earlier in the same request happened to fetch
-	 * rows. Callers that get that order wrong were told a table has no columns when the front end
-	 * renders every one of them: an external-database table with nothing explicitly selected shows
-	 * all of its columns publicly, while the editor's "Refresh preview" reported "No columns
-	 * selected yet" and saving it warned "This table has no columns". Use this when rows are not
-	 * being fetched anyway; use ensure_columns_inferred() directly straight after a get_rows().
+	 * Resolve effective columns with the same atomic result that discovered them.
 	 */
 	public function resolve_columns(array $definition): array {
-		$definition = is_array($definition) ? $definition : [];
 		if (!empty($definition['columns'])) {
 			return $definition;
 		}
-		// CSV columns come from the stored header, not from a row fetch; ensure_columns_inferred()
-		// deliberately declines to infer for that source, so there is nothing to prime.
+		// CSV columns come from the stored header rather than row-shape inference, so there is
+		// nothing to prime through a row fetch.
 		if (BaraTables_Source_Type::is_csv($definition['source_type'] ?? BaraTables_Source_Type::WP_QUERY)) {
 			return $definition;
 		}
 		// One row is enough to learn the shape. The rows themselves are discarded.
-		$this->get_rows($definition, 1);
-		return $this->ensure_columns_inferred($definition);
+		$result = $this->get_row_result($definition, 1);
+		return $this->definition_with_inferred_columns($definition, $result);
+	}
+
+	/** Expand compact declarations into the stable public schema shape. */
+	private static function build_table_option_schema(): array {
+		$schema = [];
+		foreach (self::TABLE_OPTION_DEFINITIONS as $key => $definition) {
+			$type = (string) $definition[0];
+			$config = [
+				'type' => $type,
+				'default' => $definition[1],
+				'label' => null,
+			];
+			if ($type === 'number') {
+				$config['min'] = (int) $definition[2];
+				$config['max'] = (int) $definition[3];
+				$config['description'] = null;
+			} elseif ($type === 'text_html') {
+				$config['description'] = null;
+			} elseif ($type === 'checkbox_multi') {
+				$config['choices'] = $definition[2];
+				$config['description'] = null;
+			}
+			$schema[$key] = $config;
+		}
+
+		$schema['rowLimit']['default'] = self::DEFAULT_ROW_LIMIT;
+		$schema['rowLimit']['max'] = self::MAX_ROW_LIMIT;
+		return $schema;
 	}
 
 	public static function get_table_option_schema(): array {
@@ -2550,7 +2330,7 @@ class BaraTables_Service {
 			return $schema_with_labels;
 		}
 
-		$schema = self::TABLE_OPTION_SCHEMA;
+		$schema = self::build_table_option_schema();
 		$schema['paging']['label'] = __('Enable pagination', 'baratables');
 		$schema['lengthChange']['label'] = __('Show per page selector', 'baratables');
 		$schema['pagingNumbers']['label'] = __('Show page numbers', 'baratables');
@@ -2613,13 +2393,144 @@ class BaraTables_Service {
 		$schema['buttonTextColvis']['label'] = __('Column visibility button text', 'baratables');
 		$schema['buttonTextPagelength']['label'] = __('Page length button text', 'baratables');
 
+		foreach (array_keys(self::TABLE_STYLE_CLASS_MAP) as $key) {
+			$schema[$key]['editor_group'] = 'style';
+		}
+
+		$inline_controls = [
+			'paging' => ['pageLength', 'lengthChange', 'lengthMenuPrefix', 'lengthMenuSuffix', 'pagingNumbers', 'pagingFirstLast', 'paginateFirst', 'paginateLast', 'pagingPreviousNext', 'paginatePrevious', 'paginateNext'],
+			'searchBox' => ['searchText', 'searchPlaceholder', 'searchColumns', 'searchColumnsLabel', 'searchColumnsHeading'],
+			'info' => ['infoText', 'infoEmpty', 'infoFiltered'],
+			'filtersTitle' => ['filtersTitleText'],
+			'scrollYEnabled' => ['scrollY', 'scrollCollapse'],
+		];
+		foreach ($inline_controls as $parent => $children) {
+			foreach ($children as $order => $key) {
+				$schema[$key]['editor_group'] = 'inline';
+				$schema[$key]['editor_parent'] = $parent;
+				$schema[$key]['editor_order'] = $order;
+			}
+		}
+
+		$editor_classes = [
+			'pageLength' => ['btbl-page-length-row'],
+			'lengthChange' => ['btbl-length-change-flag'],
+			'lengthMenuPrefix' => ['btbl-page-length-row', 'btbl-length-menu-row'],
+			'lengthMenuSuffix' => ['btbl-page-length-row', 'btbl-length-menu-row'],
+			'paginateFirst' => ['btbl-pagination-label-row'],
+			'paginatePrevious' => ['btbl-pagination-label-row'],
+			'paginateNext' => ['btbl-pagination-label-row'],
+			'paginateLast' => ['btbl-pagination-label-row'],
+			'searchText' => ['btbl-search-setting-row'],
+			'searchPlaceholder' => ['btbl-search-setting-row', 'btbl-search-placeholder-row'],
+			'searchColumns' => ['btbl-search-columns-flag'],
+			'searchColumnsLabel' => ['btbl-search-setting-row', 'btbl-search-columns-setting'],
+			'searchColumnsHeading' => ['btbl-search-setting-row', 'btbl-search-columns-setting'],
+			'filtersTitleText' => ['btbl-filters-title-setting'],
+			'infoText' => ['btbl-info-setting'],
+			'infoEmpty' => ['btbl-info-setting'],
+			'infoFiltered' => ['btbl-info-setting'],
+		];
+		foreach ($editor_classes as $key => $classes) {
+			$schema[$key]['editor_classes'] = $classes;
+		}
+
+		$dependencies = [
+			'pageLength' => ['paging' => true],
+			'lengthChange' => ['paging' => true],
+			'pagingNumbers' => ['paging' => true],
+			'pagingFirstLast' => ['paging' => true],
+			'pagingPreviousNext' => ['paging' => true],
+			'lengthMenuPrefix' => ['paging' => true, 'lengthChange' => true],
+			'lengthMenuSuffix' => ['paging' => true, 'lengthChange' => true],
+			'paginateFirst' => ['paging' => true, 'pagingFirstLast' => true],
+			'paginateLast' => ['paging' => true, 'pagingFirstLast' => true],
+			'paginatePrevious' => ['paging' => true, 'pagingPreviousNext' => true],
+			'paginateNext' => ['paging' => true, 'pagingPreviousNext' => true],
+			'searchText' => ['searchBox' => true],
+			'searchPlaceholder' => ['searchBox' => true],
+			'searchColumns' => ['searchBox' => true],
+			'searchColumnsLabel' => ['searchBox' => true, 'searchColumns' => true],
+			'searchColumnsHeading' => ['searchBox' => true, 'searchColumns' => true],
+			'filtersTitleText' => ['filtersTitle' => true],
+			'infoText' => ['info' => true],
+			'infoEmpty' => ['info' => true],
+			'infoFiltered' => ['info' => true],
+		];
+		foreach ($dependencies as $key => $conditions) {
+			$schema[$key]['editor_visible_when'] = $conditions;
+		}
+		foreach (['lengthChange', 'searchColumns'] as $key) {
+			$schema[$key]['editor_reset_when_hidden'] = true;
+		}
+		foreach (['lengthChange', 'searchColumns', 'pagingNumbers', 'pagingFirstLast', 'pagingPreviousNext'] as $key) {
+			$schema[$key]['editor_restore_default'] = true;
+		}
+
+		$layout_features = [
+			'pagelength' => __('Page length', 'baratables'),
+			'buttons' => __('Buttons', 'baratables'),
+			'search' => __('Search', 'baratables'),
+			'info' => __('Result summary', 'baratables'),
+			'paging' => __('Pagination', 'baratables'),
+		];
+		$layout_zone_labels = [
+			'layoutTopStart' => __('Top left', 'baratables'),
+			'layoutTopEnd' => __('Top right', 'baratables'),
+			'layoutBottomStart' => __('Bottom left', 'baratables'),
+			'layoutBottomEnd' => __('Bottom right', 'baratables'),
+		];
+		foreach ($layout_zone_labels as $key => $short_label) {
+			$schema[$key]['editor_group'] = 'layout';
+			$schema[$key]['editor_label'] = $short_label;
+			$schema[$key]['choices'] = $layout_features;
+		}
+
+		$button_text_keys = [
+			'copy' => 'buttonTextCopy',
+			'csv' => 'buttonTextCsv',
+			'excel' => 'buttonTextExcel',
+			'print' => 'buttonTextPrint',
+			'colvis' => 'buttonTextColvis',
+			'pagelength' => 'buttonTextPagelength',
+		];
+		$schema['buttons']['editor_group'] = 'buttons';
+		$schema['buttons']['choice_dependencies'] = [
+			'copy' => null,
+			'csv' => null,
+			'excel' => null,
+			'print' => null,
+			'colvis' => null,
+			'pagelength' => 'lengthChange',
+		];
+		foreach ($layout_zone_labels as $key => $_short_label) {
+			$schema[$key]['choice_dependencies'] = [
+				'search' => 'searchBox',
+				'pagelength' => 'lengthChange',
+				'info' => 'info',
+				'paging' => 'paging',
+				'buttons' => 'buttons',
+			];
+		}
+		$schema['buttons']['choice_text_options'] = $button_text_keys;
+		foreach ($button_text_keys as $key) {
+			$schema[$key]['editor_group'] = 'button_text';
+		}
+
+		foreach ($schema as $key => &$config) {
+			if (($config['type'] ?? '') === 'checkbox' && empty($config['editor_group'])) {
+				$config['editor_group'] = 'controls';
+			}
+		}
+		unset($config);
+
 		$schema_with_labels = $schema;
 		return $schema_with_labels;
 	}
 
 	private function get_table_option_defaults(): array {
 		$defaults = [];
-		foreach (self::TABLE_OPTION_SCHEMA as $key => $config) {
+		foreach (self::get_table_option_schema() as $key => $config) {
 			$defaults[$key] = $config['default'];
 		}
 		return $defaults;
@@ -2715,23 +2626,21 @@ class BaraTables_Service {
 		}
 
 		$clauses = [];
-		if (!empty($user_tokens)) {
-			foreach ($user_tokens as $token) {
-				$token = (string) $token;
-				if ($token === '') {
-					continue;
-				}
-				$clauses[] = [
-					'key' => $meta_key,
-					'value' => $token,
-					'compare' => 'LIKE',
-				];
-				$clauses[] = [
-					'key' => $meta_key,
-					'value' => '"' . $token . '"',
-					'compare' => 'LIKE',
-				];
+		foreach ($user_tokens as $token) {
+			$token = (string) $token;
+			if ($token === '') {
+				continue;
 			}
+			$clauses[] = [
+				'key' => $meta_key,
+				'value' => $token,
+				'compare' => 'LIKE',
+			];
+			$clauses[] = [
+				'key' => $meta_key,
+				'value' => '"' . $token . '"',
+				'compare' => 'LIKE',
+			];
 		}
 
 		if (empty($clauses)) {

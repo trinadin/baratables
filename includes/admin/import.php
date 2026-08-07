@@ -104,6 +104,45 @@ class BaraTables_Import_Builder {
 		];
 	}
 
+	/** Create the one normalized-table contract shared by every manual-data adapter. */
+	public static function normalized(string $name, array $columns, array $rows, bool $has_header, array $settings = [], array $warnings = []): array {
+		return [
+			'name' => $name,
+			'columns' => array_values($columns),
+			'rows' => array_values($rows),
+			'has_header' => $has_header,
+			'settings' => array_merge(self::blank_settings(), $settings),
+			'warnings' => array_values($warnings),
+		];
+	}
+
+	/** Cheap shape check used when only the number of importable tables is needed. */
+	public static function is_usable_normalized(array $norm): bool {
+		if (!empty($norm['columns']) && is_array($norm['columns'])) {
+			return true;
+		}
+		foreach (isset($norm['rows']) && is_array($norm['rows']) ? $norm['rows'] : [] as $row) {
+			if (is_array($row) && !empty($row)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Apply the normalized importer settings contract to a table-options array. */
+	public static function apply_table_settings(array $table_options, array $settings): array {
+		$settings = array_merge(self::blank_settings(), $settings);
+		if ($settings['page_length'] !== null && (int) $settings['page_length'] > 0) {
+			$table_options['pageLength'] = (int) $settings['page_length'];
+		}
+		foreach (['paging' => 'paging', 'search' => 'searchBox', 'ordering' => 'ordering'] as $setting_key => $option_key) {
+			if ($settings[$setting_key] !== null) {
+				$table_options[$option_key] = (bool) $settings[$setting_key];
+			}
+		}
+		return $table_options;
+	}
+
 	/**
 	 * Build a ready-to-persist custom_data definition (id left blank for the controller to fill).
 	 *
@@ -152,7 +191,7 @@ class BaraTables_Import_Builder {
 		// A header-only / empty source has no body rows; build_custom_dataset would otherwise
 		// synthesize the new-table default of 5 blank rows. Import it as an empty (header-only)
 		// table instead, so the preview row count is accurate and the user isn't handed phantom rows.
-		$clean_rows = count($rows_in) === 0 ? [] : $dataset['rows'];
+		$clean_rows = empty($rows_in) ? [] : $dataset['rows'];
 
 		$columns = [];
 		for ($i = 0; $i < $cols_count; $i++) {
@@ -160,42 +199,15 @@ class BaraTables_Import_Builder {
 			$key = 'col_' . ($i + 1);
 			$slug = BaraTables_Service::build_slug('custom', $key);
 			$auto_label = trim(wp_strip_all_tags($label)) === '';
-			$columns[] = [
-				'key' => $key,
+			$columns[] = $service->normalize_column_record([
+				'slug' => $slug,
 				'label' => $label,
 				'filter_label' => $label,
-				'source' => 'custom',
-				'filter' => 'none',
-				'filter_sort' => 'asc',
-				'slug' => $slug,
-				'hide_title' => false,
-				'hidden' => false,
-				'searchable' => true,
-				'sort_priority' => 0,
-				'sort_direction' => 'asc',
-				'sort_enabled' => false,
-				'sortable' => true,
-				'filter_values' => [],
-				'filter_type_priority' => [],
-				'format_date' => false,
-				'date_format' => '',
 				'auto_label' => $auto_label,
-			];
+			]);
 		}
 
-		$table_options = $service->get_default_table_options();
-		if ($settings['page_length'] !== null && (int) $settings['page_length'] > 0) {
-			$table_options['pageLength'] = (int) $settings['page_length'];
-		}
-		if ($settings['paging'] !== null) {
-			$table_options['paging'] = (bool) $settings['paging'];
-		}
-		if ($settings['search'] !== null) {
-			$table_options['searchBox'] = (bool) $settings['search'];
-		}
-		if ($settings['ordering'] !== null) {
-			$table_options['ordering'] = (bool) $settings['ordering'];
-		}
+		$table_options = self::apply_table_settings($service->get_default_table_options(), $settings);
 
 		// Default sort column (0-based), if the source declared one and ordering is on.
 		$sort_idx = $settings['sort_column_index'];
@@ -262,14 +274,7 @@ class BaraTables_Import_TablePress {
 		if ($is_simple) {
 			// Bare top-level array of rows; no options/visibility, no header convention.
 			$grid = self::clean_grid(array_values($decoded));
-			return [
-				'name' => $name,
-				'columns' => [],
-				'rows' => $grid,
-				'has_header' => false,
-				'settings' => BaraTables_Import_Builder::blank_settings(),
-				'warnings' => $warnings,
-			];
+			return BaraTables_Import_Builder::normalized($name, [], $grid, false, [], $warnings);
 		}
 
 		$data = isset($decoded['data']) && is_array($decoded['data']) ? array_values($decoded['data']) : [];
@@ -303,15 +308,12 @@ class BaraTables_Import_TablePress {
 				continue;
 			}
 			$out_row = [];
-			$c = 0;
-			foreach (array_values($row) as $cell) {
+			foreach (array_values($row) as $c => $cell) {
 				if (isset($col_vis[$c]) && (int) $col_vis[$c] === 0) {
 					$dropped_col = true;
-					$c++;
 					continue;
 				}
 				$out_row[] = self::clean_cell($cell);
-				$c++;
 			}
 			if ($has_header && $r < $table_head) {
 				$header_rows[] = $out_row;
@@ -337,14 +339,7 @@ class BaraTables_Import_TablePress {
 			$warnings[] = __('Hidden rows from the source were skipped.', 'baratables');
 		}
 
-		return [
-			'name' => $name,
-			'columns' => $labels,
-			'rows' => $body,
-			'has_header' => $has_header,
-			'settings' => self::map_settings($options),
-			'warnings' => $warnings,
-		];
+		return BaraTables_Import_Builder::normalized($name, $labels, $body, $has_header, self::map_settings($options), $warnings);
 	}
 
 	private static function map_settings(array $options): array {
@@ -442,30 +437,11 @@ class BaraTables_Import_NinjaTables {
 		}
 
 		$settings_raw = isset($decoded['settings']) && is_array($decoded['settings']) ? $decoded['settings'] : [];
-		$settings = BaraTables_Import_Builder::blank_settings();
-		if (isset($settings_raw['perPage']) && (int) $settings_raw['perPage'] > 0) {
-			$settings['page_length'] = (int) $settings_raw['perPage'];
-		}
-		if (array_key_exists('enable_search', $settings_raw)) {
-			$settings['search'] = BaraTables_Import_Util::to_bool($settings_raw['enable_search'], true);
-		}
-		if (array_key_exists('column_sorting', $settings_raw)) {
-			$settings['ordering'] = BaraTables_Import_Util::to_bool($settings_raw['column_sorting'], true);
-		}
-		if (array_key_exists('show_all', $settings_raw)) {
-			$settings['paging'] = !BaraTables_Import_Util::to_bool($settings_raw['show_all'], false);
-		}
+		$settings = self::map_display_settings($settings_raw);
 
 		$name = isset($decoded['post']['post_title']) ? (string) $decoded['post']['post_title'] : '';
 
-		return [
-			'name' => $name,
-			'columns' => $labels,
-			'rows' => $rows,
-			'has_header' => true,
-			'settings' => $settings,
-			'warnings' => [],
-		];
+		return BaraTables_Import_Builder::normalized($name, $labels, $rows, true, $settings);
 	}
 
 	/**
@@ -482,47 +458,57 @@ class BaraTables_Import_NinjaTables {
 		$settings = isset($export['settings']) && is_array($export['settings']) ? $export['settings'] : [];
 		$title = isset($export['post']['post_title']) ? sanitize_text_field((string) $export['post']['post_title']) : '';
 		$name = $title !== '' ? $title : __('Imported Table', 'baratables');
-
-		$table_options = $service->get_default_table_options();
-		if (isset($settings['perPage'])) {
-			$per_page = (int) $settings['perPage'];
-			if ($per_page > 0) {
-				$table_options['pageLength'] = $per_page;
-			}
-		}
-		// Same reading of the same export keys as the manual-data path above, via the shared
-		// helper. These three had been hand-rolled here and had drifted: to_bool() understands
-		// "false"/"no"/"off" and an empty value means "unset, use the default", where the local
-		// version treated "false" as true and an empty value as false. One Ninja Tables export
-		// could therefore import with search on or off purely by which branch consumed it.
-		if (array_key_exists('enable_search', $settings)) {
-			$table_options['searchBox'] = BaraTables_Import_Util::to_bool($settings['enable_search'], true);
-		}
-		if (array_key_exists('column_sorting', $settings)) {
-			$table_options['ordering'] = BaraTables_Import_Util::to_bool($settings['column_sorting'], true);
-		}
-		if (array_key_exists('show_all', $settings)) {
-			$table_options['paging'] = !BaraTables_Import_Util::to_bool($settings['show_all'], false);
+		$table_options = BaraTables_Import_Builder::apply_table_settings(
+			$service->get_default_table_options(),
+			self::map_display_settings($settings)
+		);
+		$mapped = self::map_wpposts_columns($columns, $service);
+		$mapped_columns = $mapped['columns'];
+		$column_key_map = $mapped['key_map'];
+		if (empty($mapped_columns)) {
+			return ['error' => __('No valid columns were mapped from the export.', 'baratables')];
 		}
 
+		$post_types = self::map_wpposts_post_types($export['metas'] ?? []);
+		$mapped_columns = self::apply_wpposts_sort($mapped_columns, $column_key_map, $settings, $table_options);
+		$filter_result = self::map_wpposts_filters($mapped_columns, $column_key_map, $export['metas'] ?? []);
+
+		$definition = [
+			'id' => '',
+			'name' => $name,
+			'post_type' => $post_types[0],
+			'post_types' => $post_types,
+			'source_type' => 'wp_query',
+			'columns' => $filter_result['columns'],
+			'table_options' => $table_options,
+			'filter_order' => $filter_result['filter_order'],
+			'status' => 'publish',
+		];
+
+		return ['definition' => $definition];
+	}
+
+	private static function map_display_settings(array $settings_raw): array {
+		$settings = BaraTables_Import_Builder::blank_settings();
+		if (isset($settings_raw['perPage']) && (int) $settings_raw['perPage'] > 0) {
+			$settings['page_length'] = (int) $settings_raw['perPage'];
+		}
+		if (array_key_exists('enable_search', $settings_raw)) {
+			$settings['search'] = BaraTables_Import_Util::to_bool($settings_raw['enable_search'], true);
+		}
+		if (array_key_exists('column_sorting', $settings_raw)) {
+			$settings['ordering'] = BaraTables_Import_Util::to_bool($settings_raw['column_sorting'], true);
+		}
+		if (array_key_exists('show_all', $settings_raw)) {
+			$settings['paging'] = !BaraTables_Import_Util::to_bool($settings_raw['show_all'], false);
+		}
+		return $settings;
+	}
+
+	/** @return array{columns:array,key_map:array} */
+	private static function map_wpposts_columns(array $columns, BaraTables_Service $service): array {
 		$mapped_columns = [];
 		$column_key_map = [];
-		$sorting_column = '';
-		$sorting_direction = 'asc';
-		$sorting_type = '';
-		if (isset($settings['sorting_column'])) {
-			$sorting_column = sanitize_key((string) $settings['sorting_column']);
-		}
-		if (isset($settings['sorting_column_by'])) {
-			$sorting_direction = BaraTables_Import_Util::sort_dir($settings['sorting_column_by'], 'asc');
-		}
-		if (isset($settings['sorting_type'])) {
-			$sorting_type = sanitize_key((string) $settings['sorting_type']);
-		}
-		if ($sorting_type !== '' && $sorting_type !== 'by_column') {
-			$sorting_column = '';
-		}
-
 		foreach ($columns as $col) {
 			if (!is_array($col) || empty($col['name'])) {
 				continue;
@@ -534,7 +520,11 @@ class BaraTables_Import_NinjaTables {
 			if ($source_type === 'custom') {
 				$source = 'meta';
 				if (!empty($col['wp_post_custom_data_value'])) {
-					$key = sanitize_key((string) $col['wp_post_custom_data_value']);
+					// WordPress metadata keys are case-sensitive, free-form strings. Keep the
+					// stored key byte-for-byte apart from the same control-character/tag cleanup
+					// used by the manual metadata-key field. Ninja's filter/sort identifiers are
+					// normalized separately in $column_key_map below.
+					$key = sanitize_text_field((string) $col['wp_post_custom_data_value']);
 				}
 			} elseif ($source_type === 'tax_data') {
 				$source = 'tax';
@@ -570,26 +560,21 @@ class BaraTables_Import_NinjaTables {
 			$breakpoints = isset($col['breakpoints']) ? strtolower(trim((string) $col['breakpoints'])) : '';
 			$hidden = $breakpoints !== '' && preg_match('/\\bhidden\\b/', $breakpoints);
 			$unsortable = BaraTables_Import_Util::to_bool($col['unsortable'] ?? false, false);
-			$mapped_columns[] = [
-				'key' => $key,
-				'label' => $label,
-				'filter' => 'none',
-				'filter_sort' => 'asc',
+			$mapped_columns[] = $service->normalize_column_record([
 				'slug' => $slug,
-				'source' => $source,
+				'label' => $label,
 				'hide_title' => !empty($col['classes']) && strpos((string) $col['classes'], 'hide-title') !== false,
 				'hidden' => $hidden,
-				'searchable' => true,
-				'sort_priority' => 0,
-				'sort_direction' => 'asc',
-				'sort_enabled' => false,
 				'sortable' => !$unsortable,
-				'filter_values' => [],
 				'format_date' => $is_date || $date_format !== '',
 				'date_format' => $date_format,
-			];
+			]);
 			$col_index = count($mapped_columns) - 1;
 			$column_key_map[$key] = $col_index;
+			$normalized_key = sanitize_key($key);
+			if ($normalized_key !== '') {
+				$column_key_map[$normalized_key] = $col_index;
+			}
 			if (!empty($col['key'])) {
 				$column_key_map[sanitize_key((string) $col['key'])] = $col_index;
 			}
@@ -598,12 +583,12 @@ class BaraTables_Import_NinjaTables {
 			}
 		}
 
-		if (empty($mapped_columns)) {
-			return ['error' => __('No valid columns were mapped from the export.', 'baratables')];
-		}
+		return ['columns' => $mapped_columns, 'key_map' => $column_key_map];
+	}
 
+	private static function map_wpposts_post_types($metas): array {
 		$post_types = [];
-		$metas = $export['metas'] ?? [];
+		$metas = is_array($metas) ? $metas : [];
 		if (!empty($metas['_ninja_table_wpposts_ds_post_types']) && is_array($metas['_ninja_table_wpposts_ds_post_types'])) {
 			foreach ($metas['_ninja_table_wpposts_ds_post_types'] as $pt) {
 				$clean = sanitize_key((string) $pt);
@@ -615,7 +600,18 @@ class BaraTables_Import_NinjaTables {
 		if (empty($post_types)) {
 			$post_types[] = 'post';
 		}
+		return $post_types;
+	}
 
+	private static function apply_wpposts_sort(array $mapped_columns, array $column_key_map, array $settings, array $table_options): array {
+		$sorting_column = isset($settings['sorting_column']) ? sanitize_key((string) $settings['sorting_column']) : '';
+		$sorting_direction = isset($settings['sorting_column_by'])
+			? BaraTables_Import_Util::sort_dir($settings['sorting_column_by'], 'asc')
+			: 'asc';
+		$sorting_type = isset($settings['sorting_type']) ? sanitize_key((string) $settings['sorting_type']) : '';
+		if ($sorting_type !== '' && $sorting_type !== 'by_column') {
+			$sorting_column = '';
+		}
 		if (!empty($table_options['ordering']) && $sorting_column !== '' && isset($column_key_map[$sorting_column])) {
 			$sort_idx = $column_key_map[$sorting_column];
 			if (isset($mapped_columns[$sort_idx]) && !empty($mapped_columns[$sort_idx]['sortable'])) {
@@ -624,8 +620,13 @@ class BaraTables_Import_NinjaTables {
 				$mapped_columns[$sort_idx]['sort_direction'] = $sorting_direction;
 			}
 		}
+		return $mapped_columns;
+	}
 
+	/** @return array{columns:array,filter_order:array} */
+	private static function map_wpposts_filters(array $mapped_columns, array $column_key_map, $metas): array {
 		$filter_order = [];
+		$metas = is_array($metas) ? $metas : [];
 		$custom_filters = $metas['_ninja_table_custom_filters'] ?? [];
 		if (is_array($custom_filters)) {
 			foreach ($custom_filters as $filter) {
@@ -682,13 +683,10 @@ class BaraTables_Import_NinjaTables {
 						if ($label_opt === '') {
 							$label_opt = $value_opt;
 						}
-						$search_terms = array_values(array_filter([$label_opt, $value_opt], static function ($item) {
-							return $item !== '';
-						}));
 						$manual_values[] = [
 							'label' => $label_opt,
 							'value' => $value_opt,
-							'search_terms' => $search_terms,
+							'search_terms' => [$label_opt, $value_opt],
 						];
 					}
 					if (!empty($manual_values)) {
@@ -700,19 +698,10 @@ class BaraTables_Import_NinjaTables {
 			}
 		}
 
-		$definition = [
-			'id' => '',
-			'name' => $name,
-			'post_type' => $post_types[0],
-			'post_types' => $post_types,
-			'source_type' => 'wp_query',
+		return [
 			'columns' => $mapped_columns,
-			'table_options' => $table_options,
 			'filter_order' => array_values(array_unique(array_filter($filter_order))),
-			'status' => 'publish',
 		];
-
-		return ['definition' => $definition];
 	}
 
 	public static function convert_ninja_date_format(string $format): string {
@@ -784,15 +773,11 @@ class BaraTables_Import_NinjaTables {
 	}
 
 	private static function convert_ninja_format(string $format, array $map): string {
-		$format = (string) $format;
 		if ($format === '') {
 			return '';
 		}
 
 		$tokens = array_keys($map);
-		usort($tokens, static function ($a, $b) {
-			return strlen($b) <=> strlen($a);
-		});
 
 		$has_tokens = false;
 		foreach ($tokens as $token) {
@@ -873,14 +858,7 @@ class BaraTables_Import_Spreadsheet {
 			$body = array_slice($rows, 1);
 		}
 
-		return [
-			'name' => $name,
-			'columns' => $labels,
-			'rows' => $body,
-			'has_header' => true,
-			'settings' => BaraTables_Import_Builder::blank_settings(),
-			'warnings' => [],
-		];
+		return BaraTables_Import_Builder::normalized($name, $labels, $body, true);
 	}
 
 	private static function sniff_delimiter(string $raw): string {
@@ -992,14 +970,7 @@ class BaraTables_Import_LeagueTable {
 				}
 			}
 
-			$results[] = [
-				'name' => $name,
-				'columns' => $labels,
-				'rows' => $body,
-				'has_header' => $show_header,
-				'settings' => $settings,
-				'warnings' => [],
-			];
+			$results[] = BaraTables_Import_Builder::normalized($name, $labels, $body, $show_header, $settings);
 		}
 		return $results;
 	}
@@ -1028,7 +999,8 @@ class BaraTables_Import_LeagueTable {
 class BaraTables_Importer {
 	/**
 	 * @return array{
-	 *   ok:bool, format:string, definitions:array[], previews:array[], warnings:string[], message:string
+	 *   ok:bool, format:string, definition:?array, preview:?array, usable_table_count:int,
+	 *   definitions:array[], previews:array[], warnings:string[], message:string
 	 * }
 	 */
 	public static function analyze(string $raw, string $filename, BaraTables_Service $service): array {
@@ -1038,21 +1010,29 @@ class BaraTables_Importer {
 		$result = [
 			'ok' => false,
 			'format' => $format,
+			'definition' => null,
+			'preview' => null,
+			'usable_table_count' => 0,
+			// Compatibility aliases for integrations using the original importer contract. They
+			// contain at most the selected first table; discarded tables are never retained.
 			'definitions' => [],
 			'previews' => [],
 			'warnings' => [],
 			'message' => '',
 		];
 
-		switch ($format) {
-			case 'tablepress_full':
-			case 'tablepress_simple':
-				$norm = BaraTables_Import_TablePress::to_normalized($detected['decoded'], $format === 'tablepress_simple');
-				return self::build_manual($result, [$norm], $service);
+		$manual_adapters = [
+			'tablepress_full' => static fn() => [BaraTables_Import_TablePress::to_normalized($detected['decoded'], false)],
+			'tablepress_simple' => static fn() => [BaraTables_Import_TablePress::to_normalized($detected['decoded'], true)],
+			'ninja_manual' => static fn() => [BaraTables_Import_NinjaTables::to_normalized($detected['decoded'])],
+			'spreadsheet' => static fn() => [BaraTables_Import_Spreadsheet::to_normalized($raw, $filename)],
+			'league_table' => static fn() => BaraTables_Import_LeagueTable::to_normalized_list($detected['decoded']),
+		];
+		if (isset($manual_adapters[$format])) {
+			return self::build_manual($result, $manual_adapters[$format](), $service);
+		}
 
-			case 'ninja_manual':
-				$norm = BaraTables_Import_NinjaTables::to_normalized($detected['decoded']);
-				return self::build_manual($result, [$norm], $service);
+		switch ($format) {
 
 			case 'ninja_wpposts':
 				$built = BaraTables_Import_NinjaTables::to_wpposts_definition($detected['decoded'], $service);
@@ -1061,17 +1041,9 @@ class BaraTables_Importer {
 					return $result;
 				}
 				$result['ok'] = true;
-				$result['definitions'][] = $built['definition'];
-				$result['previews'][] = self::preview($built['definition']);
+				self::select_definition($result, $built['definition']);
+				$result['usable_table_count'] = 1;
 				return $result;
-
-			case 'spreadsheet':
-				$norm = BaraTables_Import_Spreadsheet::to_normalized($raw, $filename);
-				return self::build_manual($result, [$norm], $service);
-
-			case 'league_table':
-				$norms = BaraTables_Import_LeagueTable::to_normalized_list($detected['decoded']);
-				return self::build_manual($result, $norms, $service);
 
 			case 'unsupported':
 				$result['message'] = $detected['reason'];
@@ -1083,7 +1055,7 @@ class BaraTables_Importer {
 		}
 	}
 
-	/** Build one or more manual (custom_data) definitions from NormalizedTables. */
+	/** Select the first usable manual table and count, but do not retain, later tables. */
 	private static function build_manual(array $result, array $norms, BaraTables_Service $service): array {
 		$norms = array_values(array_filter($norms, 'is_array'));
 		if (empty($norms)) {
@@ -1091,34 +1063,38 @@ class BaraTables_Importer {
 			return $result;
 		}
 		foreach ($norms as $norm) {
-			$built = BaraTables_Import_Builder::from_normalized($norm, $service);
-			$def = $built['definition'];
-			if (empty($def['custom_data']['rows']) && empty($def['custom_data']['columns'])) {
-				continue; // nothing usable
+			if (!BaraTables_Import_Builder::is_usable_normalized($norm)) {
+				continue;
 			}
-			// Only the first usable table is ever imported -- the Create step reads
-			// definitions[0] and the preview reads previews[0]. Merging every table's warnings
-			// showed the discarded ones' notices ("only the first 50 of 80 columns were
-			// imported") beside a preview of a table that came through complete.
-			if (empty($result['definitions'])) {
+			$result['usable_table_count']++;
+			// Only the selected table owns warnings. A discarded table's truncation notice beside
+			// the selected table's preview is both confusing and unactionable.
+			if ($result['definition'] === null) {
+				$built = BaraTables_Import_Builder::from_normalized($norm, $service);
 				$result['warnings'] = array_merge($result['warnings'], $built['warnings']);
+				self::select_definition($result, $built['definition']);
 			}
-			$result['definitions'][] = $def;
-			$result['previews'][] = self::preview($def);
 		}
-		if (empty($result['definitions'])) {
+		if ($result['definition'] === null) {
 			$result['message'] = __('The file was recognized but contained no table rows to import.', 'baratables');
 			return $result;
 		}
-		if (count($result['definitions']) > 1) {
+		if ($result['usable_table_count'] > 1) {
 			$result['warnings'][] = sprintf(
 				/* translators: %d is the number of tables found in the file. */
 				__('The file contained %d tables. Only the first was imported.', 'baratables'),
-				count($result['definitions'])
+				$result['usable_table_count']
 			);
 		}
 		$result['ok'] = true;
 		return $result;
+	}
+
+	private static function select_definition(array &$result, array $definition): void {
+		$result['definition'] = $definition;
+		$result['preview'] = self::preview($definition);
+		$result['definitions'] = [$definition];
+		$result['previews'] = [$result['preview']];
 	}
 
 	private static function preview(array $definition): array {

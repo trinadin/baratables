@@ -4,6 +4,26 @@ if (!defined('ABSPATH')) {
 	exit;
 }
 
+/** Canonical identity metadata shared by repositories and admin persistence. */
+final class BaraTables_Entity_Descriptor {
+	public static function table(): array {
+		return [
+			'cpt' => BaraTables_Repository::CPT,
+			'meta_key' => BaraTables_Repository::META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Descriptor field, not query arguments.
+			'meta_slug' => BaraTables_Repository::META_SLUG,
+		];
+	}
+
+	public static function chart(): array {
+		return [
+			'cpt' => BaraTables_Chart_Repository::CPT,
+			'meta_key' => BaraTables_Chart_Repository::META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Descriptor field, not query arguments.
+			'meta_slug' => BaraTables_Chart_Repository::META_SLUG,
+		];
+	}
+
+}
+
 abstract class BaraTables_Base_Repository {
 	private const STATUSES_LIVE = ['publish', 'draft', 'pending', 'future', 'private'];
 	private const STATUSES_WITH_TRASH = ['publish', 'draft', 'pending', 'future', 'private', 'trash'];
@@ -125,10 +145,14 @@ abstract class BaraTables_Base_Repository {
 	}
 
 	protected function find_item_common(string $cpt, string $meta_slug, string $slug, bool $include_trash, callable $mapper): ?array {
-		$statuses = $this->get_statuses($include_trash);
+		$post_id = $this->find_post_id_common($cpt, $meta_slug, $slug, $include_trash);
+		return $post_id ? $mapper($post_id, $include_trash) : null;
+	}
+
+	protected function find_post_id_common(string $cpt, string $meta_slug, string $slug, bool $include_trash): int {
 		$query = new WP_Query([
 			'post_type'      => $cpt,
-			'post_status'    => $statuses,
+			'post_status'    => $this->get_statuses($include_trash),
 			'posts_per_page' => 1,
 			'no_found_rows'  => true,
 			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Required for slug-based lookup; indexed meta key.
@@ -141,29 +165,11 @@ abstract class BaraTables_Base_Repository {
 			'fields'         => 'ids',
 		]);
 
-		if (empty($query->posts)) {
-			return null;
-		}
-
-		return $mapper((int) $query->posts[0], $include_trash);
+		return !empty($query->posts) ? (int) $query->posts[0] : 0;
 	}
 
 	protected function get_post_id_by_slug_common(string $cpt, string $meta_slug, string $slug): int {
-		$query = new WP_Query([
-			'post_type'      => $cpt,
-			'post_status'    => self::STATUSES_WITH_TRASH,
-			'posts_per_page' => 1,
-			'no_found_rows'  => true,
-			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Required for slug-based lookup; indexed meta key.
-			'meta_query'     => [
-				[
-					'key'   => $meta_slug,
-					'value' => $slug,
-				],
-			],
-			'fields'         => 'ids',
-		]);
-		return !empty($query->posts) ? (int) $query->posts[0] : 0;
+		return $this->find_post_id_common($cpt, $meta_slug, $slug, true);
 	}
 
 	public function meta_auth_callback(): bool {
@@ -236,9 +242,9 @@ abstract class BaraTables_Base_Repository {
 
 
 abstract class BaraTables_Abstract_CPT_Repository extends BaraTables_Base_Repository {
-	abstract protected function get_cpt(): string;
-	abstract protected function get_meta_key(): string;
-	abstract protected function get_meta_slug(): string;
+	private ?array $resolved_descriptor = null;
+
+	abstract protected function get_descriptor(): array;
 	abstract protected function get_labels(): array;
 	abstract protected function get_menu_icon(): string;
 	abstract protected function get_menu_position(): int;
@@ -248,6 +254,25 @@ abstract class BaraTables_Abstract_CPT_Repository extends BaraTables_Base_Reposi
 	 */
 	protected function get_show_in_menu() {
 		return true;
+	}
+
+	private function descriptor(): array {
+		if ($this->resolved_descriptor === null) {
+			$this->resolved_descriptor = $this->get_descriptor();
+		}
+		return $this->resolved_descriptor;
+	}
+
+	protected function get_cpt(): string {
+		return $this->descriptor()['cpt'];
+	}
+
+	protected function get_meta_key(): string {
+		return $this->descriptor()['meta_key'];
+	}
+
+	protected function get_meta_slug(): string {
+		return $this->descriptor()['meta_slug'];
 	}
 
 	public function register_cpt(): void {
@@ -322,16 +347,8 @@ class BaraTables_Repository extends BaraTables_Abstract_CPT_Repository {
 	public const META_KEY = '_btbl_definition';
 	public const META_SLUG = '_btbl_slug';
 
-	protected function get_cpt(): string {
-		return self::CPT;
-	}
-
-	protected function get_meta_key(): string {
-		return self::META_KEY;
-	}
-
-	protected function get_meta_slug(): string {
-		return self::META_SLUG;
+	protected function get_descriptor(): array {
+		return BaraTables_Entity_Descriptor::table();
 	}
 
 	protected function get_labels(): array {
@@ -419,16 +436,8 @@ class BaraTables_Chart_Repository extends BaraTables_Abstract_CPT_Repository {
 	public const META_KEY = '_btbl_chart_definition';
 	public const META_SLUG = '_btbl_chart_slug';
 
-	protected function get_cpt(): string {
-		return self::CPT;
-	}
-
-	protected function get_meta_key(): string {
-		return self::META_KEY;
-	}
-
-	protected function get_meta_slug(): string {
-		return self::META_SLUG;
+	protected function get_descriptor(): array {
+		return BaraTables_Entity_Descriptor::chart();
 	}
 
 	protected function get_labels(): array {

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
+  <rect width="320" height="200" fill="#fff"/>
+  <g transform="translate(58 28)" stroke="#fff" stroke-width="3">
+    <rect x="0" y="0" width="48" height="34" fill="#dbeafe"/>
+    <rect x="48" y="0" width="48" height="34" fill="#93c5fd"/>
+    <rect x="96" y="0" width="48" height="34" fill="#3b82f6"/>
+    <rect x="144" y="0" width="48" height="34" fill="#1d4ed8"/>
+    <rect x="0" y="34" width="48" height="34" fill="#bfdbfe"/>
+    <rect x="48" y="34" width="48" height="34" fill="#60a5fa"/>
+    <rect x="96" y="34" width="48" height="34" fill="#2563eb"/>
+    <rect x="144" y="34" width="48" height="34" fill="#dbeafe"/>
+    <rect x="0" y="68" width="48" height="34" fill="#3b82f6"/>
+    <rect x="48" y="68" width="48" height="34" fill="#dbeafe"/>
+    <rect x="96" y="68" width="48" height="34" fill="#93c5fd"/>
+    <rect x="144" y="68" width="48" height="34" fill="#60a5fa"/>
+    <rect x="0" y="102" width="48" height="34" fill="#1d4ed8"/>
+    <rect x="48" y="102" width="48" height="34" fill="#2563eb"/>
+    <rect x="96" y="102" width="48" height="34" fill="#bfdbfe"/>
+    <rect x="144" y="102" width="48" height="34" fill="#3b82f6"/>
+  </g>
+  <defs><linearGradient id="heat" x1="0" x2="1"><stop stop-color="#dbeafe"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs>
+  <rect x="76" y="176" width="168" height="8" rx="4" fill="url(#heat)"/>
+</svg>

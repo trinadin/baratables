@@ -11,13 +11,15 @@ if (!defined('ABSPATH')) {
 require_once __DIR__ . '/core.php';
 require_once __DIR__ . '/chart-types.php';
 require_once __DIR__ . '/repositories.php';
-// BaraTables_Service concern traits -- must load before services.php, which uses them.
+require_once __DIR__ . '/row-result.php';
+// BaraTables_Service collaborators and concern traits -- must load before services.php.
 require_once __DIR__ . '/service-query-sanitize.php';
 require_once __DIR__ . '/service-filter-options.php';
 require_once __DIR__ . '/service-value-format.php';
 require_once __DIR__ . '/service-fields-discovery.php';
 require_once __DIR__ . '/service-column-state.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/table-presentation.php';
 require_once __DIR__ . '/chart-service.php';
 require_once __DIR__ . '/frontend.php';
 
@@ -26,8 +28,6 @@ class BaraTables {
 	private BaraTables_Chart_Repository $chart_repo;
 	private BaraTables_Service $service;
 	private BaraTables_Chart_Service $chart_service;
-	private ?BaraTables_Admin $admin = null;
-	private ?BaraTables_Chart_Admin $chart_admin = null;
 	private BaraTables_Frontend $frontend;
 	private string $plugin_url;
 	private string $plugin_path;
@@ -61,15 +61,17 @@ class BaraTables {
 	 */
 	private function load_admin(): void {
 		require_once __DIR__ . '/admin/support.php';
+		require_once __DIR__ . '/admin/form-context.php';
 		require_once __DIR__ . '/admin/ui.php';
 		require_once __DIR__ . '/admin/actions.php';
+		require_once __DIR__ . '/admin/preview.php';
 		require_once __DIR__ . '/admin/pages.php';
 		require_once __DIR__ . '/admin/import.php';
 		require_once __DIR__ . '/admin/options.php';
 		require_once __DIR__ . '/admin/admin.php';
 
-		$this->admin = new BaraTables_Admin($this->service, $this->repo, $this->plugin_url, $this->plugin_path);
-		$this->chart_admin = new BaraTables_Chart_Admin($this->chart_service, $this->chart_repo, $this->service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD);
+		$admin = new BaraTables_Admin($this->service, $this->repo, $this->plugin_url, $this->plugin_path);
+		new BaraTables_Chart_Admin($this->chart_service, $this->chart_repo, $this->service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD);
 
 		// One-time label backfill, admin side only: admin_init never fires on a front-end page
 		// render, so a public request never pays for the write pass over every table. The gate is a
@@ -80,7 +82,7 @@ class BaraTables {
 		add_action('admin_menu', [$this, 'cleanup_admin_menu'], 20);
 		add_filter('parent_file', [$this, 'highlight_tables_parent_menu']);
 		add_filter('submenu_file', [$this, 'highlight_tables_submenu'], 10, 1);
-		add_action('admin_enqueue_scripts', [$this->admin, 'enqueue_admin_assets']);
+		add_action('admin_enqueue_scripts', [$admin, 'enqueue_admin_assets']);
 	}
 
 	public function cleanup_admin_menu(): void {
@@ -150,8 +152,8 @@ class BaraTables {
 		array_splice($items, $chart_index, 0, [$import_item]);
 		// WordPress exposes no API for reordering submenu entries -- add_submenu_page() appends and
 		// remove_submenu_page() only deletes. add_submenu_page() does accept a $position (WP 5.3+),
-			// but that only places an entry as it is added; the ordering fixed up here involves
-			// entries core registered for the post type, so the array still has to be rewritten.
+		// but that only places an entry as it is added; the ordering fixed up here involves
+		// entries core registered for the post type, so the array still has to be rewritten.
 		// The write is scoped to this plugin's own parent slug and reorders existing items only.
 		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- no core API for submenu ordering.
 		$submenu[$parent_slug] = $items;

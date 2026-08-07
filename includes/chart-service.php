@@ -57,19 +57,7 @@ class BaraTables_Chart_Service {
 					$slug_set[$col['slug']] = true;
 				}
 			}
-			$check = [];
-			if (!empty($chart_options_raw['x_axis'])) {
-				$check[] = (string) $chart_options_raw['x_axis'];
-			}
-			foreach ((array) ($chart_options_raw['series'] ?? []) as $series_slug) {
-				$check[] = (string) $series_slug;
-			}
-			foreach (['gantt_label', 'gantt_start', 'gantt_end', 'gantt_group', 'gantt_progress'] as $gantt_key) {
-				if (!empty($chart_options_raw[$gantt_key])) {
-					$check[] = (string) $chart_options_raw[$gantt_key];
-				}
-			}
-			foreach (array_unique(array_filter($check)) as $slug) {
+			foreach (BaraTables_Chart_Types::referenced_columns($chart_options_raw) as $slug) {
 				if (!isset($slug_set[$slug])) {
 					$dropped_columns[] = $slug;
 				}
@@ -82,7 +70,7 @@ class BaraTables_Chart_Service {
 			'table_choices'    => $table_choices,
 			'table_definition' => $table_definition,
 			'selected_table'   => $table_definition['id'] ?? '',
-			'column_choices'   => $this->table_service->build_column_choices($columns, $columns),
+			'column_choices'   => $this->table_service->build_column_slug_label_map($columns),
 			'dropped_columns'  => $dropped_columns,
 			'active_tab'       => 'btbl-tab-chart',
 		];
@@ -97,7 +85,6 @@ class BaraTables_Chart_Service {
 		$table_definition = $table_id !== '' ? $this->table_repo->find_definition($table_id) : null;
 		if (!$table_definition) {
 			$errors[] = __('Selected table not found.', 'baratables');
-			$table_definition = null;
 		}
 		$columns = $table_definition['columns'] ?? [];
 		$chart_options = $this->table_service->sanitize_chart_options($chart_raw, $columns);
@@ -129,14 +116,15 @@ class BaraTables_Chart_Service {
 		if (!$table) {
 			return null;
 		}
+		$row_result = $this->table_service->get_row_result($table);
+		$table = $this->table_service->definition_with_inferred_columns($table, $row_result);
 		$chart_options = $this->table_service->sanitize_chart_options($chart['chart'] ?? [], $table['columns'] ?? []);
-		$rows = $this->table_service->get_rows($table);
 
 		return [
 			'chart'         => $chart,
 			'table'         => $table,
 			'chart_options' => $chart_options,
-			'rows'          => $rows,
+			'rows'          => $row_result->rows(),
 		];
 	}
 

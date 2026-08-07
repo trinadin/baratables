@@ -1,9 +1,9 @@
 # Ignore rules for the BaraTables plugin repo.
 #
 # These live here, tracked, rather than only in .git/info/exclude -- that file is local to one
-# clone and is never shared, so a fresh clone had NO rules at all. bin/release-svn.sh runs
-# `git add -A` before tagging, which on such a clone would sweep .DS_Store, editor folders and
-# build junk straight into the plugin repo and from there into a public release.
+# clone and is never shared, so a fresh clone had NO rules at all. The release command now refuses
+# a dirty tree and packages only committed files, while these rules keep local editor/agent state
+# out of ordinary development commits.
 
 # --- macOS / Windows / editor noise ---
 .DS_Store
@@ -11,6 +11,7 @@ Thumbs.db
 .idea/
 .vscode/
 .codex/
+.serena/
 
 # --- Dependency + build dirs ---
 node_modules/

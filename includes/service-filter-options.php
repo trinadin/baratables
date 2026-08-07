@@ -12,7 +12,23 @@ if (!defined('ABSPATH')) {
 trait BaraTables_Filter_Options_Trait {
 	public function build_filter_options(array $definition, array $rows): array {
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
+		$filters = $this->build_filter_definitions($definition);
+		if (empty($filters)) {
+			return [];
+		}
+		$filters = $this->collect_filter_options($filters, $rows);
+		foreach ($filters as &$filter) {
+			$filter = $this->finalize_filter_options($filter);
+		}
+		unset($filter);
+		$filters = array_values($filters);
+		if (!empty($definition['filter_order']) && is_array($definition['filter_order'])) {
+			$filters = $this->order_filters($filters, $definition['filter_order']);
+		}
+		return $filters;
+	}
 
+	private function build_filter_definitions(array $definition): array {
 		$filters = [];
 		foreach ($definition['columns'] as $index => $col) {
 			if (!isset($col['filter']) || $col['filter'] === 'none') {
@@ -64,10 +80,10 @@ trait BaraTables_Filter_Options_Trait {
 			];
 		}
 
-		if (empty($filters)) {
-			return [];
-		}
+		return $filters;
+	}
 
+	private function collect_filter_options(array $filters, array $rows): array {
 		foreach ($rows as $row) {
 			foreach ($filters as $idx => &$filter) {
 				if (!empty($filter['has_custom_values'])) {
@@ -81,8 +97,7 @@ trait BaraTables_Filter_Options_Trait {
 					continue;
 				}
 
-				$is_multi = strpos($value, ',') !== false;
-				if ($is_multi) {
+				if (strpos($value, ',') !== false) {
 					$parts = array_filter(array_map('trim', explode(',', $value)), static function ($part) {
 						return $part !== '';
 					});
@@ -109,103 +124,93 @@ trait BaraTables_Filter_Options_Trait {
 			}
 		}
 		unset($filter);
+		return $filters;
+	}
 
-		foreach ($filters as &$filter) {
-			$filter['options'] = array_values(array_map([$this, 'normalize_filter_option'], $filter['options']));
-			$sortOrder = $filter['filter_sort'] ?? 'custom';
-			if ($sortOrder === 'none') {
-				$sortOrder = 'custom';
-			}
-			$type_priority = isset($filter['data_type_priority']) && is_array($filter['data_type_priority'])
-				? $this->normalize_data_type_priority_list($filter['data_type_priority'])
-				: [];
+	private function finalize_filter_options(array $filter): array {
+		$filter['options'] = array_values(array_map([$this, 'normalize_filter_option'], $filter['options']));
+		$sort_order = $filter['filter_sort'] ?? 'custom';
+		if ($sort_order === 'none') {
+			$sort_order = 'custom';
+		}
+		$type_priority = isset($filter['data_type_priority']) && is_array($filter['data_type_priority'])
+			? $this->normalize_data_type_priority_list($filter['data_type_priority'])
+			: [];
 
-			$should_sort = !($sortOrder === 'custom' && empty($type_priority));
-			if (!$should_sort || empty($filter['options'])) {
+		$should_sort = !($sort_order === 'custom' && empty($type_priority));
+		if (!$should_sort || empty($filter['options'])) {
+			return $filter;
+		}
+
+		// Decorate once; type/date detection is too expensive to repeat inside the sort comparator.
+		foreach ($filter['options'] as $idx => &$option) {
+			$option['_btbl_index'] = $idx;
+			$option['_btbl_type'] = $this->detect_option_type($option);
+			$option['_btbl_time'] = $option['_btbl_type'] === 'date' ? $this->parse_date_option($this->option_label($option)) : null;
+		}
+		unset($option);
+
+		$type_rank = [];
+		$type_direction = [];
+		foreach ($type_priority as $idx => $config) {
+			if (!is_array($config)) {
 				continue;
 			}
-
-			// Decorate each option once with its sort keys -- the detected type and (for dates) the
-			// parsed timestamp. detect_option_type()/parse_date_option() are regex/strtotime-heavy and
-			// depend only on the option itself, so computing them once here instead of inside the
-			// O(U log U) usort comparator keeps the front-end render off a redundant-regex hot path.
-			foreach ($filter['options'] as $idx => &$option) {
-				$option['_btbl_index'] = $idx;
-				$option['_btbl_type'] = $this->detect_option_type($option);
-				$option['_btbl_time'] = $option['_btbl_type'] === 'date' ? $this->parse_date_option($this->option_label($option)) : null;
+			$type = $config['type'] ?? null;
+			if ($type === null) {
+				continue;
 			}
-			unset($option);
+			$type_rank[$type] = $idx;
+			$type_direction[$type] = $this->canonicalize_sort_direction($config['direction'] ?? 'asc');
+		}
+		$default_type_rank = count($type_rank);
+		$fallback_direction = $sort_order === 'desc' ? 'desc' : 'asc';
 
-			$type_rank = [];
-			$type_direction = [];
-			foreach ($type_priority as $idx => $config) {
-				if (!is_array($config)) {
-					continue;
-				}
-				$type = $config['type'] ?? null;
-				if ($type === null) {
-					continue;
-				}
-				$type_rank[$type] = $idx;
-				$type_direction[$type] = $this->canonicalize_sort_direction($config['direction'] ?? 'asc');
+		usort($filter['options'], function ($a, $b) use ($sort_order, $type_rank, $default_type_rank, $type_direction, $fallback_direction) {
+			$typeA = $a['_btbl_type'];
+			$typeB = $b['_btbl_type'];
+
+			$rankA = $type_rank[$typeA] ?? $default_type_rank;
+			$rankB = $type_rank[$typeB] ?? $default_type_rank;
+			if ($rankA !== $rankB) {
+				return $rankA <=> $rankB;
 			}
-			$default_type_rank = count($type_rank);
-			$fallback_direction = $sortOrder === 'desc' ? 'desc' : 'asc';
 
-			usort($filter['options'], function ($a, $b) use ($sortOrder, $type_rank, $default_type_rank, $type_direction, $fallback_direction) {
-				$typeA = $a['_btbl_type'];
-				$typeB = $b['_btbl_type'];
+			$direction = $fallback_direction;
+			if ($sort_order === 'custom' && $typeA === $typeB) {
+				$direction = $type_direction[$typeA] ?? 'asc';
+			}
 
-				$rankA = $type_rank[$typeA] ?? $default_type_rank;
-				$rankB = $type_rank[$typeB] ?? $default_type_rank;
-				if ($rankA !== $rankB) {
-					return $rankA <=> $rankB;
+			if ($typeA === 'date' && $typeB === 'date') {
+				$timeA = $a['_btbl_time'];
+				$timeB = $b['_btbl_time'];
+				if ($timeA !== $timeB) {
+					return $direction === 'desc' ? ($timeB <=> $timeA) : ($timeA <=> $timeB);
 				}
-
-				$direction = $fallback_direction;
-				if ($sortOrder === 'custom' && $typeA === $typeB) {
-					$direction = $type_direction[$typeA] ?? 'asc';
-				}
-
-				if ($typeA === 'date' && $typeB === 'date') {
-					$timeA = $a['_btbl_time'];
-					$timeB = $b['_btbl_time'];
-					if ($timeA !== $timeB) {
-						return $direction === 'desc' ? ($timeB <=> $timeA) : ($timeA <=> $timeB);
+			} else {
+				$labelA = $this->option_label($a);
+				$labelB = $this->option_label($b);
+				if ($direction === 'desc') {
+					$cmp = strnatcasecmp((string) $labelB, (string) $labelA);
+					if ($cmp !== 0) {
+						return $cmp;
 					}
-				} else {
-					$labelA = $this->option_label($a);
-					$labelB = $this->option_label($b);
-					if ($direction === 'desc') {
-						$cmp = strnatcasecmp((string) $labelB, (string) $labelA);
-						if ($cmp !== 0) {
-							return $cmp;
-						}
-					} elseif ($direction === 'asc') {
-						$cmp = strnatcasecmp((string) $labelA, (string) $labelB);
-						if ($cmp !== 0) {
-							return $cmp;
-						}
+				} elseif ($direction === 'asc') {
+					$cmp = strnatcasecmp((string) $labelA, (string) $labelB);
+					if ($cmp !== 0) {
+						return $cmp;
 					}
 				}
-
-				return ((int) $a['_btbl_index']) <=> ((int) $b['_btbl_index']);
-			});
-
-			foreach ($filter['options'] as &$option) {
-				unset($option['_btbl_index'], $option['_btbl_type'], $option['_btbl_time']);
 			}
-			unset($option);
+
+			return ((int) $a['_btbl_index']) <=> ((int) $b['_btbl_index']);
+		});
+
+		foreach ($filter['options'] as &$option) {
+			unset($option['_btbl_index'], $option['_btbl_type'], $option['_btbl_time']);
 		}
-		unset($filter);
-
-		$filters = array_values($filters);
-
-		if (!empty($definition['filter_order']) && is_array($definition['filter_order'])) {
-			$filters = $this->order_filters($filters, $definition['filter_order']);
-		}
-
-		return $filters;
+		unset($option);
+		return $filter;
 	}
 
 	public function normalize_filter_option($option): array {
@@ -245,12 +250,7 @@ trait BaraTables_Filter_Options_Trait {
 		$filters = [];
 		foreach ($raw as $key => $value) {
 			$slug = sanitize_text_field($key);
-			if (is_array($value)) {
-				$filters[$slug] = self::filter_non_empty(array_map('sanitize_text_field', $value));
-			} else {
-				$parts = array_map('trim', explode(',', (string) $value));
-				$filters[$slug] = self::filter_non_empty(array_map('sanitize_text_field', $parts));
-			}
+			$filters[$slug] = $this->normalize_preset_tokens($value);
 		}
 		return $filters;
 	}
@@ -262,20 +262,18 @@ trait BaraTables_Filter_Options_Trait {
 		$raw_cols = isset($_GET['btbl_search_cols']) ? map_deep(wp_unslash($_GET['btbl_search_cols']), 'sanitize_text_field') : (isset($_GET['btbl_search_columns']) ? map_deep(wp_unslash($_GET['btbl_search_columns']), 'sanitize_text_field') : []);
 		$columns = [];
 		if (!empty($raw_cols)) {
-			if (is_array($raw_cols)) {
-				// Already unslashed + sanitized via map_deep() above; a second wp_unslash() here
-				// would strip backslashes out of legitimate values.
-				$columns = self::filter_non_empty($raw_cols);
-			} else {
-				$parts = array_map('trim', explode(',', (string) $raw_cols));
-				$columns = self::filter_non_empty(array_map('sanitize_text_field', $parts));
-			}
+			$columns = $this->normalize_preset_tokens($raw_cols);
 		}
 
 		return [
 			'term'    => $term,
 			'columns' => $columns,
 		];
+	}
+
+	private function normalize_preset_tokens($value): array {
+		$tokens = is_array($value) ? $value : array_map('trim', explode(',', (string) $value));
+		return self::filter_non_empty(array_map('sanitize_text_field', $tokens));
 	}
 
 	public function get_default_sort_order(array $definition): array {
@@ -300,10 +298,7 @@ trait BaraTables_Filter_Options_Trait {
 		}
 
 		usort($order, static function ($a, $b) {
-			if ($a['priority'] === $b['priority']) {
-				return 0;
-			}
-			return ($a['priority'] < $b['priority']) ? -1 : 1;
+			return $a['priority'] <=> $b['priority'];
 		});
 
 		return $order;
@@ -341,10 +336,7 @@ trait BaraTables_Filter_Options_Trait {
 			$slugB = $b['slug'] ?? '';
 			$posA = array_key_exists($slugA, $order_map) ? $order_map[$slugA] : PHP_INT_MAX;
 			$posB = array_key_exists($slugB, $order_map) ? $order_map[$slugB] : PHP_INT_MAX;
-			if ($posA === $posB) {
-				return 0;
-			}
-			return $posA < $posB ? -1 : 1;
+			return $posA <=> $posB;
 		});
 
 		return $filters;
@@ -360,7 +352,7 @@ trait BaraTables_Filter_Options_Trait {
 	private function normalize_data_type_priority_list(array $priority): array {
 		$normalized = [];
 		$seen = [];
-		foreach ($priority as $key => $item) {
+		foreach ($priority as $item) {
 			$type_raw = null;
 			$direction_raw = 'asc';
 
@@ -381,15 +373,7 @@ trait BaraTables_Filter_Options_Trait {
 				$type_raw = $item;
 			}
 
-			$token = $this->canonicalize_data_type_token($type_raw);
-			if ($token === null || isset($seen[$token])) {
-				continue;
-			}
-			$normalized[] = [
-				'type' => $token,
-				'direction' => $this->canonicalize_sort_direction($direction_raw),
-			];
-			$seen[$token] = true;
+			$this->append_data_type_priority($normalized, $seen, $type_raw, $direction_raw);
 		}
 		return $normalized;
 	}
@@ -416,21 +400,25 @@ trait BaraTables_Filter_Options_Trait {
 			$type_part = $line;
 			$direction_part = 'asc';
 			if (strpos($line, '=>') !== false) {
-				[$type_part, $direction_part] = array_pad(explode('=>', $line, 2), 2, 'asc');
+				[$type_part, $direction_part] = explode('=>', $line, 2);
 				$type_part = trim($type_part);
 				$direction_part = trim($direction_part);
 			}
-			$token = $this->canonicalize_data_type_token($type_part);
-			if ($token === null || isset($seen[$token])) {
-				continue;
-			}
-			$priority[] = [
-				'type' => $token,
-				'direction' => $this->canonicalize_sort_direction($direction_part),
-			];
-			$seen[$token] = true;
+			$this->append_data_type_priority($priority, $seen, $type_part, $direction_part);
 		}
 		return $priority;
+	}
+
+	private function append_data_type_priority(array &$priority, array &$seen, $type, $direction): void {
+		$token = $this->canonicalize_data_type_token($type);
+		if ($token === null || isset($seen[$token])) {
+			return;
+		}
+		$priority[] = [
+			'type' => $token,
+			'direction' => $this->canonicalize_sort_direction($direction),
+		];
+		$seen[$token] = true;
 	}
 
 	private function canonicalize_data_type_token($token): ?string {

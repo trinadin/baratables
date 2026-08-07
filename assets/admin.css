@@ -364,10 +364,6 @@
 	color: #1d2327;
 }
 
-.btbl-page-length-row.is-hidden {
-    display: none;
-}
-
 .btbl-page-length-row input[type="number"],
 .btbl-search-setting-row input[type="text"] {
     max-width: 200px;
@@ -375,10 +371,6 @@
 
 .btbl-access-grid input[type="password"] {
     max-width: 280px;
-}
-
-.btbl-search-setting-row.is-hidden {
-    display: none;
 }
 
 /* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
@@ -406,10 +398,6 @@
 
 .btbl-inline input[type="number"] {
 	margin-top: 0;
-}
-
-.btbl-inline.is-hidden {
-	display: none;
 }
 
 .btbl-filter-values-row textarea {

@@ -7,13 +7,17 @@ if (!defined('ABSPATH')) {
 class BaraTables_Frontend {
 	private BaraTables_Service $service;
 	private BaraTables_Chart_Service $chart_service;
+	private BaraTables_Table_Presentation $table_presentation;
 	private string $plugin_url;
 	private string $plugin_path;
 	private bool $assets_registered = false;
+	private ?array $style_specs = null;
+	private ?array $script_specs = null;
 
 	public function __construct(BaraTables_Service $service, BaraTables_Chart_Service $chart_service, string $plugin_url, string $plugin_path) {
 		$this->service = $service;
 		$this->chart_service = $chart_service;
+		$this->table_presentation = new BaraTables_Table_Presentation($service);
 		$this->plugin_url = $plugin_url;
 		$this->plugin_path = $plugin_path;
 	}
@@ -83,11 +87,11 @@ class BaraTables_Frontend {
 			return '<p>' . esc_html__('Table not found.', 'baratables') . '</p>';
 		}
 
-		$this->enqueue_frontend_assets(true, false, $this->get_table_asset_features($context['definition']));
-
 		if (empty($context['definition']['columns'])) {
 			return '<p>' . esc_html__('No columns selected for this table.', 'baratables') . '</p>';
 		}
+
+		$this->enqueue_frontend_assets(true, false, $this->get_table_asset_features($context['definition']));
 
 		$chart_options = $this->service->get_default_chart_options();
 		$instance_id = $this->get_render_instance_id((string) ($context['definition']['id'] ?? 'table'));
@@ -103,7 +107,7 @@ class BaraTables_Frontend {
 			return '<p>' . esc_html__('Chart not found.', 'baratables') . '</p>';
 		}
 
-		$definition = $this->hydrate_definition_columns($context['table'] ?? []);
+		$definition = $context['table'] ?? [];
 		$rows = $context['rows'] ?? [];
 		$chart_definition = $context['chart'] ?? [];
 		$chart_options = $context['chart_options'] ?? $this->service->get_default_chart_options();
@@ -112,26 +116,19 @@ class BaraTables_Frontend {
 			return '<p>' . esc_html__('No columns selected for the source table.', 'baratables') . '</p>';
 		}
 
-		$chart_type = $chart_options['type'] ?? 'bar';
-		$chart_enabled = false;
-		if ($chart_type === 'gantt') {
-			$chart_enabled = !empty($chart_options['gantt_label']) && !empty($chart_options['gantt_start']) && !empty($chart_options['gantt_end']);
-		} else {
-			$chart_enabled = !empty($chart_options['x_axis']) && !empty($chart_options['series']);
-		}
+		$chart_enabled = BaraTables_Chart_Types::is_configured($chart_options);
 		if (!$chart_enabled) {
 			return '<p>' . esc_html__('Chart is not configured yet.', 'baratables') . '</p>';
 		}
 
 		$this->enqueue_frontend_assets(false, true);
 
-		$render_table = false;
 		$instance_base = (string) ($chart_definition['id'] ?? $definition['id'] ?? $atts['id'] ?? 'chart');
 		$instance_id = $this->get_render_instance_id('chart-' . $instance_base);
 		// No edit link on the chart-only render: render_table_view only surfaces it on the table
 		// path ($render_table), so resolving the chart's post id and edit link here was a dead
 		// query on every chart view, for every visitor.
-		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, $render_table);
+		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, false);
 	}
 
 	private function get_render_instance_id(string $base): string {
@@ -196,10 +193,7 @@ class BaraTables_Frontend {
 			// Specs tagged with a feature only load when that feature is actually configured.
 			// Every member of a feature group is gated together, so the buttons.html5 -> jszip
 			// dependency edge is preserved intact whenever the Buttons family does load.
-			if (!empty($spec['feature']) && !in_array($spec['feature'], $features, true)) {
-				return false;
-			}
-			return true;
+			return empty($spec['feature']) || in_array($spec['feature'], $features, true);
 		};
 
 		foreach ($this->get_style_specs() as $style) {
@@ -221,16 +215,12 @@ class BaraTables_Frontend {
 		if (!$definition) {
 			return null;
 		}
-		$rows = $this->service->get_rows($definition);
-		$definition = $this->hydrate_definition_columns($definition);
+		$result = $this->service->get_row_result($definition);
+		$definition = $this->service->definition_with_inferred_columns($definition, $result);
 		return [
 			'definition' => $definition,
-			'rows'       => $rows,
+			'rows'       => $result->rows(),
 		];
-	}
-
-	private function hydrate_definition_columns(array $definition): array {
-		return $this->service->ensure_columns_inferred($definition);
 	}
 
 	private function ensure_assets_registered(): void {
@@ -240,224 +230,86 @@ class BaraTables_Frontend {
 	}
 
 	private function get_style_specs(): array {
-		return [
-			[
-				'handle' => 'baratables-datatables',
-				'src'    => $this->plugin_url . 'assets/vendor/datatables/dataTables.dataTables.min.css',
-				'deps'   => [],
-				'ver'    => '2.3.8',
-				'table_only' => true,
-			],
-			[
-				'handle' => 'baratables-datatables-buttons',
-				'src'    => $this->plugin_url . 'assets/vendor/datatables/buttons.dataTables.min.css',
-				'deps'   => ['baratables-datatables'],
-				'ver'    => '3.2.6',
-				'table_only' => true,
-				'feature'    => 'buttons',
-			],
-			[
-				'handle' => 'baratables-datatables-colreorder',
-				'src'    => $this->plugin_url . 'assets/vendor/datatables/colReorder.dataTables.min.css',
-				'deps'   => ['baratables-datatables'],
-				'ver'    => '2.1.2',
-				'table_only' => true,
-				'feature'    => 'colreorder',
-			],
-			[
-				'handle' => 'baratables-select2',
-				'src'    => $this->plugin_url . 'assets/vendor/select2/select2.min.css',
-				'deps'   => [],
-				'ver'    => '4.1.0-rc.0',
-				'table_only' => true,
-				'feature'    => 'select2',
-			],
-			[
-				'handle' => 'baratables',
-				'src'    => $this->plugin_url . 'assets/baratables.css',
-				'deps'   => [],
-				'ver'    => BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/baratables.css'),
-			],
-		];
+		if ($this->style_specs === null) {
+			$this->style_specs = [
+				$this->style_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '2.3.8', ['table_only' => true]),
+				$this->style_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				$this->style_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->style_spec('baratables-select2', 'assets/vendor/select2/select2.min.css', [], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
+				$this->style_spec('baratables', 'assets/baratables.css'),
+			];
+		}
+		return $this->style_specs;
 	}
 
 	private function get_script_specs(): array {
-		return [
-			[
-				'handle'    => 'baratables-datatables',
-				'src'       => $this->plugin_url . 'assets/vendor/datatables/dataTables.min.js',
-				'deps'      => ['jquery'],
-				'ver'       => '2.3.8',
-				'in_footer' => true,
-				'table_only' => true,
-			],
-			[
-				'handle'    => 'baratables-datatables-buttons',
-				'src'       => $this->plugin_url . 'assets/vendor/datatables/dataTables.buttons.min.js',
-				'deps'      => ['baratables-datatables'],
-				'ver'       => '3.2.6',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'buttons',
-			],
-			[
-				// JSZip is required by DataTables' excelHtml5 button and stays a hard dependency of
-				// buttons.html5 (below) so it always loads before the button's availability check runs.
-				// It is tagged with the same 'buttons' feature as the rest of the family, so the whole
-				// group is enqueued or skipped together and the dependency edge is never broken -- the
-				// Excel button cannot silently vanish. It still loads whenever ANY button is configured,
-				// even if Excel is not among them; splitting it out would mean re-guaranteeing load
-				// order another way for ~95KB, which is not worth that regression risk.
-				'handle'    => 'baratables-jszip',
-				'src'       => $this->plugin_url . 'assets/vendor/jszip/jszip.min.js',
-				'deps'      => [],
-				'ver'       => '3.10.1',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'buttons',
-			],
-			[
-				'handle'    => 'baratables-datatables-buttons-html5',
-				'src'       => $this->plugin_url . 'assets/vendor/datatables/buttons.html5.min.js',
-				'deps'      => ['baratables-datatables-buttons', 'baratables-jszip'],
-				'ver'       => '3.2.6',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'buttons',
-			],
-			[
-				'handle'    => 'baratables-datatables-buttons-print',
-				'src'       => $this->plugin_url . 'assets/vendor/datatables/buttons.print.min.js',
-				'deps'      => ['baratables-datatables-buttons'],
-				'ver'       => '3.2.6',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'buttons',
-			],
-			[
-				'handle'    => 'baratables-datatables-buttons-colvis',
-				'src'       => $this->plugin_url . 'assets/vendor/datatables/buttons.colVis.min.js',
-				'deps'      => ['baratables-datatables-buttons'],
-				'ver'       => '3.2.6',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'buttons',
-			],
-			[
-				'handle'    => 'baratables-datatables-colreorder',
-				'src'       => $this->plugin_url . 'assets/vendor/datatables/dataTables.colReorder.min.js',
-				'deps'      => ['baratables-datatables'],
-				'ver'       => '2.1.2',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'colreorder',
-			],
-			[
-				'handle'    => 'baratables-select2',
-				'src'       => $this->plugin_url . 'assets/vendor/select2/select2.min.js',
-				'deps'      => ['jquery'],
-				'ver'       => '4.1.0-rc.0',
-				'in_footer' => true,
-				'table_only' => true,
-				'feature'    => 'select2',
-			],
-			[
-				'handle'    => 'baratables-echarts',
-				'src'       => $this->plugin_url . 'assets/vendor/echarts/echarts.min.js',
-				'deps'      => [],
-				'ver'       => '6.1.0',
-				'in_footer' => true,
-				'chart_only' => true,
-			],
-			[
-				'handle'    => 'baratables-frontend',
-				'src'       => $this->plugin_url . 'assets/baratables.js',
-				'deps'      => ['jquery'],
-				'ver'       => BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/baratables.js'),
-				'in_footer' => true,
-			],
-		];
+		if ($this->script_specs === null) {
+			$this->script_specs = [
+				$this->script_spec('baratables-utils', 'assets/baratables-utils.js'),
+				$this->script_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.min.js', ['jquery'], '2.3.8', ['table_only' => true]),
+				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				// JSZip stays a hard dependency of buttons.html5 so the Excel button cannot
+				// silently vanish. The whole Buttons family is feature-gated together.
+				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons']),
+				$this->script_spec('baratables-datatables-buttons-html5', 'assets/vendor/datatables/buttons.html5.min.js', ['baratables-datatables-buttons', 'baratables-jszip'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				$this->script_spec('baratables-datatables-buttons-print', 'assets/vendor/datatables/buttons.print.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				$this->script_spec('baratables-datatables-buttons-colvis', 'assets/vendor/datatables/buttons.colVis.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->script_spec('baratables-select2', 'assets/vendor/select2/select2.min.js', ['jquery'], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
+				$this->script_spec('baratables-echarts', 'assets/vendor/echarts/echarts.min.js', [], '6.1.0', ['chart_only' => true]),
+				$this->script_spec('baratables-charts', 'assets/baratables-charts.js', ['baratables-echarts'], null, ['chart_only' => true]),
+				$this->script_spec('baratables-search', 'assets/baratables-search.js', ['jquery', 'baratables-utils'], null, ['table_only' => true]),
+				$this->script_spec('baratables-filters', 'assets/baratables-filters.js', ['jquery', 'baratables-utils'], null, ['table_only' => true]),
+				$this->script_spec('baratables-frontend', 'assets/baratables.js', ['jquery', 'baratables-utils']),
+			];
+		}
+		return $this->script_specs;
 	}
 
-	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $instance_id, bool $render_table): string {
-		// Row-level access control filters rows per visitor, so this response is user-specific and
-		// must never be stored by a page cache. Most caches already bypass on the logged-in cookie,
-		// but a host configured to cache authenticated responses (edge rules, or a "cache logged-in
-		// users" option) would otherwise hand one user's permitted rows to another. nocache_headers()
-		// self-guards on headers_sent(); DONOTCACHEPAGE is the signal page-cache plugins read at
-		// shutdown, which is what actually matters this late in the request.
-		if (!empty($definition['access_control'])) {
-			// DONOTCACHEPAGE is the de-facto cross-plugin contract every major page cache reads
-			// (W3TC, WP Super Cache, WP Rocket, LiteSpeed). The name is the interface -- a prefixed
-			// constant would be read by nothing and the response would still be cached.
-			if (!defined('DONOTCACHEPAGE')) {
-				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Established shared constant; the exact name is the contract.
-				define('DONOTCACHEPAGE', true);
-			}
-			nocache_headers();
-		}
+	private function style_spec(string $handle, string $relative, array $deps = [], ?string $version = null, array $flags = []): array {
+		return array_merge([
+			'handle' => $handle,
+			'src' => $this->plugin_url . $relative,
+			'deps' => $deps,
+			'ver' => $version ?? BaraTables_Asset_Utils::get_asset_version($this->plugin_path, $relative),
+		], $flags);
+	}
+
+	private function script_spec(string $handle, string $relative, array $deps = [], ?string $version = null, array $flags = []): array {
+		return array_merge([
+			'handle' => $handle,
+			'src' => $this->plugin_url . $relative,
+			'deps' => $deps,
+			'ver' => $version ?? BaraTables_Asset_Utils::get_asset_version($this->plugin_path, $relative),
+			'in_footer' => true,
+		], $flags);
+	}
+
+	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $table_id, bool $render_table): string {
+		$this->prevent_access_control_caching($definition);
 
 		// Only the table markup consumes $filters. A [bara_chart] render always passes
 		// $render_table = false, so building them there walks every row, normalizes, decorates and
 		// sorts each option, then throws the result away -- cheap on a small table, ~600ms on a
 		// high-cardinality 10,000-row one.
 		$filters = $render_table ? $this->service->build_filter_options($definition, $rows) : [];
-		$table_id = $instance_id;
-		$preset_filters = $this->service->get_preset_filters();
-		$preset_search = $this->service->get_preset_search();
-		$slug_to_index = $this->service->map_column_slug_to_index($definition);
-		$hidden_columns = $this->service->get_hidden_column_indices($definition);
-		$non_sortable = $this->service->get_non_sortable_indices($definition);
-		$non_searchable = [];
-		$allowed_inline = BaraTables_Service::allowed_inline_html();
-		foreach ($definition['columns'] as $idx => $col) {
-			if (isset($col['searchable']) && $col['searchable'] === false) {
-				$non_searchable[] = $idx;
-			}
-		}
-		$default_sort = $this->service->get_default_sort_order($definition);
-		$table_options = $this->service->localize_frontend_table_labels($this->service->get_table_options($definition));
+		$presentation = $render_table ? $this->table_presentation->build($definition, $rows) : null;
+		$allowed_inline = $render_table ? BaraTables_Service::allowed_inline_html() : [];
+		$table_options = $render_table ? $presentation['options'] : $this->service->get_table_options($definition);
 		$wrapper_compact_class = !empty($table_options['compact']) ? ' is-compact' : '';
-		$table_classes = array_merge(['btbl-table'], BaraTables_Service::table_style_classes($table_options));
-		$table_class_attr = implode(' ', $table_classes);
+		$table_class_attr = $render_table
+			? implode(' ', array_merge(['btbl-table'], $presentation['style_classes']))
+			: '';
 
-		$inline_payload = [
-			'tableId'       => $table_id,
-			'presetFilters' => $preset_filters,
-			'slugToIndex'   => $slug_to_index,
-			'hiddenColumns' => $hidden_columns,
-			'nonSortable'   => $non_sortable,
-			'tableOptions'  => $table_options,
-			'nonSearchable' => $non_searchable,
-			'defaultOrder'  => $default_sort,
-			'presetSearch'  => $preset_search,
-			'chartOnly'     => $chart_enabled && !$render_table,
-		];
-
-		if ($chart_enabled) {
-			// Ship only the columns the chart actually plots. This payload is inlined into the page
-			// and previously carried every column of every row (up to rowLimit) -- including
-			// HTML-heavy cells the chart discards -- when a chart reads at most an axis, its series
-			// and the five gantt slugs. Rows are re-indexed, so the matching slug=>index map goes
-			// with them (the front end prefers it over the table's map for this payload).
-			$projection = $this->project_rows_for_chart($rows, $definition['columns'], $chart_options);
-			$inline_payload['chart'] = array_merge($chart_options, [
-				'enabled' => $chart_enabled,
-				'rows' => $projection['rows'],
-				'row_slug_index' => $projection['slug_index'],
-				'columns' => $this->service->build_column_slug_label_list($definition['columns']),
-			]);
-		}
-
-		$inline_config = wp_json_encode($inline_payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-
-		if ($inline_config) {
-			wp_add_inline_script(
-				'baratables-frontend',
-				'window.BaraTablesFrontendQueue = window.BaraTablesFrontendQueue || []; window.BaraTablesFrontendQueue.push(' . $inline_config . ');',
-				'before'
-			);
-		}
+		$this->enqueue_render_payload($this->build_render_payload(
+			$definition,
+			$rows,
+			$chart_options,
+			$chart_enabled,
+			$render_table,
+			$table_id,
+			$presentation
+		));
 
 		ob_start();
 		?>
@@ -478,84 +330,15 @@ class BaraTables_Frontend {
 				?>
 				<?php echo $chart_div_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d. ?>
 			<?php endif; ?>
-			<?php if ($render_table && !empty($filters)) : ?>
-				<?php
-				$filters_title_enabled = !empty($table_options['filtersTitle']);
-				$filters_title_text = isset($table_options['filtersTitleText']) && $table_options['filtersTitleText'] !== ''
-					? $table_options['filtersTitleText']
-					: __('Filters', 'baratables');
-				?>
-				<div class="btbl-filter-wrapper">
-					<div class="btbl-filter-header">
-						<?php if ($filters_title_enabled) : ?>
-							<div class="btbl-filter-title"><?php echo wp_kses((string) $filters_title_text, $allowed_inline); ?></div>
-						<?php endif; ?>
-						<div class="btbl-filter-reset">
-							<button type="button" class="btbl-reset-button button button-secondary"><?php esc_html_e('Clear filters', 'baratables'); ?></button>
-						</div>
-					</div>
-					<?php foreach ($filters as $filter) : ?>
-						<div class="btbl-filter btbl-filter-<?php echo esc_attr($filter['type']); ?><?php echo esc_attr($filter['type'] === 'dropdown_multi' ? ' btbl-filter-dropdown-multi' : ''); ?>" data-column="<?php echo esc_attr($filter['column_index']); ?>" data-slug="<?php echo esc_attr($filter['slug']); ?>" data-type="<?php echo esc_attr($filter['type']); ?>">
-							<?php
-							$filter_label = isset($filter['label']) ? (string) $filter['label'] : '';
-							// Stable id so each control can point its accessible name at this heading.
-							$filter_label_id = $filter_label !== ''
-								? 'btbl-filter-label-' . $table_id . '-' . $filter['column_index']
-								: '';
-							?>
-							<?php if ($filter_label !== '') : ?>
-								<div class="btbl-filter-label" id="<?php echo esc_attr($filter_label_id); ?>"><?php echo wp_kses($filter_label, $allowed_inline); ?></div>
-							<?php endif; ?>
-							<div class="btbl-filter-control-wrapper">
-								<?php if ($filter['type'] === 'dropdown') : ?>
-									<?php $this->render_filter_select($filter['options'], [
-										'include_empty' => true,
-										'include_all' => true,
-										'placeholder' => __('All', 'baratables'),
-										'labelledby' => $filter_label_id,
-									]); ?>
-								<?php elseif ($filter['type'] === 'dropdown_plain') : ?>
-									<?php $this->render_filter_select($filter['options'], [
-										'include_all' => true,
-										'labelledby' => $filter_label_id,
-									]); ?>
-								<?php elseif ($filter['type'] === 'dropdown_multi') : ?>
-									<?php $this->render_filter_select($filter['options'], [
-										'include_empty' => true,
-										'multiple' => true,
-										'placeholder' => __('Select options', 'baratables'),
-										'labelledby' => $filter_label_id,
-									]); ?>
-								<?php elseif ($filter['type'] === 'dropdown_plain_multi') : ?>
-									<?php $this->render_filter_select($filter['options'], [
-										'include_empty' => true,
-										'multiple' => true,
-										'labelledby' => $filter_label_id,
-									]); ?>
-								<?php elseif ($filter['type'] === 'checkbox') : ?>
-									<?php $this->render_filter_option_inputs($filter['options'], 'checkbox', '', false, $filter_label_id); ?>
-								<?php elseif ($filter['type'] === 'radio') : ?>
-									<?php $this->render_filter_option_inputs(
-										$filter['options'],
-										'radio',
-										'btbl-filter-' . $table_id . '-' . $filter['column_index'],
-										true,
-										$filter_label_id
-									); ?>
-								<?php endif; ?>
-							</div>
-						</div>
-					<?php endforeach; ?>
-				</div>
-			<?php endif; ?>
+			<?php if ($render_table && !empty($filters)) { $this->render_filter_panel($filters, $table_options, $table_id, $allowed_inline); } ?>
 			<?php if ($render_table) : ?>
 				<div class="btbl-results-wrapper">
 					<table id="btbl-table-<?php echo esc_attr($table_id); ?>" class="<?php echo esc_attr($table_class_attr); ?>">
 						<thead>
 							<tr>
-								<?php foreach ($definition['columns'] as $idx => $col) : ?>
-									<?php $hidden_attr = !empty($col['hidden']) ? ' style="display:none;"' : ''; ?>
-									<?php $heading = !empty($col['hide_title']) ? '&nbsp;' : wp_kses($this->service->display_column_label($col, (int) $idx, (string) ($definition['source_type'] ?? '')), $allowed_inline); ?>
+								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
+									<?php $hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : ''; ?>
+									<?php $heading = wp_kses($column_model['heading'], $allowed_inline); ?>
 									<th<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo $heading; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through wp_kses(). ?></th>
 								<?php endforeach; ?>
 							</tr>
@@ -563,9 +346,9 @@ class BaraTables_Frontend {
 						<tbody>
 							<?php foreach ($rows as $row) : ?>
 								<tr>
-									<?php foreach ($definition['columns'] as $idx => $col) : ?>
+									<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
 										<?php
-										$hidden_attr = !empty($col['hidden']) ? ' style="display:none;"' : '';
+										$hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : '';
 										$cell = (string) ($row[$idx] ?? '');
 										// wp_kses_post() only rewrites markup ('<') and entities ('&'); a cell with
 										// neither passes through byte-identical, so skipping the parse is safe. At the
@@ -580,29 +363,9 @@ class BaraTables_Frontend {
 						</tbody>
 					</table>
 					<div class="btbl-empty-state" aria-live="polite"><?php esc_html_e('No results match these filters.', 'baratables'); ?></div>
-					<?php
-					// Only logged-in users can ever have an edit capability, so skip the
-					// get_definition_post_id() meta_query for anonymous visitors (the common case
-					// for a public table) instead of running it on every render.
-					// Pre-gate on the plugin's own capability before the lookup: the CPT maps its
-					// edit caps to manage_options, so a subscriber can never pass the edit_post
-					// check below. Without this, every logged-in visitor on a membership site paid
-					// for an uncached meta_query per table render just to be told "no".
-					$post_id = 0;
-					$can_edit = false;
-					if (is_user_logged_in() && current_user_can('manage_options')) {
-						$defn_id = $definition['id'] ?? $table_id;
-						$post_id = $defn_id ? $this->service->get_definition_post_id($defn_id) : 0;
-						$can_edit = $post_id ? current_user_can('edit_post', $post_id) : current_user_can('manage_options');
-					}
-					?>
-					<?php if ($can_edit) : ?>
+					<?php $edit_url = $this->resolve_admin_edit_url($definition, $table_id); ?>
+					<?php if ($edit_url !== null) : ?>
 						<div class="btbl-admin-tools" role="group" aria-label="<?php echo esc_attr__('Table admin tools', 'baratables'); ?>">
-							<?php
-							$edit_url = $post_id
-								? get_edit_post_link($post_id, '')
-								: admin_url('edit.php?post_type=' . BaraTables_Repository::CPT);
-							?>
 							<a class="button button-small btbl-edit-link" href="<?php echo esc_url($edit_url); ?>">
 								<?php esc_html_e('Edit Table', 'baratables'); ?>
 							</a>
@@ -617,32 +380,159 @@ class BaraTables_Frontend {
 		return ob_get_clean();
 	}
 
-	private function prepare_filter_option($option): array {
-		return $this->service->normalize_filter_option($option);
+	private function render_filter_panel(array $filters, array $table_options, string $table_id, array $allowed_inline): void {
+		$filters_title_enabled = !empty($table_options['filtersTitle']);
+		$filters_title_text = isset($table_options['filtersTitleText']) && $table_options['filtersTitleText'] !== ''
+			? $table_options['filtersTitleText']
+			: __('Filters', 'baratables');
+		?>
+		<div class="btbl-filter-wrapper">
+			<div class="btbl-filter-header">
+				<?php if ($filters_title_enabled) : ?>
+					<div class="btbl-filter-title"><?php echo wp_kses((string) $filters_title_text, $allowed_inline); ?></div>
+				<?php endif; ?>
+				<div class="btbl-filter-reset">
+					<button type="button" class="btbl-reset-button button button-secondary"><?php esc_html_e('Clear filters', 'baratables'); ?></button>
+				</div>
+			</div>
+			<?php foreach ($filters as $filter) : ?>
+				<?php $this->render_filter_control($filter, $table_id, $allowed_inline); ?>
+			<?php endforeach; ?>
+		</div>
+		<?php
+	}
+
+	private function render_filter_control(array $filter, string $table_id, array $allowed_inline): void {
+		$filter_label = isset($filter['label']) ? (string) $filter['label'] : '';
+		$filter_label_id = $filter_label !== ''
+			? 'btbl-filter-label-' . $table_id . '-' . $filter['column_index']
+			: '';
+		?>
+		<div class="btbl-filter btbl-filter-<?php echo esc_attr($filter['type']); ?><?php echo esc_attr($filter['type'] === 'dropdown_multi' ? ' btbl-filter-dropdown-multi' : ''); ?>" data-column="<?php echo esc_attr($filter['column_index']); ?>" data-slug="<?php echo esc_attr($filter['slug']); ?>" data-type="<?php echo esc_attr($filter['type']); ?>">
+			<?php if ($filter_label !== '') : ?>
+				<div class="btbl-filter-label" id="<?php echo esc_attr($filter_label_id); ?>"><?php echo wp_kses($filter_label, $allowed_inline); ?></div>
+			<?php endif; ?>
+			<div class="btbl-filter-control-wrapper">
+				<?php $this->render_filter_input($filter, $table_id, $filter_label_id); ?>
+			</div>
+		</div>
+		<?php
+	}
+
+	private function render_filter_input(array $filter, string $table_id, string $filter_label_id): void {
+		$configs = [
+			'dropdown' => ['include_empty' => true, 'include_all' => true, 'placeholder' => __('All', 'baratables')],
+			'dropdown_plain' => ['include_all' => true],
+			'dropdown_multi' => ['include_empty' => true, 'multiple' => true, 'placeholder' => __('Select options', 'baratables')],
+			'dropdown_plain_multi' => ['include_empty' => true, 'multiple' => true],
+		];
+		$type = (string) ($filter['type'] ?? '');
+		if (isset($configs[$type])) {
+			$config = $configs[$type];
+			$config['labelledby'] = $filter_label_id;
+			$this->render_filter_select($filter['options'], $config);
+			return;
+		}
+		if ($type === 'checkbox') {
+			$this->render_filter_option_inputs($filter['options'], 'checkbox', '', false, $filter_label_id);
+		} elseif ($type === 'radio') {
+			$this->render_filter_option_inputs(
+				$filter['options'],
+				'radio',
+				'btbl-filter-' . $table_id . '-' . $filter['column_index'],
+				true,
+				$filter_label_id
+			);
+		}
+	}
+
+	private function resolve_admin_edit_url(array $definition, string $table_id): ?string {
+		// Only administrators can edit this CPT. Gate before the definition lookup so anonymous
+		// visitors and ordinary logged-in members never pay for its meta query.
+		if (!is_user_logged_in() || !current_user_can('manage_options')) {
+			return null;
+		}
+		$definition_id = $definition['id'] ?? $table_id;
+		$post_id = $definition_id ? $this->service->get_definition_post_id($definition_id) : 0;
+		if ($post_id && !current_user_can('edit_post', $post_id)) {
+			return null;
+		}
+		return $post_id
+			? get_edit_post_link($post_id, '')
+			: admin_url('edit.php?post_type=' . BaraTables_Repository::CPT);
+	}
+
+	private function prevent_access_control_caching(array $definition): void {
+		if (empty($definition['access_control'])) {
+			return;
+		}
+		// DONOTCACHEPAGE is the de-facto cross-plugin contract page caches read. Row access control
+		// makes this response visitor-specific, even on hosts configured to cache logged-in traffic.
+		if (!defined('DONOTCACHEPAGE')) {
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Established shared constant; the exact name is the contract.
+			define('DONOTCACHEPAGE', true);
+		}
+		nocache_headers();
+	}
+
+	private function build_render_payload(array $definition, array $rows, array $chart_options, bool $chart_enabled, bool $render_table, string $table_id, ?array $presentation): array {
+		$payload = $render_table ? [
+			'tableId' => $table_id,
+			'presetFilters' => $this->service->get_preset_filters(),
+			'slugToIndex' => $presentation['slug_to_index'],
+			'hiddenColumns' => $presentation['hidden_columns'],
+			'nonSortable' => $presentation['non_sortable'],
+			'tableOptions' => $presentation['options'],
+			'tableClasses' => $presentation['style_classes'],
+			'compact' => !empty($presentation['raw_options']['compact']),
+			'nonSearchable' => $presentation['non_searchable'],
+			'defaultOrder' => $presentation['default_sort'],
+			'presetSearch' => $this->service->get_preset_search(),
+			'chartOnly' => false,
+		] : [
+			'tableId' => $table_id,
+			'slugToIndex' => $this->service->map_column_slug_to_index($definition),
+			'chartOnly' => true,
+		];
+		if (!$chart_enabled) {
+			return $payload;
+		}
+
+		// Ship only the columns the chart plots; rows are re-indexed with a matching slug map.
+		$projection = $this->project_rows_for_chart($rows, $definition['columns'], $chart_options);
+		$type_capabilities = BaraTables_Chart_Types::get((string) ($chart_options['type'] ?? 'bar'));
+		$payload['chart'] = array_merge($chart_options, [
+			'enabled' => true,
+			'mode' => $type_capabilities['mode'],
+			'rows' => $projection['rows'],
+			'row_slug_index' => $projection['slug_index'],
+			'columns' => $this->service->build_column_slug_label_list($definition['columns']),
+		]);
+		return $payload;
+	}
+
+	private function enqueue_render_payload(array $payload): void {
+		$config = wp_json_encode($payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+		if (!$config) {
+			return;
+		}
+		wp_add_inline_script(
+			'baratables-frontend',
+			'window.BaraTablesFrontendQueue = window.BaraTablesFrontendQueue || []; window.BaraTablesFrontendQueue.push(' . $config . ');',
+			'before'
+		);
 	}
 
 	/**
 	 * Narrow the inline chart payload to the columns the chart actually plots.
 	 *
-	 * @return array{rows: array<int, array<int, mixed>>, slug_index: array<string, int>}
+	 * @return array{rows: array<int, array<int, mixed>>, slug_index: ?array<string, int>}
 	 *         Rows re-indexed to the kept columns, plus the slug => new-index map for them.
-	 *         Falls back to the untouched rows (and the full map) if nothing can be narrowed,
+	 *         Falls back to the untouched rows and a null override if nothing can be narrowed,
 	 *         so a chart referencing an unknown slug still behaves exactly as before.
 	 */
 	private function project_rows_for_chart(array $rows, array $columns, array $chart_options): array {
-		$wanted = [];
-		foreach (['x_axis', 'gantt_label', 'gantt_start', 'gantt_end', 'gantt_group', 'gantt_progress'] as $key) {
-			$slug = isset($chart_options[$key]) ? (string) $chart_options[$key] : '';
-			if ($slug !== '') {
-				$wanted[$slug] = true;
-			}
-		}
-		foreach ((array) ($chart_options['series'] ?? []) as $slug) {
-			$slug = (string) $slug;
-			if ($slug !== '') {
-				$wanted[$slug] = true;
-			}
-		}
+		$wanted = array_fill_keys(BaraTables_Chart_Types::referenced_columns($chart_options), true);
 
 		$keep = [];
 		$slug_index = [];
@@ -698,8 +588,7 @@ class BaraTables_Frontend {
 	}
 
 	private function render_filter_option_tags(array $options): void {
-		foreach ($options as $option) {
-			$opt = $this->prepare_filter_option($option);
+		foreach ($options as $opt) {
 			?>
 			<option value="<?php echo esc_attr($opt['value']); ?>" data-search-terms="<?php echo esc_attr(wp_json_encode($opt['search_terms'])); ?>"><?php echo esc_html($opt['label']); ?></option>
 			<?php
@@ -721,9 +610,8 @@ class BaraTables_Frontend {
 					<?php esc_html_e('All', 'baratables'); ?>
 				</label>
 			<?php endif; ?>
-			<?php foreach ($options as $option) : ?>
-				<label>
-					<?php $opt = $this->prepare_filter_option($option); ?>
+			<?php foreach ($options as $opt) : ?>
+					<label>
 					<input type="<?php echo esc_attr($input_type); ?>"<?php echo $name_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: name value passed through esc_attr(). ?> value="<?php echo esc_attr($opt['value']); ?>" data-search-terms="<?php echo esc_attr(wp_json_encode($opt['search_terms'])); ?>" />
 					<?php echo esc_html($opt['label']); ?>
 				</label>

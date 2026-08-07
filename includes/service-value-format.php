@@ -11,8 +11,6 @@ if (!defined('ABSPATH')) {
  */
 trait BaraTables_Value_Format_Trait {
 	public function resolve_value(WP_Post $post, array $column): string {
-		$value = '';
-
 		if ($column['source'] === 'core') {
 			$value = $this->get_core_value($post, $column['key']);
 		} elseif ($column['source'] === 'tax') {
@@ -147,36 +145,19 @@ trait BaraTables_Value_Format_Trait {
 	}
 
 	/**
-	 * Index-aligned column slugs for rows already reordered to match $columns.
-	 * Returns [] when no column yields a slug, so callers can skip the row walk entirely.
-	 */
-	private function build_ordered_column_slugs(array $columns): array {
-		$slugs = [];
-		$has_any = false;
-		foreach (array_values($columns) as $col) {
-			$slug = is_array($col) ? $this->resolve_column_slug($col) : '';
-			$slugs[] = $slug;
-			if ($slug !== '') {
-				$has_any = true;
-			}
-		}
-		return $has_any ? $slugs : [];
-	}
-
-	/**
 	 * Apply value-override rules to rows already ordered to match the same column list.
 	 *
 	 * Each row first yields a {{slug}} / {{row.slug}} token map, then every cell is run through the
 	 * rules. This is the single implementation for every source -- manual, CSV and external DB.
-	 * get_rows_from_custom() used to carry its own hand-synced copy of these token rules, so a
+	 * The custom-data row path used to carry its own hand-synced copy of these token rules, so a
 	 * change to token semantics had to be made twice or manual tables silently diverged.
 	 */
 	private function apply_ordered_overrides(array $rows, array $columns, array $overrides): array {
 		if (empty($overrides)) {
 			return $rows;
 		}
-		$slugs = $this->build_ordered_column_slugs($columns);
-		if (empty($slugs)) {
+		$slugs = $this->column_slugs_in_order($columns);
+		if (empty(array_filter($slugs))) {
 			return $rows;
 		}
 		foreach ($rows as &$row) {
@@ -190,8 +171,9 @@ trait BaraTables_Value_Format_Trait {
 				}
 				$value = (string) $row[$idx];
 				$row_tokens[strtolower($slug)] = $value;
-				if (strpos($slug, ':') !== false) {
-					$key = substr($slug, strpos($slug, ':') + 1);
+				$separator = strpos($slug, ':');
+				if ($separator !== false) {
+					$key = substr($slug, $separator + 1);
 					if ($key !== '') {
 						$row_tokens[strtolower($key)] = $value;
 					}
@@ -316,12 +298,9 @@ trait BaraTables_Value_Format_Trait {
 				return '';
 			}
 
-			$value = '';
-			if ($source === 'core') {
-				$value = $this->get_core_value($post, $key);
-			} else {
-				$value = $this->get_meta_value($post->ID, $key);
-			}
+			$value = $source === 'core'
+				? $this->get_core_value($post, $key)
+				: $this->get_meta_value($post->ID, $key);
 
 			return wp_kses_post($this->stringify_cell_value($value));
 		}, $text);
@@ -376,7 +355,7 @@ trait BaraTables_Value_Format_Trait {
 		// state it depends on (the wp-postpass_ cookie) is exactly what the caller may change --
 		// a memo returned "locked" to a visitor who had since unlocked the post. The remaining
 		// win was 2x on an already-narrow path; correctness is worth more than that here.
-		if (in_array($key, ['post_content', 'post_excerpt', 'post_content_filtered'], true)
+		if (in_array($key, ['post_content', 'post_excerpt'], true)
 			&& (string) $post->post_password !== ''
 			&& post_password_required($post)) {
 			return '';
@@ -452,7 +431,7 @@ trait BaraTables_Value_Format_Trait {
 				if (!in_array($key, self::ALLOWED_CORE_KEYS, true)) {
 					return '';
 				}
-				return isset($post->$key) ? $post->$key : '';
+					return $post->$key ?? '';
 		}
 	}
 
@@ -465,10 +444,7 @@ trait BaraTables_Value_Format_Trait {
 		if (is_wp_error($terms) || empty($terms)) {
 			return '';
 		}
-		$names = array_map(static function ($term) {
-			return $term->name;
-		}, $terms);
-		return implode(', ', $names);
+		return implode(', ', wp_list_pluck($terms, 'name'));
 	}
 
 	public function get_meta_value(int $post_id, string $key) {

@@ -5,16 +5,15 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Query + JSON input sanitization for BaraTables_Service: custom WP_Query args, meta/tax/date
- * sub-queries, value-override and custom-query JSON. Extracted from the service class so each
- * concern lives in its own file; these methods run in the class scope via the trait.
+ * Query + JSON input sanitization for custom WP_Query args, meta/tax/date sub-queries,
+ * value-override and custom-query JSON.
  */
-trait BaraTables_Query_Sanitize_Trait {
+final class BaraTables_Query_Sanitizer {
 	public function sanitize_custom_query_json(string $raw_json): array {
 		return $this->sanitize_wp_query_args($this->decode_json_array($raw_json));
 	}
 
-	private function sanitize_public_post_types(array $post_types_raw, bool $fallback_to_post = true): array {
+	public function sanitize_public_post_types(array $post_types_raw, bool $fallback_to_post = true): array {
 		$post_types = [];
 		foreach ($post_types_raw as $post_type_raw) {
 			$post_type = sanitize_key((string) $post_type_raw);
@@ -38,32 +37,16 @@ trait BaraTables_Query_Sanitize_Trait {
 	 * Attachments are always 'inherit'; everything else the plugin lists is 'publish'. Kept in one
 	 * place so the builder path and the custom-query path cannot disagree about it.
 	 */
-	private static function post_status_for_types(array $post_types) {
+	public static function post_status_for_types(array $post_types) {
 		return in_array('attachment', $post_types, true)
 			? ['publish', 'inherit']
 			: 'publish';
 	}
 
-	private function sanitize_wp_query_args(array $args): array {
+	public function sanitize_wp_query_args(array $args): array {
 		if (empty($args)) {
 			return [];
 		}
-
-		$clean = [
-			'post_status' => 'publish',
-			'no_found_rows' => true,
-			'ignore_sticky_posts' => true,
-		];
-		// Attachments are stored as post_status 'inherit', never 'publish', so a Media source
-		// matched nothing at all. Widen the status ONLY when attachments are actually requested,
-		// so every other table keeps its strict publish-only filter.
-		$clean['post_status'] = self::post_status_for_types(
-			$this->sanitize_public_post_types(
-				is_array($args['post_type'] ?? null) ? $args['post_type'] : [$args['post_type'] ?? 'post'],
-				false
-			)
-		);
-		$has_supported_arg = false;
 
 		$post_type_requested = array_key_exists('post_type', $args);
 		$post_types_raw = $args['post_type'] ?? ['post'];
@@ -72,10 +55,14 @@ trait BaraTables_Query_Sanitize_Trait {
 		if (empty($post_types) && $post_type_requested) {
 			return [];
 		}
-		$clean['post_type'] = count($post_types) === 1 ? $post_types[0] : (!empty($post_types) ? $post_types : 'post');
-		if ($post_type_requested && !empty($post_types)) {
-			$has_supported_arg = true;
-		}
+		$effective_post_types = !empty($post_types) ? $post_types : ['post'];
+		$clean = [
+			'post_status' => self::post_status_for_types($effective_post_types),
+			'no_found_rows' => true,
+			'ignore_sticky_posts' => true,
+			'post_type' => count($effective_post_types) === 1 ? $effective_post_types[0] : $effective_post_types,
+		];
+		$has_supported_arg = $post_type_requested && !empty($post_types);
 
 		if (isset($args['posts_per_page'])) {
 			$posts_per_page = (int) $args['posts_per_page'];
@@ -85,7 +72,7 @@ trait BaraTables_Query_Sanitize_Trait {
 				// fixed 500, so an explicit posts_per_page silently overrode (and undercut) the
 				// table's configured "Maximum rows to load" -- e.g. rowLimit 10000 still yielded
 				// 500 rows whenever the query JSON set posts_per_page.
-				$max_rows = (int) self::TABLE_OPTION_SCHEMA['rowLimit']['max'];
+				$max_rows = BaraTables_Service::MAX_ROW_LIMIT;
 				$clean['posts_per_page'] = $posts_per_page < 0
 					? $max_rows
 					: min(max($posts_per_page, 1), $max_rows);
@@ -93,28 +80,19 @@ trait BaraTables_Query_Sanitize_Trait {
 			}
 		}
 
-		foreach (['paged', 'page', 'offset', 'p', 'page_id', 'author', 'post_parent', 'year', 'monthnum', 'day', 'w'] as $int_key) {
-			if (isset($args[$int_key])) {
-				$clean[$int_key] = absint($args[$int_key]);
-				$has_supported_arg = true;
-			}
-		}
-
-		foreach (['s', 'name', 'pagename', 'meta_key', 'meta_value'] as $text_key) {
-			if (isset($args[$text_key]) && is_scalar($args[$text_key])) {
-				$value = sanitize_text_field((string) $args[$text_key]);
-				if ($value !== '') {
-					$clean[$text_key] = $value;
-					$has_supported_arg = true;
+		$argument_groups = [
+			'integer' => ['paged', 'page', 'offset', 'p', 'page_id', 'author', 'post_parent', 'year', 'monthnum', 'day', 'w'],
+			'text' => ['s', 'name', 'pagename', 'meta_key', 'meta_value'],
+			'id_list' => ['post__in', 'post__not_in', 'post_parent__in', 'post_parent__not_in', 'author__in', 'author__not_in', 'category__in', 'category__not_in', 'tag__in', 'tag__not_in'],
+		];
+		foreach ($argument_groups as $strategy => $keys) {
+			foreach ($keys as $key) {
+				if (!isset($args[$key])) {
+					continue;
 				}
-			}
-		}
-
-		foreach (['post__in', 'post__not_in', 'post_parent__in', 'post_parent__not_in', 'author__in', 'author__not_in', 'category__in', 'category__not_in', 'tag__in', 'tag__not_in'] as $id_list_key) {
-			if (isset($args[$id_list_key])) {
-				$ids = $this->sanitize_int_list($args[$id_list_key]);
-				if (!empty($ids)) {
-					$clean[$id_list_key] = $ids;
+				$sanitized = $this->sanitize_query_argument($strategy, $args[$key]);
+				if ($sanitized['accepted']) {
+					$clean[$key] = $sanitized['value'];
 					$has_supported_arg = true;
 				}
 			}
@@ -127,7 +105,7 @@ trait BaraTables_Query_Sanitize_Trait {
 
 		if (isset($args['orderby'])) {
 			$orderby = $this->sanitize_query_orderby($args['orderby']);
-			if ($orderby !== null && $orderby !== []) {
+			if (!empty($orderby)) {
 				$clean['orderby'] = $orderby;
 				$has_supported_arg = true;
 			}
@@ -174,6 +152,19 @@ trait BaraTables_Query_Sanitize_Trait {
 		}
 
 		return $has_supported_arg ? $clean : [];
+	}
+
+	/** @return array{accepted:bool,value:mixed} */
+	private function sanitize_query_argument(string $strategy, $raw): array {
+		if ($strategy === 'integer') {
+			return ['accepted' => true, 'value' => absint($raw)];
+		}
+		if ($strategy === 'text') {
+			$value = is_scalar($raw) ? sanitize_text_field((string) $raw) : '';
+			return ['accepted' => $value !== '', 'value' => $value];
+		}
+		$ids = $this->sanitize_int_list($raw);
+		return ['accepted' => !empty($ids), 'value' => $ids];
 	}
 
 	private function sanitize_int_list($raw): array {
@@ -239,29 +230,14 @@ trait BaraTables_Query_Sanitize_Trait {
 	}
 
 	private function sanitize_meta_query(array $query, int $depth = 0): array {
-		if ($depth > 2) {
-			return [];
-		}
-		$out = [];
-		if (isset($query['relation'])) {
-			$out['relation'] = strtoupper((string) $query['relation']) === 'OR' ? 'OR' : 'AND';
-		}
-
-		foreach ($query as $key => $clause) {
-			if ($key === 'relation' || !is_array($clause)) {
-				continue;
-			}
-			if (array_key_exists('key', $clause)) {
-				$clean_clause = $this->sanitize_meta_clause($clause);
-			} else {
-				$clean_clause = $this->sanitize_meta_query($clause, $depth + 1);
-			}
-			if (!empty($clean_clause)) {
-				$out[] = $clean_clause;
-			}
-		}
-
-		return count($out) > (isset($out['relation']) ? 1 : 0) ? $out : [];
+		return $this->sanitize_nested_query(
+			$query,
+			[$this, 'sanitize_meta_clause'],
+			static function (array $clause): bool {
+				return array_key_exists('key', $clause);
+			},
+			$depth
+		);
 	}
 
 	private function sanitize_meta_clause(array $clause): array {
@@ -274,12 +250,7 @@ trait BaraTables_Query_Sanitize_Trait {
 		if (array_key_exists('value', $clause)) {
 			$out['value'] = $this->sanitize_query_value($clause['value']);
 		}
-		if (isset($clause['compare'])) {
-			$compare = $this->sanitize_meta_compare($clause['compare']);
-			if ($compare !== '') {
-				$out['compare'] = $compare;
-			}
-		}
+		$this->add_sanitized_compare($out, $clause);
 		if (isset($clause['type'])) {
 			$type = $this->sanitize_meta_type($clause['type']);
 			if ($type !== '') {
@@ -293,6 +264,16 @@ trait BaraTables_Query_Sanitize_Trait {
 		$compare = strtoupper(trim((string) $compare));
 		$allowed = ['=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN', 'EXISTS', 'NOT EXISTS', 'REGEXP', 'NOT REGEXP', 'RLIKE'];
 		return in_array($compare, $allowed, true) ? $compare : '';
+	}
+
+	private function add_sanitized_compare(array &$output, array $clause): void {
+		if (!isset($clause['compare'])) {
+			return;
+		}
+		$compare = $this->sanitize_meta_compare($clause['compare']);
+		if ($compare !== '') {
+			$output['compare'] = $compare;
+		}
 	}
 
 	private function sanitize_meta_type($type): string {
@@ -315,29 +296,14 @@ trait BaraTables_Query_Sanitize_Trait {
 	}
 
 	private function sanitize_custom_tax_query(array $query, int $depth = 0): array {
-		if ($depth > 2) {
-			return [];
-		}
-		$out = [];
-		if (isset($query['relation'])) {
-			$out['relation'] = strtoupper((string) $query['relation']) === 'OR' ? 'OR' : 'AND';
-		}
-
-		foreach ($query as $key => $clause) {
-			if ($key === 'relation' || !is_array($clause)) {
-				continue;
-			}
-			if (array_key_exists('taxonomy', $clause)) {
-				$clean_clause = $this->sanitize_tax_clause($clause);
-			} else {
-				$clean_clause = $this->sanitize_custom_tax_query($clause, $depth + 1);
-			}
-			if (!empty($clean_clause)) {
-				$out[] = $clean_clause;
-			}
-		}
-
-		return count($out) > (isset($out['relation']) ? 1 : 0) ? $out : [];
+		return $this->sanitize_nested_query(
+			$query,
+			[$this, 'sanitize_tax_clause'],
+			static function (array $clause): bool {
+				return array_key_exists('taxonomy', $clause);
+			},
+			$depth
+		);
 	}
 
 	private function sanitize_tax_clause(array $clause): array {
@@ -372,6 +338,17 @@ trait BaraTables_Query_Sanitize_Trait {
 	}
 
 	private function sanitize_date_query(array $query, int $depth = 0): array {
+		return $this->sanitize_nested_query($query, [$this, 'sanitize_date_clause'], null, $depth);
+	}
+
+	/**
+	 * Sanitize the relation/group structure shared by WP_Meta_Query, WP_Tax_Query, and
+	 * WP_Date_Query while leaving each query type's leaf semantics in its own sanitizer.
+	 *
+	 * A null marker means "try the leaf sanitizer first, recurse if it produced nothing"; date
+	 * clauses need that behavior because they have no single required identifying key.
+	 */
+	private function sanitize_nested_query(array $query, callable $sanitize_leaf, ?callable $is_leaf, int $depth): array {
 		if ($depth > 2) {
 			return [];
 		}
@@ -383,9 +360,10 @@ trait BaraTables_Query_Sanitize_Trait {
 			if ($key === 'relation' || !is_array($clause)) {
 				continue;
 			}
-			$clean_clause = $this->sanitize_date_clause($clause);
-			if (empty($clean_clause)) {
-				$clean_clause = $this->sanitize_date_query($clause, $depth + 1);
+			$leaf = $is_leaf === null || $is_leaf($clause);
+			$clean_clause = $leaf ? $sanitize_leaf($clause) : [];
+			if (!$leaf || ($is_leaf === null && empty($clean_clause))) {
+				$clean_clause = $this->sanitize_nested_query($clause, $sanitize_leaf, $is_leaf, $depth + 1);
 			}
 			if (!empty($clean_clause)) {
 				$out[] = $clean_clause;
@@ -409,12 +387,7 @@ trait BaraTables_Query_Sanitize_Trait {
 		if (isset($clause['inclusive'])) {
 			$out['inclusive'] = !empty($clause['inclusive']);
 		}
-		if (isset($clause['compare'])) {
-			$compare = $this->sanitize_meta_compare($clause['compare']);
-			if ($compare !== '') {
-				$out['compare'] = $compare;
-			}
-		}
+		$this->add_sanitized_compare($out, $clause);
 		return $out;
 	}
 

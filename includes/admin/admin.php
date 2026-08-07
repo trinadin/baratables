@@ -9,17 +9,19 @@ class BaraTables_Admin {
 	public const NONCE_FIELD = '_baratables_nonce';
 
 	private BaraTables_Service $service;
-	private BaraTables_Repository $repo;
 	private BaraTables_Admin_Assets $assets;
 	private BaraTables_Admin_Action_Handler $actions;
 	private BaraTables_Admin_Pages $pages;
+	private BaraTables_Admin_Preview_Renderer $preview_renderer;
+	private BaraTables_Entity_Persistence $persistence;
 
 	public function __construct(BaraTables_Service $service, BaraTables_Repository $repo, string $plugin_url, string $plugin_path) {
 		$this->service = $service;
-		$this->repo = $repo;
 		$this->assets = new BaraTables_Admin_Assets($plugin_url, $plugin_path);
 		$this->actions = new BaraTables_Admin_Action_Handler($service);
-		$this->pages = new BaraTables_Admin_Pages($service, self::NONCE_ACTION, self::NONCE_FIELD);
+		$this->pages = new BaraTables_Admin_Pages(self::NONCE_ACTION, self::NONCE_FIELD);
+		$this->preview_renderer = new BaraTables_Admin_Preview_Renderer($service);
+		$this->persistence = BaraTables_Entity_Persistence::from_descriptor(BaraTables_Entity_Descriptor::table());
 		$list_columns = new BaraTables_Admin_List_Columns();
 		$slug_manager = new BaraTables_Admin_Slug_Manager($repo);
 		$options_page = new BaraTables_Admin_Options($service);
@@ -80,34 +82,21 @@ class BaraTables_Admin {
 			return;
 		}
 
-		// get_rows() is what discovers the columns of a source that has none selected, so it has to
-		// run BEFORE the definition is asked for them. In the other order ensure_columns_inferred()
-		// reports whatever an earlier call in this request happened to leave behind.
-		$preview_rows = $this->service->get_rows($definition, 50);
-		$preview_defn = $this->service->ensure_columns_inferred($definition);
-		$preview_rows = $this->pages->apply_preview_sort($preview_rows, $preview_defn);
+		$preview = $this->prepare_preview($definition);
 		// R15: a Refresh-preview button that appears only once the builder has unsaved
 		// edits (revealed by JS on the first change). No standing help text.
 		echo '<p class="btbl-preview-toolbar" hidden>';
 		echo '<button type="button" class="button btbl-icon-button" id="btbl-refresh-preview" aria-label="' . esc_attr__('Refresh preview', 'baratables') . '" title="' . esc_attr__('Refresh preview', 'baratables') . '"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>';
 		echo '</p>';
 		echo '<div class="btbl-admin btbl-admin-embed" id="btbl-preview-target">';
-		$this->pages->render_preview_panel($preview_defn, $preview_rows);
+		$this->preview_renderer->render($preview['definition'], $preview['rows']);
 		echo '</div>';
 	}
 
 	public function ajax_refresh_fields(): void {
-		if (!current_user_can('manage_options')) {
-			wp_send_json_error(['message' => 'forbidden'], 403);
-		}
-		check_ajax_referer(self::NONCE_ACTION, self::NONCE_FIELD);
+		BaraTables_Admin_Ajax_Guard::verify(self::NONCE_ACTION, self::NONCE_FIELD);
 
-		$post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
-		$post = $post_id ? get_post($post_id) : null;
-		$existing = ($post instanceof WP_Post && $post->post_type === BaraTables_Repository::CPT)
-			? $this->get_existing_table_definition_for_post($post)
-			: null;
-		$existing = is_array($existing) ? $existing : [];
+		$existing = $this->get_ajax_table_definition() ?? [];
 
 		// Form_Context::build() takes its live-preview inputs as an argument, so hand it an array
 		// assembled straight from this AJAX POST. (It used to fake a full-page GET by writing $_GET
@@ -116,9 +105,9 @@ class BaraTables_Admin {
 		// Same sanitizer as the full-page GET collector, so the in-place refresh and the legacy
 		// reload can never disagree about an input. Nonce already verified above.
 		$raw = [];
-		foreach (['type', 'source', 'custom_query', 'csv_id', 'csv_delim', 'csv_header'] as $key) {
-			if (isset($_POST[$key])) {
-				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized in sanitize_preview_values() below.
+		foreach (BaraTables_Admin_Form_Context::preview_post_fields() as $key) {
+			if (isset($_POST[$key])) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- AJAX nonce and capability verified at the handler boundary.
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Boundary verified above; sanitized in sanitize_preview_values().
 				$raw[$key] = wp_unslash($_POST[$key]);
 			}
 		}
@@ -142,32 +131,20 @@ class BaraTables_Admin {
 	}
 
 	public function ajax_refresh_preview(): void {
-		if (!current_user_can('manage_options')) {
-			wp_send_json_error(['message' => 'forbidden'], 403);
-		}
-		check_ajax_referer(self::NONCE_ACTION, self::NONCE_FIELD);
+		BaraTables_Admin_Ajax_Guard::verify(self::NONCE_ACTION, self::NONCE_FIELD);
 
 		// Reuse the exact save pipeline so the preview never diverges from what would persist --
 		// including the existing definition (loaded the same way save does), so deselecting every
 		// column on an existing table previews as empty instead of injecting a default Title column.
-		$post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
-		$post = $post_id ? get_post($post_id) : null;
-		$existing = ($post instanceof WP_Post && $post->post_type === BaraTables_Repository::CPT)
-			? $this->get_existing_table_definition_for_post($post)
-			: null;
+		$existing = $this->get_ajax_table_definition();
 		$request = $this->actions->collect_table_request_data();
 		$definition = $this->actions->apply_request_to_definition($request, $existing, !empty($existing));
-		$definition['id'] = isset($_POST['btbl_table_id']) ? sanitize_text_field(wp_unslash($_POST['btbl_table_id'])) : '';
+		$definition['id'] = isset($_POST['btbl_table_id']) ? sanitize_text_field(wp_unslash($_POST['btbl_table_id'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- AJAX nonce and capability verified above.
 
-		// Rows first: see render_table_preview_metabox(). Reversed, this endpoint answered "No
-		// columns selected yet" for a table whose front end renders every column, because nothing
-		// had primed the inference yet on this request.
-		$preview_rows = $this->service->get_rows($definition, 50);
-		$preview_defn = $this->service->ensure_columns_inferred($definition);
-		$preview_rows = $this->pages->apply_preview_sort($preview_rows, $preview_defn);
+		$preview = $this->prepare_preview($definition);
 
 		ob_start();
-		$this->pages->render_preview_panel($preview_defn, $preview_rows);
+		$this->preview_renderer->render($preview['definition'], $preview['rows']);
 		$html = ob_get_clean();
 
 		wp_send_json_success(['html' => $html]);
@@ -189,52 +166,38 @@ class BaraTables_Admin {
 		}
 
 		$request = $this->actions->collect_table_request_data();
-		if ($request['name'] === '') {
-			$request['name'] = BaraTables_Post_Input::text('post_title');
-		}
-
 		$existing = $this->get_existing_table_definition_for_post($post);
 		$definition = $this->actions->apply_request_to_definition($request, $existing, $update);
-		$old_slug = $post->post_name;
-		$requested_id = sanitize_title(BaraTables_Post_Input::text('btbl_table_id'));
-		$slug = $old_slug;
-		if ($requested_id !== '' && $requested_id !== $old_slug) {
-			// The user explicitly set or changed the Table ID.
-			$slug = wp_unique_post_slug($requested_id, $post_id, $post->post_status, $post->post_type, $post->post_parent);
-		} elseif ($old_slug === '') {
-			// First save with no explicit ID -- derive it from the title (original behavior).
-			$base = sanitize_title((string) $post->post_title);
-			if ($base === '') {
-				$base = (string) $post_id;
-			}
-			$slug = wp_unique_post_slug($base, $post_id, $post->post_status, $post->post_type, $post->post_parent);
+		$identity = $this->persistence->save_editor_slug(
+			$post_id,
+			$post,
+			BaraTables_Post_Input::text('btbl_table_id'),
+			(string) $post->post_title,
+			[$this, 'save_table_from_editor'],
+			3
+		);
+		$old_slug = $identity['old_slug'];
+		$requested_id = $identity['requested_slug'];
+		$slug = $identity['slug'];
+		if ($identity['error'] instanceof WP_Error) {
+			BaraTables_Admin_Notice::queue(
+				__('The Table ID could not be saved. The previous ID was kept.', 'baratables'),
+				'error'
+			);
 		}
-		if ($slug !== '' && $slug !== $old_slug) {
-			// Our own post_name write re-fires save_post; detach this handler around it so it
-			// does not re-enter and double the persist + admin notices.
-			$save_hook = 'save_post_' . BaraTables_Repository::CPT;
-			remove_action($save_hook, [$this, 'save_table_from_editor'], 9);
-			wp_update_post([
-				'ID' => $post_id,
-				'post_name' => $slug,
-			]);
-			add_action($save_hook, [$this, 'save_table_from_editor'], 9, 3);
-			if ($old_slug !== '') {
-				// Rename of an existing table: forward-fix linked charts (our own records)
-				// and flag the embeds we can't reach. No alias is stored.
-				$charts_updated = $this->service->rewrite_chart_table_id($old_slug, $slug);
-				$this->queue_table_rename_notice($old_slug, $slug, $requested_id, $charts_updated);
-			}
+		if ($identity['changed'] && $old_slug !== '') {
+			// Rename of an existing table: forward-fix linked charts (our own records)
+			// and flag the embeds we can't reach. No alias is stored.
+			$charts_updated = $this->service->rewrite_chart_table_id($old_slug, $slug);
+			$this->queue_table_rename_notice($old_slug, $slug, $requested_id, $charts_updated);
 		}
 		$definition['id'] = $slug;
 		$definition['name'] = $request['name'] !== '' ? $request['name'] : ($definition['name'] ?? $post->post_title);
 		$definition['status'] = $post->post_status;
 
-		BaraTables_Base_Repository::persist($post_id, BaraTables_Repository::META_KEY, BaraTables_Repository::META_SLUG, $definition, $slug);
+		$this->persistence->persist($post_id, $definition, $slug);
 
 		// R1: warn (non-blocking) if the saved table has no effective columns and will render nothing.
-		// resolve_columns(), not ensure_columns_inferred(): nothing has fetched rows on this request,
-		// so the latter would report stale state and warn about a table that displays fine.
 		$effective = $this->service->resolve_columns($definition);
 		if (empty($effective['columns'])) {
 			BaraTables_Admin_Notice::queue(
@@ -282,38 +245,50 @@ class BaraTables_Admin {
 
 	/** Build the non-blocking notice shown after a Table ID rename. */
 	private function queue_table_rename_notice(string $old_slug, string $new_slug, string $requested_id, int $charts_updated): void {
-		$parts = [];
-		if ($requested_id !== '' && $new_slug !== $requested_id) {
-			$parts[] = sprintf(
-				/* translators: 1: the ID the user asked for, 2: the unique ID actually saved. */
-				__('The Table ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
-				$requested_id,
-				$new_slug
-			);
-		}
-		$parts[] = sprintf(
-			/* translators: 1: old Table ID, 2: new Table ID. */
-			__('Table ID changed from "%1$s" to "%2$s". Update any [bara_table id="%1$s"] you have already pasted into your content.', 'baratables'),
-			$old_slug,
-			$new_slug
-		);
+		$suffix = '';
 		if ($charts_updated > 0) {
-			$parts[] = sprintf(
+			$suffix = sprintf(
 				/* translators: %d: number of linked charts updated. */
 				_n('%d linked chart was updated automatically.', '%d linked charts were updated automatically.', $charts_updated, 'baratables'),
 				$charts_updated
 			);
 		}
-		BaraTables_Admin_Notice::queue(implode(' ', $parts), 'info');
+		BaraTables_Admin_Notice::queue_rename(
+			$old_slug,
+			$new_slug,
+			$requested_id,
+			/* translators: 1: the ID the user asked for, 2: the unique ID actually saved. */
+			__('The Table ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
+			/* translators: 1: old Table ID, 2: new Table ID. */
+			__('Table ID changed from "%1$s" to "%2$s". Update any [bara_table id="%1$s"] you have already pasted into your content.', 'baratables'),
+			$suffix
+		);
 	}
 
 	private function get_existing_table_definition_for_post(WP_Post $post): ?array {
-		$existing = $this->service->find_definition($post->post_name, true);
-		if (!$existing) {
-			$meta = get_post_meta($post->ID, BaraTables_Repository::META_KEY, true);
-			$existing = is_array($meta) ? $meta : null;
-		}
-		return $existing;
+		return BaraTables_Admin_Definition_Loader::for_post(
+			$post,
+			BaraTables_Entity_Descriptor::table(),
+			[$this->service, 'find_definition']
+		);
+	}
+
+	private function get_ajax_table_definition(): ?array {
+		$post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Called only after the AJAX boundary guard verifies nonce and capability.
+		$post = $post_id ? get_post($post_id) : null;
+		return $post instanceof WP_Post && $post->post_type === BaraTables_Repository::CPT
+			? $this->get_existing_table_definition_for_post($post)
+			: null;
+	}
+
+	/** @return array{definition:array,rows:array} */
+	private function prepare_preview(array $definition): array {
+		$result = $this->service->get_row_result($definition, 50);
+		$definition = $this->service->definition_with_inferred_columns($definition, $result);
+		return [
+			'definition' => $definition,
+			'rows' => $this->preview_renderer->sort($result->rows(), $definition),
+		];
 	}
 
 	public function enqueue_admin_assets(string $hook): void {
@@ -325,19 +300,19 @@ class BaraTables_Admin {
 
 class BaraTables_Chart_Admin {
 	private BaraTables_Chart_Service $chart_service;
-	private BaraTables_Chart_Repository $chart_repo;
 	private BaraTables_Service $table_service;
 	private BaraTables_Admin_Tab_Chart $tab_chart;
 	private string $nonce_action;
 	private string $nonce_field;
+	private BaraTables_Entity_Persistence $persistence;
 
 	public function __construct(BaraTables_Chart_Service $chart_service, BaraTables_Chart_Repository $chart_repo, BaraTables_Service $table_service, string $nonce_action, string $nonce_field) {
 		$this->chart_service = $chart_service;
-		$this->chart_repo = $chart_repo;
 		$this->table_service = $table_service;
 		$this->tab_chart = new BaraTables_Admin_Tab_Chart();
 		$this->nonce_action = $nonce_action;
 		$this->nonce_field = $nonce_field;
+		$this->persistence = BaraTables_Entity_Persistence::from_descriptor(BaraTables_Entity_Descriptor::chart());
 		$list_columns = new BaraTables_Chart_List_Columns($table_service);
 		$slug_manager = new BaraTables_Chart_Slug_Manager($chart_repo);
 
@@ -400,15 +375,21 @@ class BaraTables_Chart_Admin {
 	 * source table changes -- the no-reload equivalent of re-rendering the metabox with ?table=).
 	 */
 	private function render_chart_panel(array $context): string {
+		$panel = $this->normalize_chart_panel_context($context);
 		ob_start();
-		$this->tab_chart->render([
-			'chart_options'   => $context['chart_options'] ?? $this->table_service->get_default_chart_options(),
-			'active_tab'      => 'btbl-tab-chart',
-			'table_choices'   => $context['table_choices'] ?? [],
-			'selected_table'  => $context['selected_table'] ?? '',
-			'dropped_columns' => $context['dropped_columns'] ?? [],
-		], $context['column_choices'] ?? []);
+		$this->tab_chart->render($panel, $panel['column_choices']);
 		return (string) ob_get_clean();
+	}
+
+	private function normalize_chart_panel_context(array $context): array {
+		return [
+			'chart_options' => $context['chart_options'] ?? $this->table_service->get_default_chart_options(),
+			'active_tab' => 'btbl-tab-chart',
+			'table_choices' => $context['table_choices'] ?? [],
+			'selected_table' => $context['selected_table'] ?? '',
+			'dropped_columns' => $context['dropped_columns'] ?? [],
+			'column_choices' => $context['column_choices'] ?? [],
+		];
 	}
 
 	/**
@@ -417,18 +398,15 @@ class BaraTables_Chart_Admin {
 	 * resolution, then returns the rendered Chart panel for the JS to swap in place.
 	 */
 	public function ajax_refresh_chart_fields(): void {
-		if (!current_user_can('manage_options')) {
-			wp_send_json_error(['message' => 'forbidden'], 403);
-		}
-		check_ajax_referer($this->nonce_action, $this->nonce_field);
+		BaraTables_Admin_Ajax_Guard::verify($this->nonce_action, $this->nonce_field);
 
-		$post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
+		$post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- AJAX nonce and capability verified above.
 		$post = $post_id ? get_post($post_id) : null;
 		$chart = null;
 		if ($post instanceof WP_Post && $post->post_type === BaraTables_Chart_Repository::CPT) {
 			$chart = $this->get_existing_chart_definition_for_post($post);
 		}
-		$selected_table = isset($_POST['table_id']) ? sanitize_text_field(wp_unslash($_POST['table_id'])) : '';
+		$selected_table = isset($_POST['table_id']) ? sanitize_text_field(wp_unslash($_POST['table_id'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- AJAX nonce and capability verified above.
 		$context = $this->chart_service->build_form_context($chart, $selected_table);
 
 		wp_send_json_success(['panel' => $this->render_chart_panel($context)]);
@@ -439,33 +417,31 @@ class BaraTables_Chart_Admin {
 	 * a post whose slug index has not been written yet (first save / an import).
 	 */
 	private function get_existing_chart_definition_for_post(WP_Post $post): ?array {
-		$chart = $this->chart_service->find_chart($post->post_name, true);
-		if (!$chart) {
-			$meta = get_post_meta($post->ID, BaraTables_Chart_Repository::META_KEY, true);
-			$chart = is_array($meta) ? $meta : null;
-		}
-		return is_array($chart) ? $chart : null;
+		return BaraTables_Admin_Definition_Loader::for_post(
+			$post,
+			BaraTables_Entity_Descriptor::chart(),
+			[$this->chart_service, 'find_chart']
+		);
 	}
 
 	private function render_chart_form(array $context, ?array $chart): void {
-		$chart_options = $context['chart_options'] ?? $this->table_service->get_default_chart_options();
-		$column_choices = $context['column_choices'] ?? [];
-		$table_choices = $context['table_choices'] ?? [];
-		$selected_table = $context['selected_table'] ?? '';
+		$panel = $this->normalize_chart_panel_context($context);
 		$chart_id = $chart['id'] ?? '';
 		$shortcode = $chart_id !== '' ? '[bara_chart id="' . sanitize_text_field((string) $chart_id) . '"]' : '';
 		?>
-			<?php wp_nonce_field($this->nonce_action, $this->nonce_field); ?>
-			<?php // id only: read client-side by admin.js to restore the active tab. Never posted. ?>
-			<input type="hidden" id="btbl_active_tab" value="btbl-tab-chart" />
 			<?php
-			$id_editor_html = '';
-			if ($chart) {
-				ob_start();
-				BaraTables_Admin_Page_Utils::render_id_editor('btbl_chart_id', (string) $chart_id, __('Chart ID', 'baratables'), '[bara_chart]');
-				$id_editor_html = (string) ob_get_clean();
-			}
-			BaraTables_Admin_Page_Utils::render_title_section($shortcode, $id_editor_html);
+			BaraTables_Admin_Page_Utils::render_editor_header(
+				$this->nonce_action,
+				$this->nonce_field,
+				'btbl-tab-chart',
+				$shortcode,
+				$chart ? [
+					'field' => 'btbl_chart_id',
+					'value' => $chart_id,
+					'label' => __('Chart ID', 'baratables'),
+					'embed_tag' => '[bara_chart]',
+				] : null
+			);
 			?>
 			<?php BaraTables_Help::render_toggle(); ?>
 			<div class="btbl-tab-wrapper">
@@ -473,13 +449,7 @@ class BaraTables_Chart_Admin {
 					<a href="#btbl-tab-chart" id="btbl-tab-chart-label" role="tab" aria-selected="true" class="nav-tab nav-tab-active btbl-tab-link" data-target="btbl-tab-chart"><?php esc_html_e('Chart', 'baratables'); ?></a>
 				</h2>
 				<?php
-				$this->tab_chart->render([
-					'chart_options' => $chart_options,
-					'active_tab' => 'btbl-tab-chart',
-					'table_choices' => $table_choices,
-						'selected_table' => $selected_table,
-						'dropped_columns' => $context['dropped_columns'] ?? [],
-					], $column_choices);
+				$this->tab_chart->render($panel, $panel['column_choices']);
 				?>
 			</div>
 		<?php
@@ -521,36 +491,33 @@ class BaraTables_Chart_Admin {
 			// rename. Save what we have so their work survives; they can fix the table and update.
 		}
 
-		$old_slug = $post->post_name;
-		$requested_id = sanitize_title(BaraTables_Post_Input::text('btbl_chart_id'));
-		$slug = $old_slug;
-		if ($requested_id !== '' && $requested_id !== $old_slug) {
-			// The user explicitly set or changed the Chart ID.
-			$slug = wp_unique_post_slug($requested_id, $post_id, $post->post_status, $post->post_type, $post->post_parent);
-		} elseif ($old_slug === '') {
-			$slug = $chart['id'] ?? BaraTables_Id_Generator::generate_chart_id();
+		$identity = $this->persistence->save_editor_slug(
+			$post_id,
+			$post,
+			BaraTables_Post_Input::text('btbl_chart_id'),
+			(string) ($chart['id'] ?? BaraTables_Id_Generator::generate_chart_id()),
+			[$this, 'save_chart_from_editor'],
+			2
+		);
+		$old_slug = $identity['old_slug'];
+		$requested_id = $identity['requested_slug'];
+		$slug = $identity['slug'];
+		if ($identity['error'] instanceof WP_Error) {
+			BaraTables_Admin_Notice::queue(
+				__('The Chart ID could not be saved. The previous ID was kept.', 'baratables'),
+				'error'
+			);
 		}
-		if ($slug !== '' && $slug !== $old_slug) {
-			// Our own post_name write re-fires save_post; detach this handler around it so it
-			// does not re-enter and double the persist + admin notices.
-			$save_hook = 'save_post_' . BaraTables_Chart_Repository::CPT;
-			remove_action($save_hook, [$this, 'save_chart_from_editor'], 9);
-			wp_update_post([
-				'ID' => $post_id,
-				'post_name' => $slug,
-			]);
-			add_action($save_hook, [$this, 'save_chart_from_editor'], 9, 2);
-			if ($old_slug !== '') {
-				// Nothing references a chart by id (charts reference tables, not vice versa), so
-				// no forward-rewrite is needed -- only flag the [bara_chart] embeds we can't reach.
-				$this->queue_chart_rename_notice($old_slug, $slug, $requested_id);
-			}
+		if ($identity['changed'] && $old_slug !== '') {
+			// Nothing references a chart by id (charts reference tables, not vice versa), so
+			// no forward-rewrite is needed -- only flag the [bara_chart] embeds we can't reach.
+			$this->queue_chart_rename_notice($old_slug, $slug, $requested_id);
 		}
 		$chart['id'] = $slug;
 		$chart['name'] = $name !== '' ? $name : ($chart['name'] ?? $post->post_title);
 		$chart['status'] = $post->post_status;
 
-		BaraTables_Base_Repository::persist($post_id, BaraTables_Chart_Repository::META_KEY, BaraTables_Chart_Repository::META_SLUG, $chart, $slug);
+		$this->persistence->persist($post_id, $chart, $slug);
 
 		// R2: a chart with no data series renders empty -- warn (non-blocking). Skip when the table
 		// is missing: the "Chart not found" error above already covers it and is the actionable one.
@@ -563,33 +530,26 @@ class BaraTables_Chart_Admin {
 	}
 
 	/**
-	 * Whether to warn that a chart has no data series. Gantt charts are driven by
-	 * gantt_label/start/end (not series), so an empty series is expected for them and must
-	 * not trigger the warning -- mirroring the front-end enabled-check in frontend.php.
+	 * Whether to warn that a chart is missing a role named "series". The chart registry owns
+	 * which modes require that role, matching the front-end configured check.
 	 */
 	private static function should_warn_no_series(array $chart): bool {
 		$type = $chart['chart']['type'] ?? 'bar';
-		return $type !== 'gantt' && empty($chart['chart']['series']);
+		$capabilities = BaraTables_Chart_Types::get((string) $type);
+		return in_array('series', $capabilities['required_roles'], true) && empty($chart['chart']['series']);
 	}
 
 	/** Build the non-blocking notice shown after a Chart ID rename. */
 	private function queue_chart_rename_notice(string $old_slug, string $new_slug, string $requested_id): void {
-		$parts = [];
-		if ($requested_id !== '' && $new_slug !== $requested_id) {
-			$parts[] = sprintf(
-				/* translators: 1: the ID the user asked for, 2: the unique ID actually saved. */
-				__('The Chart ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
-				$requested_id,
-				$new_slug
-			);
-		}
-		$parts[] = sprintf(
-			/* translators: 1: old Chart ID, 2: new Chart ID. */
-			__('Chart ID changed from "%1$s" to "%2$s". Update any [bara_chart id="%1$s"] you have already pasted into your content.', 'baratables'),
+		BaraTables_Admin_Notice::queue_rename(
 			$old_slug,
-			$new_slug
+			$new_slug,
+			$requested_id,
+			/* translators: 1: the ID the user asked for, 2: the unique ID actually saved. */
+			__('The Chart ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
+			/* translators: 1: old Chart ID, 2: new Chart ID. */
+			__('Chart ID changed from "%1$s" to "%2$s". Update any [bara_chart id="%1$s"] you have already pasted into your content.', 'baratables')
 		);
-		BaraTables_Admin_Notice::queue(implode(' ', $parts), 'info');
 	}
 
 	public function collect_chart_options_from_request(): array {
@@ -605,6 +565,9 @@ class BaraTables_Chart_Admin {
 			'gantt_end'      => $p::raw('btbl_chart_gantt_end'),
 			'gantt_group'    => $p::raw('btbl_chart_gantt_group'),
 			'gantt_progress' => $p::raw('btbl_chart_gantt_progress'),
+			'heatmap_x'      => $p::raw('btbl_chart_heatmap_x'),
+			'heatmap_y'      => $p::raw('btbl_chart_heatmap_y'),
+			'heatmap_value'  => $p::raw('btbl_chart_heatmap_value'),
 		];
 	}
 

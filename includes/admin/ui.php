@@ -4,499 +4,6 @@ if (!defined('ABSPATH')) {
 	exit;
 }
 
-class BaraTables_Admin_Form_Context {
-	private BaraTables_Service $service;
-
-	public function __construct(BaraTables_Service $service) {
-		$this->service = $service;
-	}
-
-	/**
-	 * Read the live-preview inputs this builder honours from the current request. The AJAX field
-	 * refresh passes its own array instead (see BaraTables_Admin::ajax_refresh_fields), so it no
-	 * longer has to fake a GET by writing $_GET/$_SERVER and restoring them -- build() takes its
-	 * inputs as an argument. Values are unslashed and sanitized here so callers hand build() a
-	 * clean array; a key is present only when the corresponding request value was.
-	 */
-	/**
-	 * Sanitize live-preview inputs keyed by their CANONICAL preview name.
-	 *
-	 * The single sanitizer for both collectors -- the full-page GET below and the AJAX POST in
-	 * BaraTables_Admin::ajax_refresh_fields(). They previously repeated these rules, and the two
-	 * had to stay byte-identical or the in-place refresh and the legacy reload would disagree
-	 * about the same input. A key is emitted only when it was present in the request.
-	 *
-	 * Values must ALREADY be wp_unslash()-ed by the caller, at the point it touches the
-	 * superglobal -- that is where the unslash belongs, and deferring it here reads as an
-	 * unsanitized superglobal access. custom_query is unslashed exactly once for the same reason
-	 * a second pass would corrupt its JSON escapes.
-	 */
-	public static function sanitize_preview_values(array $raw): array {
-		$out = [];
-		if (isset($raw['type'])) {
-			$out['type'] = sanitize_text_field($raw['type']);
-		}
-		if (isset($raw['source'])) {
-			$out['source'] = sanitize_key($raw['source']);
-		}
-		if (isset($raw['custom_query'])) {
-			// sanitize_json_textarea preserves valid JSON syntax while stripping nulls / bad UTF-8.
-			$out['custom_query'] = BaraTables_Admin_Action_Handler::sanitize_json_textarea($raw['custom_query']);
-		}
-		if (isset($raw['csv_id'])) {
-			$out['csv_id'] = absint($raw['csv_id']);
-		}
-		if (isset($raw['csv_header'])) {
-			$out['csv_header'] = absint($raw['csv_header']);
-		}
-		if (isset($raw['csv_delim'])) {
-			$out['csv_delim'] = sanitize_text_field($raw['csv_delim']);
-		}
-		if (isset($raw['tab'])) {
-			$out['tab'] = sanitize_key($raw['tab']);
-		}
-		return $out;
-	}
-
-	public static function preview_request_from_globals(): array {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only live-preview params; unslashed + sanitized in sanitize_preview_values().
-		$get = $_GET;
-		$raw = [];
-		foreach ([
-			'type'         => 'type',
-			'source'       => 'btbl_source',
-			'custom_query' => 'btbl_preview_custom_query',
-			'csv_id'       => 'btbl_preview_csv_id',
-			'csv_header'   => 'btbl_preview_csv_header',
-			'csv_delim'    => 'btbl_preview_csv_delim',
-			'tab'          => 'tab',
-		] as $canonical => $get_key) {
-			if (isset($get[$get_key])) {
-				$raw[$canonical] = wp_unslash($get[$get_key]);
-			}
-		}
-		$request = self::sanitize_preview_values($raw);
-		$request['request_method'] = isset($_SERVER['REQUEST_METHOD'])
-			? strtoupper(sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])))
-			: '';
-		return $request;
-	}
-
-	public function build(?array $editing_defn, ?array $request = null): array {
-		$request = $request ?? self::preview_request_from_globals();
-		// Captured BEFORE the normalisation below: that gives $editing_defn a 'columns' key, so
-		// from then on it is always a non-empty array. $is_edit is the only honest "editing an
-		// existing table?" test after this point.
-		$is_edit = !empty($editing_defn);
-		$editing_defn = $editing_defn ?? [];
-		if (!isset($editing_defn['columns']) || !is_array($editing_defn['columns'])) {
-			$editing_defn['columns'] = [];
-		}
-		$post_types = $this->service->get_supported_post_types();
-		$original_post_types = isset($editing_defn['post_types']) && is_array($editing_defn['post_types']) ? $editing_defn['post_types'] : [$editing_defn['post_type'] ?? 'post'];
-		$current_pts = $original_post_types;
-		if (isset($request['type'])) {
-			$type_raw = $request['type'];
-			$type_parts = array_filter(array_map('trim', explode(',', (string) $type_raw)));
-			$current_pts = [];
-			foreach ($type_parts as $part) {
-				$clean = sanitize_key($part);
-				if ($clean !== '') {
-					$current_pts[] = $clean;
-				}
-			}
-			if (empty($current_pts)) {
-				$current_pts = ['post'];
-			}
-		}
-		$current_pts = array_values(array_filter($current_pts));
-		if (empty($current_pts)) {
-			$current_pts = ['post'];
-		}
-		$original_source = BaraTables_Source_Type::normalize($editing_defn['source_type'] ?? BaraTables_Source_Type::WP_QUERY);
-		$source_type_raw = $request['source'] ?? $original_source;
-		$source_type = BaraTables_Source_Type::normalize($source_type_raw, $original_source);
-		$source_changed = $source_type !== $original_source;
-		$custom_query_preview_raw = $request['custom_query'] ?? null;
-		$custom_query_raw_for_fields = $custom_query_preview_raw !== null
-			? (string) $custom_query_preview_raw
-			: (string) ($editing_defn['custom_query_raw'] ?? '');
-		$custom_query_args_for_fields = [];
-		if ($custom_query_raw_for_fields !== '') {
-			$custom_query_args_for_fields = $this->service->sanitize_custom_query_json($custom_query_raw_for_fields);
-		} elseif ($custom_query_preview_raw === null && !empty($editing_defn['custom_query']) && is_array($editing_defn['custom_query'])) {
-			$custom_query_args_for_fields = $editing_defn['custom_query'];
-		}
-		$custom_query_has_input = !empty($custom_query_args_for_fields);
-		$custom_query_empty = $source_type === BaraTables_Source_Type::CUSTOM_QUERY && !$custom_query_has_input;
-		if ($source_type === BaraTables_Source_Type::CUSTOM_QUERY) {
-			if ($custom_query_has_input) {
-				$custom_post_types_raw = $custom_query_args_for_fields['post_type'] ?? [];
-				if (!is_array($custom_post_types_raw)) {
-					$custom_post_types_raw = [$custom_post_types_raw];
-				}
-				$custom_post_types = $this->service->sanitize_post_types($custom_post_types_raw, $source_type);
-				if (!empty($custom_post_types)) {
-					$current_pts = $custom_post_types;
-				} else {
-					$current_pts = ['post'];
-				}
-			} else {
-				$current_pts = [];
-			}
-		}
-		if (BaraTables_Source_Type::is_csv($source_type) && !empty($editing_defn['columns']) && is_array($editing_defn['columns'])) {
-			BaraTables_Service::normalize_csv_column_sources($editing_defn['columns']);
-		}
-		$original_csv_attachment_id = isset($editing_defn['csv_attachment_id']) ? (int) $editing_defn['csv_attachment_id'] : 0;
-		$original_csv_has_header = !empty($editing_defn['csv_has_header']);
-		$original_csv_delimiter_raw = isset($editing_defn['csv_delimiter']) ? (string) $editing_defn['csv_delimiter'] : ',';
-		$original_csv_delimiter = $original_csv_delimiter_raw !== '' ? substr($original_csv_delimiter_raw, 0, 1) : ',';
-		$csv_attachment_id = isset($request['csv_id']) ? (int) $request['csv_id'] : (isset($editing_defn['csv_attachment_id']) ? (int) $editing_defn['csv_attachment_id'] : 0);
-		$csv_has_header = isset($request['csv_header']) ? (bool) $request['csv_header'] : !empty($editing_defn['csv_has_header']);
-		$csv_delimiter_raw = isset($request['csv_delim']) ? (string) $request['csv_delim'] : (isset($editing_defn['csv_delimiter']) ? (string) $editing_defn['csv_delimiter'] : ',');
-		$csv_delimiter = is_string($csv_delimiter_raw) && $csv_delimiter_raw !== '' ? substr($csv_delimiter_raw, 0, 1) : ',';
-		$is_post_request = ($request['request_method'] ?? '') === 'POST';
-		$csv_inputs_changed = BaraTables_Source_Type::is_csv($source_type) && (
-			$csv_attachment_id !== $original_csv_attachment_id
-			|| $csv_has_header !== $original_csv_has_header
-			|| $csv_delimiter !== $original_csv_delimiter
-		);
-		$csv_query_override = !$is_post_request && BaraTables_Source_Type::is_csv($source_type) && (isset($request['csv_id']) || isset($request['csv_header']) || isset($request['csv_delim']));
-		$columns_should_reset = !$is_post_request && (
-			$source_changed
-			|| $custom_query_empty
-			|| (BaraTables_Source_Type::is_csv($source_type) && ($csv_inputs_changed || $csv_query_override))
-		);
-		if ($columns_should_reset) {
-			$editing_defn['filter_order'] = [];
-			$editing_defn['columns'] = [];
-		}
-		$inferred = [];
-		if (BaraTables_Source_Type::is_csv($source_type)) {
-			$csv_defn = $editing_defn;
-			$csv_defn['source_type'] = BaraTables_Source_Type::CSV;
-			$csv_defn['csv_attachment_id'] = $csv_attachment_id;
-			$csv_defn['csv_has_header'] = $csv_has_header;
-			$csv_defn['csv_delimiter'] = $csv_delimiter;
-			$this->service->get_rows($csv_defn, 1);
-			$inferred = $this->service->get_last_inferred_columns();
-		} elseif (BaraTables_Source_Type::is_external_db($source_type)) {
-			$external_defn = $editing_defn;
-			$external_defn['source_type'] = BaraTables_Source_Type::EXTERNAL_DB;
-			if (!empty($external_defn['external_db']) && is_array($external_defn['external_db'])) {
-				$this->service->get_rows($external_defn, 1);
-			}
-			$inferred = $this->service->get_last_inferred_columns() ?: [];
-		}
-		if ($custom_query_empty) {
-			$fields = ['core' => [], 'meta' => [], 'tax' => [], 'meta_sources' => [], 'tax_sources' => []];
-			$taxonomies = [];
-			$should_show_source_hint = false;
-		} else {
-			$fields = BaraTables_Source_Type::uses_builder_fields($source_type)
-				? $this->service->get_available_fields_for_post_types($current_pts)
-				: ['core' => [], 'meta' => [], 'tax' => []];
-			// Pass the terms already selected on this table so they survive the picker's
-			// per-taxonomy fetch cap (BaraTables_Service::MAX_TERM_PICKER_TERMS).
-			$selected_term_ids = [];
-			foreach ((array) ($editing_defn['taxonomy_filter'] ?? []) as $tax_filter) {
-				foreach ((array) ($tax_filter['terms'] ?? []) as $term_id) {
-					$selected_term_ids[] = (int) $term_id;
-				}
-			}
-			$taxonomies = $this->service->get_taxonomies_for_post_types($current_pts, $selected_term_ids);
-			$should_show_source_hint = count($current_pts) > 1;
-		}
-		$csv_available_columns = [];
-		if (BaraTables_Source_Type::is_csv($source_type)) {
-			if ($csv_attachment_id === 0) {
-				$csv_available_columns = [];
-			} else {
-				$csv_available_columns = !empty($inferred) ? $inferred : [];
-				if (empty($csv_available_columns) && !empty($editing_defn['columns'])) {
-					$csv_available_columns = $editing_defn['columns'];
-				}
-			}
-		} elseif (BaraTables_Source_Type::is_external_db($source_type)) {
-			$csv_available_columns = !empty($inferred) ? $inferred : (!empty($editing_defn['columns']) ? $editing_defn['columns'] : []);
-		} elseif ($columns_should_reset) {
-			$editing_defn['columns'] = [];
-		}
-
-		$custom_available_columns = [];
-		$custom_columns = [];
-		$custom_rows = [];
-		$custom_rows_count = 5;
-		$custom_cols_count = 3;
-		if (BaraTables_Source_Type::is_custom_data($source_type)) {
-			$custom_data = isset($editing_defn['custom_data']) && is_array($editing_defn['custom_data']) ? $editing_defn['custom_data'] : [];
-			$custom_columns_raw = isset($custom_data['columns']) && is_array($custom_data['columns']) ? array_values($custom_data['columns']) : [];
-			$custom_rows_raw = isset($custom_data['rows']) && is_array($custom_data['rows']) ? array_values($custom_data['rows']) : [];
-			$requested_cols = count($custom_columns_raw) > 0 ? count($custom_columns_raw) : $custom_cols_count;
-			$requested_rows = count($custom_rows_raw) > 0 ? count($custom_rows_raw) : $custom_rows_count;
-			$custom_dataset = $this->service->build_custom_dataset($custom_columns_raw, $custom_rows_raw, $requested_rows, $requested_cols);
-			$custom_columns = $custom_dataset['columns'];
-			$custom_rows = $custom_dataset['rows'];
-			$custom_cols_count = $custom_dataset['cols_count'];
-			$custom_rows_count = $custom_dataset['rows_count'];
-			if (!empty($editing_defn['columns'])) {
-				$custom_available_columns = $editing_defn['columns'];
-			} else {
-				$custom_available_columns = $this->service->build_custom_display_columns($custom_columns);
-			}
-		}
-
-		$display_columns = BaraTables_Source_Type::uses_column_preview($source_type)
-			? $csv_available_columns
-			: (BaraTables_Source_Type::is_custom_data($source_type) ? $custom_available_columns : ($editing_defn['columns'] ?? []));
-		$selected_columns = $editing_defn ? array_map(static function ($col) {
-			$source = isset($col['source']) ? (string) $col['source'] : 'core';
-			return BaraTables_Service::build_slug($source, (string) ($col['key'] ?? ''));
-		}, $editing_defn['columns']) : [];
-
-		$available_slugs = [];
-		if (BaraTables_Source_Type::uses_column_preview($source_type) && !empty($csv_available_columns)) {
-			$available_slugs = array_map(function ($col) use ($source_type) {
-				$source = isset($col['source']) ? (string) $col['source'] : (BaraTables_Source_Type::is_external_db($source_type) ? 'external' : 'csv');
-				return BaraTables_Service::build_slug($source, (string) ($col['key'] ?? ''));
-			}, $csv_available_columns);
-		} elseif (BaraTables_Source_Type::uses_builder_fields($source_type)) {
-			foreach ($fields['core'] as $key => $label) {
-				$available_slugs[] = BaraTables_Service::build_slug('core', (string) $key);
-			}
-			foreach ($fields['meta'] as $meta_key) {
-				$available_slugs[] = BaraTables_Service::build_slug('meta', (string) $meta_key);
-			}
-			if (!empty($fields['tax'])) {
-				foreach ($fields['tax'] as $tax_slug => $tax_label) {
-					$available_slugs[] = BaraTables_Service::build_slug('tax', (string) $tax_slug);
-				}
-			}
-		} elseif (BaraTables_Source_Type::is_custom_data($source_type) && !empty($custom_available_columns)) {
-			foreach ($custom_available_columns as $col) {
-				$source = isset($col['source']) && $col['source'] !== '' ? (string) $col['source'] : 'custom';
-				$available_slugs[] = BaraTables_Service::build_slug($source, (string) ($col['key'] ?? ''));
-			}
-		}
-
-		$available_slug_map = !empty($available_slugs) ? array_fill_keys($available_slugs, true) : [];
-
-		if ($columns_should_reset) {
-			$selected_columns = [];
-		} elseif (!empty($available_slug_map)) {
-			$selected_columns = array_values(array_intersect($selected_columns, array_keys($available_slug_map)));
-			$columns_for_filter = is_array($editing_defn['columns']) ? $editing_defn['columns'] : [];
-			$editing_defn['columns'] = array_values(array_filter($columns_for_filter, static function ($col) use ($available_slug_map) {
-				if (!is_array($col) || !isset($col['key'])) {
-					return false;
-				}
-				$source = isset($col['source']) ? sanitize_key($col['source']) : 'core';
-				$slug = ($source !== '' ? $source : 'core') . ':' . $col['key'];
-				return isset($available_slug_map[$slug]);
-			}));
-		}
-		$selected_taxonomy = [];
-		$selected_tax_terms = [];
-		$custom_query_pretty = '';
-		$value_overrides_pretty = '';
-		$custom_query_raw = '';
-		$value_overrides_raw = '';
-		$table_options = $this->service->get_default_table_options();
-		$chart_options = $this->service->get_default_chart_options();
-		$access_user_meta = '';
-		$access_post_meta = '';
-		$access_csv_column = '';
-		$access_external_column = '';
-		// Fail closed by default, matching BaraTables_Service::sanitize_access_control().
-		$access_logged_out = 'public_only';
-		$external_host = '';
-		$external_name = '';
-		$external_user = '';
-		$external_pass = '';
-		$external_pass_saved = false;
-		$external_table = '';
-		$external_charset = '';
-		$external_port = '';
-		$filter_order = [];
-		$active_tab = $request['tab'] ?? 'btbl-tab-general';
-		$columns_for_state = $is_edit && !$columns_should_reset ? ($editing_defn['columns'] ?? []) : [];
-		$column_state = $this->service->build_column_state_from_definition($columns_for_state);
-		if (!empty($available_slug_map)) {
-			$column_state = $this->service->filter_column_state_by_slug_map($column_state, $available_slug_map);
-		}
-		$selected_filters = $column_state['selected_filters'];
-		$missing_meta = [];
-		if ($editing_defn) {
-			foreach ($editing_defn['columns'] as $col) {
-				if ($col['source'] === 'meta' && !in_array($col['key'], $fields['meta'], true)) {
-					$missing_meta[] = $col['key'];
-				}
-			}
-			$missing_meta = array_unique($missing_meta);
-		}
-
-		if (!empty($editing_defn['taxonomy_filter'])) {
-			foreach (BaraTables_Taxonomy_Filters::normalize($editing_defn['taxonomy_filter']) as $filter) {
-				$tax_slug = sanitize_key($filter['taxonomy'] ?? '');
-				if ($tax_slug === '') {
-					continue;
-				}
-				$selected_taxonomy[] = $tax_slug;
-				$selected_tax_terms[$tax_slug] = array_map('intval', (array) ($filter['terms'] ?? []));
-			}
-			$selected_taxonomy = array_values(array_unique($selected_taxonomy));
-		}
-		if ($custom_query_preview_raw !== null) {
-			$custom_query_raw = (string) $custom_query_preview_raw;
-		} elseif (!empty($editing_defn['custom_query_raw'])) {
-			$custom_query_raw = (string) $editing_defn['custom_query_raw'];
-		}
-		if ($custom_query_raw === '' && !empty($custom_query_args_for_fields)) {
-			$custom_query_pretty = wp_json_encode($custom_query_args_for_fields, JSON_PRETTY_PRINT);
-		} elseif (!empty($editing_defn['custom_query']) && is_array($editing_defn['custom_query'])) {
-			$custom_query_pretty = wp_json_encode($editing_defn['custom_query'], JSON_PRETTY_PRINT);
-		}
-		if (!empty($editing_defn['value_overrides']) && is_array($editing_defn['value_overrides'])) {
-			$value_overrides_pretty = wp_json_encode($editing_defn['value_overrides'], JSON_PRETTY_PRINT);
-		}
-		if (!empty($editing_defn['value_overrides_raw'])) {
-			$value_overrides_raw = (string) $editing_defn['value_overrides_raw'];
-		}
-		if ($editing_defn) {
-			$table_options = $this->service->get_table_options($editing_defn);
-			$chart_options = $this->service->get_chart_options($editing_defn);
-			$filter_order = isset($editing_defn['filter_order']) && is_array($editing_defn['filter_order'])
-				? array_values($editing_defn['filter_order'])
-				: [];
-			if (!empty($editing_defn['access_control'])) {
-				$access_user_meta = $editing_defn['access_control']['user_meta_key'] ?? '';
-				$access_post_meta = $editing_defn['access_control']['post_meta_key'] ?? '';
-				$access_csv_column = $editing_defn['access_control']['csv_column'] ?? '';
-				$access_external_column = $editing_defn['access_control']['external_column'] ?? '';
-				$access_logged_out = $editing_defn['access_control']['logged_out'] ?? 'public_only';
-			}
-			if (!empty($editing_defn['external_db'])) {
-				$external_host = $editing_defn['external_db']['host'] ?? '';
-				$external_name = $editing_defn['external_db']['name'] ?? '';
-				$external_user = $editing_defn['external_db']['user'] ?? '';
-				$external_pass_saved = !empty($editing_defn['external_db']['pass']);
-				$external_table = $editing_defn['external_db']['table'] ?? '';
-				$external_charset = $editing_defn['external_db']['charset'] ?? '';
-				$external_port = isset($editing_defn['external_db']['port']) ? (string) $editing_defn['external_db']['port'] : '';
-			}
-		}
-
-		if (BaraTables_Source_Type::is_csv($source_type) && !empty($filter_order)) {
-			$filter_order = array_map(static function ($slug) {
-				return preg_replace('/^core:/', 'csv:', (string) $slug);
-			}, $filter_order);
-		}
-		if (!empty($available_slug_map) && !empty($filter_order)) {
-			$filter_order = array_values(array_filter($filter_order, static function ($slug) use ($available_slug_map) {
-				return isset($available_slug_map[$slug]);
-			}));
-		}
-
-		if (empty($filter_order)) {
-			$filter_order = array_values(array_filter($selected_columns, static function ($slug) use ($selected_filters) {
-				return isset($selected_filters[$slug]) && $selected_filters[$slug] !== 'none';
-			}));
-		}
-		$column_state = $this->service->apply_column_state_defaults($column_state, $selected_columns);
-		$selected_filters = $column_state['selected_filters'];
-		$selected_dropdown_multi = $column_state['selected_dropdown_multi'];
-		$selected_dropdown_search = $column_state['selected_dropdown_search'];
-		$selected_filter_sort = $column_state['selected_filter_sort'];
-		$selected_filter_values = $column_state['selected_filter_values'];
-		$selected_format_date = $column_state['selected_format_date'];
-		$selected_custom_labels = $column_state['selected_custom_labels'];
-		$selected_auto_labels = $column_state['selected_auto_labels'] ?? [];
-		$selected_filter_labels = $column_state['selected_filter_labels'];
-		$selected_filter_type_priority = $column_state['selected_filter_type_priority'];
-		$selected_date_format = $column_state['selected_date_format'];
-		$selected_hide_titles = $column_state['selected_hide_titles'];
-		$selected_searchable = $column_state['selected_searchable'];
-		$selected_hidden_columns = $column_state['selected_hidden_columns'];
-		$selected_sort_priority = $column_state['selected_sort_priority'];
-		$selected_sort_direction = $column_state['selected_sort_direction'];
-		$selected_sort_enabled = $column_state['selected_sort_enabled'];
-		$selected_sortable = $column_state['selected_sortable'];
-
-		return [
-			'post_types' => $post_types,
-			'fields' => $fields,
-			'display_columns' => $display_columns,
-			'taxonomies' => $taxonomies,
-			'current_pts' => $current_pts,
-			'selected_columns' => $selected_columns,
-			'selected_filters' => $selected_filters,
-			'selected_dropdown_multi' => $selected_dropdown_multi,
-			'selected_dropdown_search' => $selected_dropdown_search,
-			'selected_filter_sort' => $selected_filter_sort,
-			'selected_filter_values' => $selected_filter_values,
-			'selected_format_date' => $selected_format_date,
-			'selected_date_format' => $selected_date_format,
-			'selected_filter_labels' => $selected_filter_labels,
-			'selected_filter_type_priority' => $selected_filter_type_priority,
-			'selected_custom_labels' => $selected_custom_labels,
-			'selected_auto_labels' => $selected_auto_labels,
-			'selected_taxonomy' => $selected_taxonomy,
-			'selected_tax_terms' => $selected_tax_terms,
-			'custom_query_pretty' => $custom_query_pretty,
-			'value_overrides_pretty' => $value_overrides_pretty,
-			'custom_query_raw' => $custom_query_raw,
-			'value_overrides_raw' => $value_overrides_raw,
-			'missing_meta' => $missing_meta,
-			'table_options' => $table_options,
-			'chart_options' => $chart_options,
-			'filter_order' => $filter_order,
-			'active_tab' => $active_tab,
-			'selected_hide_titles' => $selected_hide_titles,
-			'selected_searchable' => $selected_searchable,
-			'selected_hidden_columns' => $selected_hidden_columns,
-			'selected_sort_priority' => $selected_sort_priority,
-			'selected_sort_direction' => $selected_sort_direction,
-			'selected_sort_enabled' => $selected_sort_enabled,
-			'selected_sortable' => $selected_sortable,
-			'source_type' => $source_type,
-			'csv_attachment_id' => $csv_attachment_id,
-			'csv_has_header' => $csv_has_header,
-			'csv_delimiter' => $csv_delimiter,
-			'access_user_meta' => $access_user_meta,
-			'access_post_meta' => $access_post_meta,
-			'access_csv_column' => $access_csv_column,
-			'access_external_column' => $access_external_column,
-			'access_logged_out' => $access_logged_out,
-			'external_host' => $external_host,
-			'external_name' => $external_name,
-			'external_user' => $external_user,
-			'external_pass' => $external_pass,
-			'external_pass_saved' => $external_pass_saved,
-			'external_table' => $external_table,
-			'external_charset' => $external_charset,
-			'external_port' => $external_port,
-			'should_show_source_hint' => $should_show_source_hint,
-			'custom_columns' => $custom_columns,
-			'custom_rows' => $custom_rows,
-			'custom_rows_count' => $custom_rows_count,
-			'custom_cols_count' => $custom_cols_count,
-		];
-	}
-
-	/**
-	 * Visibility class for a control block that belongs to one or more data sources.
-	 *
-	 * $target may name several sources separated by spaces, matching the data-btbl-source
-	 * attribute format (admin.js matches it with the ~= "contains word" selector). Shared by the
-	 * General and Advanced tabs so the matching convention only has to change in one place.
-	 */
-	public static function source_hidden_class(string $target, string $source_type): string {
-		return in_array($source_type, explode(' ', $target), true) ? '' : ' is-hidden';
-	}
-
-}
-
 
 class BaraTables_Admin_Tab_General {
 	public function render(array $context, ?array $editing_defn): void {
@@ -523,7 +30,12 @@ class BaraTables_Admin_Tab_General {
 		// editor save, and the headers fell back to "Column N" even when the user had named the
 		// columns. The names the user actually typed live on the Columns & Filters tab, keyed by
 		// slug, so read them from there.
-		$grid_header_labels = $context['selected_custom_labels'] ?? [];
+		$grid_header_labels = [];
+		foreach ((array) ($context['column_records'] ?? []) as $slug => $column_record) {
+			if (is_array($column_record) && !empty($column_record['label'])) {
+				$grid_header_labels[$slug] = (string) $column_record['label'];
+			}
+		}
 		$custom_rows = $context['custom_rows'] ?? [];
 		$custom_rows_count = $context['custom_rows_count'] ?? 5;
 		$custom_cols_count = $context['custom_cols_count'] ?? 3;
@@ -870,54 +382,10 @@ class BaraTables_Admin_Tab_Columns {
 		$meta_sources = $fields['meta_sources'] ?? [];
 		$missing_meta = $context['missing_meta'] ?? [];
 		$selected_columns = $context['selected_columns'] ?? [];
-		$selected_filters = $context['selected_filters'] ?? [];
-		$selected_dropdown_multi = $context['selected_dropdown_multi'] ?? [];
-		$selected_dropdown_search = $context['selected_dropdown_search'] ?? [];
-		$selected_filter_sort = $context['selected_filter_sort'] ?? [];
-		$selected_filter_values = $context['selected_filter_values'] ?? [];
-		$selected_format_date = $context['selected_format_date'] ?? [];
-		$selected_filter_labels = $context['selected_filter_labels'] ?? [];
-		$selected_filter_type_priority = $context['selected_filter_type_priority'] ?? [];
-		$selected_custom_labels = $context['selected_custom_labels'] ?? [];
-		$selected_auto_labels = $context['selected_auto_labels'] ?? [];
-		$selected_hide_titles = $context['selected_hide_titles'] ?? [];
-		$selected_searchable = $context['selected_searchable'] ?? [];
-		$selected_hidden_columns = $context['selected_hidden_columns'] ?? [];
-		$selected_sort_priority = $context['selected_sort_priority'] ?? [];
-		$selected_sort_direction = $context['selected_sort_direction'] ?? [];
-		$selected_sort_enabled = $context['selected_sort_enabled'] ?? [];
-		$selected_sortable = $context['selected_sortable'] ?? [];
-		$selected_date_format = $context['selected_date_format'] ?? [];
-		if (!empty($selected_sort_priority)) {
-			$selected_sort_priority = array_filter(
-				$selected_sort_priority,
-				static function ($priority): bool {
-					return (int) $priority > 0;
-				}
-			);
-		}
+		$column_records = $context['column_records'] ?? [];
 		$filter_order = $context['filter_order'] ?? [];
 		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
-		$column_option_state = [
-			'selected_filters' => $selected_filters,
-			'selected_dropdown_multi' => $selected_dropdown_multi,
-			'selected_dropdown_search' => $selected_dropdown_search,
-			'selected_filter_sort' => $selected_filter_sort,
-			'selected_filter_values' => $selected_filter_values,
-			'selected_custom_labels' => $selected_custom_labels,
-			'selected_auto_labels' => $selected_auto_labels,
-			'selected_filter_labels' => $selected_filter_labels,
-			'selected_filter_type_priority' => $selected_filter_type_priority,
-			'selected_hide_titles' => $selected_hide_titles,
-			'selected_searchable' => $selected_searchable,
-			'selected_hidden_columns' => $selected_hidden_columns,
-			'selected_sort_priority' => $selected_sort_priority,
-			'selected_sort_direction' => $selected_sort_direction,
-			'selected_sort_enabled' => $selected_sort_enabled,
-			'selected_sortable' => $selected_sortable,
-			'selected_format_date' => $selected_format_date,
-			'selected_date_format' => $selected_date_format,
-		];
+		$column_option_state = ['records' => $column_records];
 		$panel_class = $active_tab === 'btbl-tab-columns' ? 'btbl-tab-panel is-active' : 'btbl-tab-panel';
 		?>
 		<div id="btbl-tab-columns" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-columns-label">
@@ -962,76 +430,56 @@ class BaraTables_Admin_Tab_Columns {
 								$selected_columns
 							);
 							?>
-						<?php else : ?>
-						<div>
-								<strong class="btbl-small-heading"><?php esc_html_e('Core fields', 'baratables'); ?></strong>
-								<?php foreach ($fields['core'] as $key => $label) : ?>
-									<?php
-									$slug = 'core:' . $key;
-									$state = $column_option_state;
-									$state['checked'] = in_array($slug, $selected_columns, true);
-									$this->render_column_option($slug, $label, $label, $state);
-									?>
-								<?php endforeach; ?>
-							</div>
-						<?php if (!empty($fields['tax'])) : ?>
-							<div>
-								<strong class="btbl-small-heading"><?php esc_html_e('Taxonomies', 'baratables'); ?></strong>
-								<?php foreach ($fields['tax'] as $tax_slug => $tax_label) : ?>
-									<?php
-									$slug = 'tax:' . $tax_slug;
-									$tax_hint = '';
-										if ($should_show_source_hint && !empty($tax_sources[$tax_slug])) {
-											$tax_hint = ' (' . esc_html(implode(', ', (array) $tax_sources[$tax_slug])) . ')';
-										}
-										$tax_display = $tax_label . $tax_hint;
-										$state = $column_option_state;
-										$state['checked'] = in_array($slug, $selected_columns, true);
-										$this->render_column_option($slug, $tax_display, $tax_label, $state);
+							<?php else : ?>
+								<div>
+									<strong class="btbl-small-heading"><?php esc_html_e('Core fields', 'baratables'); ?></strong>
+									<?php foreach ($fields['core'] as $key => $label) : ?>
+										<?php
+										$slug = 'core:' . $key;
+										$this->render_field_column_option($slug, $label, $column_option_state, in_array($slug, $selected_columns, true));
 										?>
 									<?php endforeach; ?>
 								</div>
+								<?php if (!empty($fields['tax'])) : ?>
+									<div>
+										<strong class="btbl-small-heading"><?php esc_html_e('Taxonomies', 'baratables'); ?></strong>
+										<?php foreach ($fields['tax'] as $tax_slug => $tax_label) : ?>
+											<?php
+											$slug = 'tax:' . $tax_slug;
+											$source_names = $should_show_source_hint ? (array) ($tax_sources[$tax_slug] ?? []) : [];
+											$this->render_field_column_option($slug, $tax_label, $column_option_state, in_array($slug, $selected_columns, true), $source_names);
+											?>
+										<?php endforeach; ?>
+									</div>
+								<?php endif; ?>
+								<div>
+									<strong class="btbl-small-heading"><?php esc_html_e('Custom meta', 'baratables'); ?></strong>
+									<?php if (empty($fields['meta'])) : ?>
+										<p class="description"><?php esc_html_e('No meta keys detected for this post type yet.', 'baratables'); ?></p>
+									<?php else : ?>
+										<?php foreach ($fields['meta'] as $meta_key) : ?>
+											<?php
+											$slug = 'meta:' . $meta_key;
+											$label = $this->format_meta_label($meta_key);
+											$source_names = $should_show_source_hint ? (array) ($meta_sources[$meta_key] ?? []) : [];
+											$this->render_field_column_option($slug, $label, $column_option_state, in_array($slug, $selected_columns, true), $source_names);
+											?>
+										<?php endforeach; ?>
+									<?php endif; ?>
+									<?php if (!empty($missing_meta)) : ?>
+										<p class="description"><?php esc_html_e('Meta keys currently selected that are not detected for this post type:', 'baratables'); ?></p>
+										<?php foreach ($missing_meta as $meta_key) : ?>
+											<?php
+											$slug = 'meta:' . $meta_key;
+											$label = $this->format_meta_label($meta_key);
+											$source_names = $should_show_source_hint ? (array) ($meta_sources[$meta_key] ?? []) : [];
+											$this->render_field_column_option($slug, $label, $column_option_state, true, $source_names, false);
+											?>
+										<?php endforeach; ?>
+									<?php endif; ?>
+								</div>
 							<?php endif; ?>
-						<div>
-							<strong class="btbl-small-heading"><?php esc_html_e('Custom meta', 'baratables'); ?></strong>
-							<?php if (empty($fields['meta'])) : ?>
-								<p class="description"><?php esc_html_e('No meta keys detected for this post type yet.', 'baratables'); ?></p>
-							<?php else : ?>
-								<?php foreach ($fields['meta'] as $meta_key) : ?>
-									<?php
-									$slug = 'meta:' . $meta_key;
-									$label_display = $this->format_meta_label($meta_key);
-									$meta_hint = '';
-										if ($should_show_source_hint && !empty($meta_sources[$meta_key])) {
-											$meta_hint = ' (' . esc_html(implode(', ', (array) $meta_sources[$meta_key])) . ')';
-										}
-										$label_with_hint = $label_display . $meta_hint;
-										$state = $column_option_state;
-										$state['checked'] = in_array($slug, $selected_columns, true);
-										$this->render_column_option($slug, $label_with_hint, $label_display, $state);
-										?>
-									<?php endforeach; ?>
-								<?php endif; ?>
-								<?php if (!empty($missing_meta)) : ?>
-								<p class="description"><?php esc_html_e('Meta keys currently selected that are not detected for this post type:', 'baratables'); ?></p>
-								<?php foreach ($missing_meta as $meta_key) : ?>
-									<?php
-									$slug = 'meta:' . $meta_key;
-									$label_display = $this->format_meta_label($meta_key);
-									$meta_hint = '';
-										if ($should_show_source_hint && !empty($meta_sources[$meta_key])) {
-											$meta_hint = ' (' . esc_html(implode(', ', (array) $meta_sources[$meta_key])) . ')';
-										}
-										$label_with_hint = $label_display . $meta_hint;
-										$state = $column_option_state;
-										$state['checked'] = true;
-										$this->render_column_option($slug, $label_with_hint, $label_display, $state, false);
-										?>
-									<?php endforeach; ?>
-								<?php endif; ?>
-							</div>
-						<?php endif; ?>
-				</div>
+						</div>
 			</fieldset>
 			<div class="btbl-selected-order">
 				<strong class="btbl-small-heading"><?php esc_html_e('Selected column order', 'baratables'); ?></strong>
@@ -1090,53 +538,49 @@ class BaraTables_Admin_Tab_Columns {
 		<?php
 	}
 
+	private function render_field_column_option(string $slug, string $label, array $base_state, bool $checked, array $source_names = [], bool $allow_sort = true): void {
+		$display_label = $label;
+		if (!empty($source_names)) {
+			$display_label .= ' (' . esc_html(implode(', ', $source_names)) . ')';
+		}
+		$state = $base_state;
+		$state['checked'] = $checked;
+		$this->render_column_option($slug, $display_label, $label, $state, $allow_sort);
+	}
+
 	private function format_meta_label(string $meta_key): string {
 		$label = ucwords(str_replace(['_', '-'], ' ', $meta_key));
 		return $label !== '' ? $label : $meta_key;
 	}
 
 	private function render_column_option(string $slug, string $display_label, string $default_label, array $state, bool $allow_sort = true): void {
-		$selected_filters = $state['selected_filters'] ?? [];
-		$selected_dropdown_multi = $state['selected_dropdown_multi'] ?? [];
-		$selected_dropdown_search = $state['selected_dropdown_search'] ?? [];
-		$selected_filter_sort = $state['selected_filter_sort'] ?? [];
-		$selected_custom_labels = $state['selected_custom_labels'] ?? [];
-		$selected_auto_labels = $state['selected_auto_labels'] ?? [];
-		$selected_filter_labels = $state['selected_filter_labels'] ?? [];
-		$selected_filter_type_priority = $state['selected_filter_type_priority'] ?? [];
-		$selected_hide_titles = $state['selected_hide_titles'] ?? [];
-		$selected_searchable = $state['selected_searchable'] ?? [];
-		$selected_hidden_columns = $state['selected_hidden_columns'] ?? [];
-		$selected_sort_priority = $state['selected_sort_priority'] ?? [];
-		$selected_sort_direction = $state['selected_sort_direction'] ?? [];
-		$selected_sort_enabled = $state['selected_sort_enabled'] ?? [];
-		$selected_sortable = $state['selected_sortable'] ?? [];
-		$selected_filter_values = $state['selected_filter_values'] ?? [];
-		$selected_format_date = $state['selected_format_date'] ?? [];
-		$selected_date_format = $state['selected_date_format'] ?? [];
+		$records = isset($state['records']) && is_array($state['records']) ? $state['records'] : [];
+		$column = isset($records[$slug]) && is_array($records[$slug]) ? $records[$slug] : [];
 		$is_checked = !empty($state['checked']);
 
 		// The heading field holds the user's custom name, or is left empty (with the default
 		// shown as a placeholder) when the column is auto-labeled -- so a blank submit means
 		// "use the default" and is captured as auto_label at save.
-		$is_auto_label = !empty($selected_auto_labels[$slug]);
-		$custom_label_value = $is_auto_label ? '' : ($selected_custom_labels[$slug] ?? '');
-		$filter_label_value = array_key_exists($slug, $selected_filter_labels) ? $selected_filter_labels[$slug] : $default_label;
-		$hide_title_checked = !empty($selected_hide_titles[$slug]);
-		$hidden_checked = !empty($selected_hidden_columns[$slug]);
-		$searchable_checked = array_key_exists($slug, $selected_searchable) ? !empty($selected_searchable[$slug]) : true;
-		$current_filter = $selected_filters[$slug] ?? 'none';
-		$sort_enabled = !empty($selected_sort_enabled[$slug]);
-		$sort_priority_val = $selected_sort_priority[$slug] ?? '';
+		$is_auto_label = !empty($column['auto_label']);
+		$custom_label_value = $is_auto_label ? '' : (string) ($column['custom_label'] ?? '');
+		$filter_label_value = array_key_exists('filter_label', $column) && $column['filter_label'] !== null
+			? (string) $column['filter_label']
+			: $default_label;
+		$hide_title_checked = !empty($column['hide_title']);
+		$hidden_checked = !empty($column['hidden']);
+		$searchable_checked = array_key_exists('searchable', $column) ? !empty($column['searchable']) : true;
+		$current_filter = (string) ($column['filter'] ?? 'none');
+		$sort_enabled = !empty($column['sort_enabled']);
+		$sort_priority_val = $column['sort_priority'] ?? '';
 		if ($sort_priority_val !== '' && (int) $sort_priority_val < 1) {
 			$sort_priority_val = '';
 		}
 		if ($sort_priority_val === '' && $sort_enabled) {
 			$sort_priority_val = '1';
 		}
-		$sort_direction_val = $selected_sort_direction[$slug] ?? 'asc';
-		$filter_sort_val = $selected_filter_sort[$slug] ?? '';
-		$filter_type_priority_val = $selected_filter_type_priority[$slug] ?? '';
+		$sort_direction_val = (string) ($column['sort_direction'] ?? 'asc');
+		$filter_sort_val = (string) ($column['filter_sort'] ?? '');
+		$filter_type_priority_val = $column['filter_type_priority'] ?? '';
 		if (is_array($filter_type_priority_val)) {
 			$lines = [];
 			foreach ($filter_type_priority_val as $priority_item) {
@@ -1155,15 +599,15 @@ class BaraTables_Admin_Tab_Columns {
 		if ($filter_sort_val === 'none') {
 			$filter_sort_val = 'custom';
 		}
-		$dropdown_multi_checked = !empty($selected_dropdown_multi[$slug]);
-		$dropdown_search_checked = !empty($selected_dropdown_search[$slug]);
-		$sortable_checked = array_key_exists($slug, $selected_sortable) ? !empty($selected_sortable[$slug]) : true;
-		$date_format_val = $selected_date_format[$slug] ?? '';
-		$format_date_checked = !empty($selected_format_date[$slug]) || $date_format_val !== '';
+		$dropdown_multi_checked = !empty($column['dropdown_multi']);
+		$dropdown_search_checked = !empty($column['dropdown_search']);
+		$sortable_checked = array_key_exists('sortable', $column) ? !empty($column['sortable']) : true;
+		$date_format_val = (string) ($column['date_format'] ?? '');
+		$format_date_checked = !empty($column['format_date']) || $date_format_val !== '';
 		$filter_values_text = '';
-		if (isset($selected_filter_values[$slug]) && is_array($selected_filter_values[$slug])) {
+		if (isset($column['filter_values']) && is_array($column['filter_values'])) {
 			$lines = [];
-			foreach ($selected_filter_values[$slug] as $item) {
+			foreach ($column['filter_values'] as $item) {
 				if (is_array($item)) {
 					$label_val = isset($item['label']) ? (string) $item['label'] : '';
 					$value_val = isset($item['value']) ? (string) $item['value'] : '';
@@ -1203,7 +647,6 @@ class BaraTables_Admin_Tab_Columns {
 		if (!in_array($filter_sort_val, ['asc', 'desc', 'custom'], true)) {
 			$filter_sort_val = 'asc';
 		}
-		$slug_lower = strtolower($slug);
 		// "Format as date" is offered for the two WordPress date columns plus every source whose
 		// cells are free-form values that can hold a date: post meta, the manual grid, CSV and
 		// external DB. The engine already formats all of them (resolve_value for core/meta, the
@@ -1212,18 +655,7 @@ class BaraTables_Admin_Tab_Columns {
 		// rendered `is-hidden` (display:none !important) and could never be switched on, despite
 		// the 1.1.1 changelog announcing date formatting "on every data source".
 		// `tax:` is excluded on purpose: taxonomy columns render term names, never dates.
-		$is_date_candidate = false;
-		if (strpos($slug_lower, 'core:') === 0) {
-			$core_key = substr($slug_lower, 5);
-			$is_date_candidate = in_array($core_key, ['post_date', 'post_modified'], true);
-		} else {
-			foreach (['meta:', 'custom:', 'csv:', 'external:'] as $date_capable_prefix) {
-				if (strpos($slug_lower, $date_capable_prefix) === 0) {
-					$is_date_candidate = true;
-					break;
-				}
-			}
-		}
+		$is_date_candidate = preg_match('/^(?:core:(?:post_date|post_modified)$|(?:meta|custom|csv|external):)/', strtolower($slug)) === 1;
 
 		$slug_attr = $slug;
 		$allowed_inline = BaraTables_Service::allowed_inline_html();
@@ -1387,74 +819,37 @@ class BaraTables_Admin_Tab_Table {
 		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
 		$panel_class = $active_tab === 'btbl-tab-table' ? 'btbl-tab-panel is-active' : 'btbl-tab-panel';
 		$flag_keys = [];
-		$text_keys = [];
+		$style_keys = [];
+		$inline_controls = [];
+		$layout_features = [];
+		$layout_dependencies = [];
+		$layout_zones = [];
 		$buttons_config = null;
 		foreach ($option_schema as $key => $config) {
-			$type = $config['type'] ?? '';
-			if ($type === 'checkbox') {
+			$editor_group = $config['editor_group'] ?? '';
+			if ($editor_group === 'controls') {
 				$flag_keys[] = $key;
-			} elseif ($type === 'text_html') {
-				$text_keys[] = $key;
-			} elseif ($type === 'checkbox_multi' && $key === 'buttons') {
+			} elseif ($editor_group === 'style') {
+				$style_keys[] = $key;
+			} elseif ($editor_group === 'inline' && !empty($config['editor_parent'])) {
+				$inline_controls[$config['editor_parent']][(int) ($config['editor_order'] ?? 0)] = $key;
+			} elseif ($editor_group === 'layout') {
+				$layout_zones[$key] = (string) ($config['editor_label'] ?? $config['label'] ?? $key);
+				if (empty($layout_features) && !empty($config['choices']) && is_array($config['choices'])) {
+					$layout_features = $config['choices'];
+				}
+				if (empty($layout_dependencies) && !empty($config['choice_dependencies']) && is_array($config['choice_dependencies'])) {
+					$layout_dependencies = $config['choice_dependencies'];
+				}
+			} elseif ($editor_group === 'buttons') {
 				$buttons_config = ['key' => $key, 'config' => $config];
 			}
 		}
-
-		$style_keys = ['stripe', 'rowBorder', 'cellBorder', 'hover', 'orderColumn', 'compact'];
-		$style_keys = array_values(array_filter($style_keys, static function ($key) use ($option_schema) {
-			return array_key_exists($key, $option_schema);
-		}));
-
-		$embedded_flags = ['lengthChange', 'searchColumns', 'pagingNumbers', 'pagingFirstLast', 'pagingPreviousNext', 'scrollCollapse'];
-		$flag_keys = array_values(array_filter($flag_keys, static function ($key) use ($embedded_flags, $style_keys) {
-			return !in_array($key, $embedded_flags, true) && !in_array($key, $style_keys, true);
-		}));
-
-		$paging_inline_order = [
-			'pageLength',
-			'lengthChange',
-			'lengthMenuPrefix',
-			'lengthMenuSuffix',
-			'pagingNumbers',
-			'pagingFirstLast',
-			'paginateFirst',
-			'paginateLast',
-			'pagingPreviousNext',
-			'paginatePrevious',
-			'paginateNext',
-		];
-		$inline_controls = [
-			'paging' => array_values(array_filter(
-				$paging_inline_order,
-				static fn($key) => array_key_exists($key, $option_schema)
-			)),
-			'searchBox' => array_values(array_filter(
-				['searchText', 'searchPlaceholder', 'searchColumns', 'searchColumnsLabel', 'searchColumnsHeading'],
-				static fn($key) => in_array($key, array_merge($text_keys, $embedded_flags), true)
-			)),
-			'info' => array_values(array_filter(
-				['infoText', 'infoEmpty', 'infoFiltered'],
-				static fn($key) => in_array($key, $text_keys, true)
-			)),
-			'filtersTitle' => array_filter($text_keys, static fn($key) => $key === 'filtersTitleText'),
-			'scrollYEnabled' => array_values(array_filter(
-				['scrollY', 'scrollCollapse'],
-				static fn($key) => array_key_exists($key, $option_schema)
-			)),
-		];
-		$layout_features = [
-			'pagelength' => __('Page length', 'baratables'),
-			'buttons' => __('Buttons', 'baratables'),
-			'search' => __('Search', 'baratables'),
-			'info' => __('Result summary', 'baratables'),
-			'paging' => __('Pagination', 'baratables'),
-		];
-		$layout_zones = [
-			'layoutTopStart' => __('Top left', 'baratables'),
-			'layoutTopEnd' => __('Top right', 'baratables'),
-			'layoutBottomStart' => __('Bottom left', 'baratables'),
-			'layoutBottomEnd' => __('Bottom right', 'baratables'),
-		];
+		foreach ($inline_controls as &$children) {
+			ksort($children);
+			$children = array_values($children);
+		}
+		unset($children);
 		$layout_defaults_raw = [];
 		foreach (array_keys($layout_zones) as $zone_key) {
 			$layout_defaults_raw[$zone_key] = $option_schema[$zone_key]['default'] ?? [];
@@ -1518,42 +913,10 @@ class BaraTables_Admin_Tab_Table {
 										<?php foreach ($inline_controls[$flag_key] as $inline_key) : ?>
 											<?php $inline_config = $option_schema[$inline_key]; ?>
 											<?php
-												$row_classes = ['btbl-options-row', 'btbl-options-inline'];
-												if ($inline_key === 'pageLength') {
-													$row_classes[] = 'btbl-page-length-row';
-												}
-												if ($inline_key === 'lengthChange') {
-													$row_classes[] = 'btbl-length-change-flag';
-												}
-												if ($inline_key === 'lengthMenuPrefix' || $inline_key === 'lengthMenuSuffix') {
-													$row_classes[] = 'btbl-page-length-row';
-													$row_classes[] = 'btbl-length-menu-row';
-												}
-											if (in_array($inline_key, ['paginateFirst', 'paginatePrevious', 'paginateNext', 'paginateLast'], true)) {
-												$row_classes[] = 'btbl-pagination-label-row';
-											}
-											if ($inline_key === 'searchText') {
-												$row_classes[] = 'btbl-search-setting-row';
-											}
-											if ($inline_key === 'searchPlaceholder') {
-												$row_classes[] = 'btbl-search-setting-row';
-												$row_classes[] = 'btbl-search-placeholder-row';
-											}
-											if ($inline_key === 'searchColumns') {
-												$row_classes[] = 'btbl-search-columns-flag';
-											}
-											if ($inline_key === 'searchColumnsLabel' || $inline_key === 'searchColumnsHeading') {
-												$row_classes[] = 'btbl-search-setting-row';
-												$row_classes[] = 'btbl-search-columns-setting';
-											}
-											if ($inline_key === 'filtersTitleText') {
-												$row_classes[] = 'btbl-filters-title-setting';
-											}
-											if (in_array($inline_key, ['infoText', 'infoEmpty', 'infoFiltered'], true)) {
-												$row_classes[] = 'btbl-info-setting';
-											}
+											$row_classes = array_merge(['btbl-options-row', 'btbl-options-inline'], $inline_config['editor_classes'] ?? []);
+											$visible_when = !empty($inline_config['editor_visible_when']) ? wp_json_encode($inline_config['editor_visible_when']) : '';
 											?>
-											<div class="<?php echo esc_attr(implode(' ', $row_classes)); ?>">
+											<div class="<?php echo esc_attr(implode(' ', $row_classes)); ?>" data-btbl-option="<?php echo esc_attr($inline_key); ?>"<?php echo $visible_when !== '' ? ' data-btbl-visible-when="' . esc_attr($visible_when) . '"' : ''; ?>>
 												<?php if ($inline_config['type'] === 'checkbox') : ?>
 													<?php $inline_default = !empty($inline_config['default']) ? '1' : '0'; ?>
 													<label class="btbl-inline">
@@ -1563,7 +926,9 @@ class BaraTables_Admin_Tab_Table {
 															name="btbl_table_options[<?php echo esc_attr($inline_key); ?>]"
 															id="btbl_<?php echo esc_attr($inline_key); ?>"
 															value="1"
-															data-default="<?php echo esc_attr($inline_default); ?>"
+																	data-default="<?php echo esc_attr($inline_default); ?>"
+																	<?php echo !empty($inline_config['editor_reset_when_hidden']) ? 'data-btbl-reset-when-hidden="1"' : ''; ?>
+																	<?php echo !empty($inline_config['editor_restore_default']) ? 'data-btbl-restore-default="1"' : ''; ?>
 															<?php checked(!empty($table_options[$inline_key])); ?>
 														/>
 														<?php echo esc_html($inline_config['label']); ?>
@@ -1647,9 +1012,7 @@ class BaraTables_Admin_Tab_Table {
 								<div class="btbl-layout-zone-label"><?php echo esc_html($zone_label); ?></div>
 								<div class="btbl-layout-drop" data-zone="<?php echo esc_attr($zone_key); ?>">
 									<?php foreach ($layout_state[$zone_key] as $feature) : ?>
-										<button type="button" class="btbl-layout-chip" draggable="true" data-feature="<?php echo esc_attr($feature); ?>">
-											<?php echo esc_html($layout_features[$feature] ?? $feature); ?>
-										</button>
+										<?php $this->render_layout_chip($feature, $layout_features[$feature] ?? $feature, $layout_dependencies[$feature] ?? null); ?>
 									<?php endforeach; ?>
 								</div>
 								<div class="btbl-layout-inputs" data-zone-inputs="<?php echo esc_attr($zone_key); ?>">
@@ -1666,9 +1029,7 @@ class BaraTables_Admin_Tab_Table {
 						<div class="btbl-layout-drop btbl-layout-palette-drop" data-zone="palette">
 							<span class="btbl-palette-placeholder description"><?php esc_html_e('Drag an element here to remove it from the table layout.', 'baratables'); ?></span>
 							<?php foreach ($layout_unused as $feature) : ?>
-								<button type="button" class="btbl-layout-chip" draggable="true" data-feature="<?php echo esc_attr($feature); ?>">
-									<?php echo esc_html($layout_features[$feature] ?? $feature); ?>
-								</button>
+								<?php $this->render_layout_chip($feature, $layout_features[$feature] ?? $feature, $layout_dependencies[$feature] ?? null); ?>
 							<?php endforeach; ?>
 						</div>
 					</div>
@@ -1697,16 +1058,7 @@ class BaraTables_Admin_Tab_Table {
 				<?php endif; ?>
 			<?php if ($buttons_config) : ?>
 				<?php $config = $buttons_config['config']; ?>
-				<?php
-				$button_text_keys = [
-					'copy' => 'buttonTextCopy',
-					'csv' => 'buttonTextCsv',
-					'excel' => 'buttonTextExcel',
-					'print' => 'buttonTextPrint',
-					'colvis' => 'buttonTextColvis',
-					'pagelength' => 'buttonTextPagelength',
-				];
-				?>
+				<?php $button_text_keys = isset($config['choice_text_options']) && is_array($config['choice_text_options']) ? $config['choice_text_options'] : []; ?>
 				<div class="btbl-control">
 					<strong class="btbl-small-heading"><?php echo esc_html($config['label']); ?></strong>
 					<?php if (!empty($config['description'])) : ?>
@@ -1767,6 +1119,14 @@ class BaraTables_Admin_Tab_Table {
 		</div>
 		<?php
 	}
+
+	private function render_layout_chip(string $feature, string $label, ?string $option_key): void {
+		?>
+		<button type="button" class="btbl-layout-chip" draggable="true" data-feature="<?php echo esc_attr($feature); ?>"<?php echo $option_key ? ' data-btbl-option-key="' . esc_attr($option_key) . '"' : ''; ?>>
+			<?php echo esc_html($label); ?>
+		</button>
+		<?php
+	}
 }
 
 class BaraTables_Admin_Tab_Advanced {
@@ -1798,8 +1158,8 @@ class BaraTables_Admin_Tab_Advanced {
 				<p class="btbl-json-error" id="btbl_value_overrides_error" role="alert" hidden><?php esc_html_e('This is not valid JSON. The rules will not be saved until you fix it.', 'baratables'); ?></p>
 			</div>
 			<?php
-			// Manual data is the one source with no row-token field, and get_rows() does not pass an
-			// access policy to get_rows_from_custom() at all -- so on a manual table every control
+			// Manual data is the one source with no row-token field, and its row path has no access
+			// policy -- so on a manual table every control
 			// here was editable, was saved, and did precisely nothing. Setting "Logged-out visitors
 			// see: No rows" on one left every row public. Hide the block rather than keep offering a
 			// restriction that is not enforced. Listing the four sources that DO enforce it means a
@@ -1869,11 +1229,16 @@ class BaraTables_Admin_Tab_Chart {
 		$table_choices = $context['table_choices'] ?? [];
 		$selected_table = $context['selected_table'] ?? '';
 		$panel_class = $active_tab === 'btbl-tab-chart' ? 'btbl-tab-panel is-active' : 'btbl-tab-panel';
-			$plugin_file = dirname(__DIR__, 2) . '/baratables.php';
-			$plugin_dir = plugin_dir_path($plugin_file);
-			$plugin_url = plugin_dir_url($plugin_file);
-			$placeholder_svg = 'data:image/svg+xml,' . rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f7f8fa"/><rect x="32" y="36" width="28" height="128" fill="#d7dde5"/><rect x="78" y="76" width="28" height="88" fill="#d7dde5"/><rect x="124" y="52" width="28" height="112" fill="#d7dde5"/><rect x="170" y="92" width="28" height="72" fill="#d7dde5"/><rect x="216" y="116" width="28" height="48" fill="#d7dde5"/><rect x="262" y="64" width="28" height="96" fill="#d7dde5"/><text x="160" y="186" text-anchor="middle" font-size="14" fill="#94a3b8" font-family="Arial, sans-serif">Preview coming soon</text></svg>');
-			$chart_type_images = BaraTables_Chart_Types::images();
+			static $assets = null;
+			if ($assets === null) {
+				$plugin_file = dirname(__DIR__, 2) . '/baratables.php';
+				$assets = [
+					'dir' => plugin_dir_path($plugin_file),
+					'url' => plugin_dir_url($plugin_file),
+					'placeholder' => 'data:image/svg+xml,' . rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f7f8fa"/><rect x="32" y="36" width="28" height="128" fill="#d7dde5"/><rect x="78" y="76" width="28" height="88" fill="#d7dde5"/><rect x="124" y="52" width="28" height="112" fill="#d7dde5"/><rect x="170" y="92" width="28" height="72" fill="#d7dde5"/><rect x="216" y="116" width="28" height="48" fill="#d7dde5"/><rect x="262" y="64" width="28" height="96" fill="#d7dde5"/><text x="160" y="186" text-anchor="middle" font-size="14" fill="#94a3b8" font-family="Arial, sans-serif">Preview coming soon</text></svg>'),
+				];
+			}
+			$chart_types = BaraTables_Chart_Types::all();
 			?>
 		<div id="btbl-tab-chart" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-chart-label">
 			<?php $dropped_columns = $context['dropped_columns'] ?? []; ?>
@@ -1888,7 +1253,7 @@ class BaraTables_Admin_Tab_Chart {
 			<?php endif; ?>
 			<div class="btbl-control">
 				<label class="btbl-small-heading" for="btbl_chart_table"><?php esc_html_e('Table', 'baratables'); ?></label>
-				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices (X-axis and series) for this chart. Continue?', 'baratables'); ?>" required>
+				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" required>
 					<option value=""><?php esc_html_e('Select table', 'baratables'); ?></option>
 					<?php foreach ($table_choices as $id => $label) : ?>
 						<option value="<?php echo esc_attr($id); ?>" <?php selected($selected_table, $id); ?>><?php echo esc_html($label); ?></option>
@@ -1913,8 +1278,8 @@ class BaraTables_Admin_Tab_Chart {
 						</a>
 					</div>
 					<select name="btbl_chart_type" id="btbl_chart_type" class="btbl-chart-type-select">
-						<?php foreach (BaraTables_Chart_Types::labels() as $type_slug => $type_label) : ?>
-							<option value="<?php echo esc_attr($type_slug); ?>" <?php selected($chart_options['type'], $type_slug); ?>><?php echo esc_html($type_label); ?></option>
+						<?php foreach ($chart_types as $type_slug => $type_capabilities) : ?>
+							<option value="<?php echo esc_attr($type_slug); ?>" data-mode="<?php echo esc_attr($type_capabilities['mode']); ?>" data-stackable="<?php echo $type_capabilities['stackable'] ? '1' : '0'; ?>" <?php selected($chart_options['type'], $type_slug); ?>><?php echo esc_html($type_capabilities['label']); ?></option>
 						<?php endforeach; ?>
 					</select>
 				</div>
@@ -1927,13 +1292,8 @@ class BaraTables_Admin_Tab_Chart {
 			<div class="btbl-control-grid btbl-chart-grid btbl-chart-standard">
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_x_axis"><?php esc_html_e('X-axis / category column', 'baratables'); ?></label>
-					<select name="btbl_chart_x_axis" id="btbl_chart_x_axis" required>
-						<option value=""><?php esc_html_e('Select column', 'baratables'); ?></option>
-						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected($chart_options['x_axis'], $slug); ?>><?php echo esc_html($label); ?></option>
-						<?php endforeach; ?>
-					</select>
-					<p class="description"><?php esc_html_e('Categories or labels. Pie, donut, and funnel use it for slice and stage names. Scatter and bubble plot it as a number and skip non-numeric rows.', 'baratables'); ?></p>
+					<?php $this->render_column_select('btbl_chart_x_axis', $column_choices, (string) ($chart_options['x_axis'] ?? ''), __('Select column', 'baratables'), true); ?>
+					<p class="description"><?php esc_html_e('Categories or labels. Pie, donut, treemap, and funnel use it for item names. Scatter and bubble plot it as a number and skip non-numeric rows.', 'baratables'); ?></p>
 				</div>
 				<div class="btbl-control">
 					<span class="btbl-small-heading"><?php esc_html_e('Series columns', 'baratables'); ?></span>
@@ -1945,58 +1305,50 @@ class BaraTables_Admin_Tab_Chart {
 							</label>
 						<?php endforeach; ?>
 					</div>
-					<p class="description btbl-help-text"><?php esc_html_e('Columns to plot. Pie, donut, and funnel use only the first. Bubble uses the first for height and the second for size. Scatter and bubble skip non-numeric rows.', 'baratables'); ?></p>
+					<p class="description btbl-help-text"><?php esc_html_e('Columns to plot. Pie, donut, treemap, and funnel use only the first. Bubble uses the first for height and the second for size. Scatter and bubble skip non-numeric rows.', 'baratables'); ?></p>
+				</div>
+			</div>
+			<div class="btbl-control-grid btbl-chart-grid btbl-chart-heatmap">
+				<div class="btbl-control">
+					<label class="btbl-small-heading" for="btbl_chart_heatmap_x"><?php esc_html_e('X category column', 'baratables'); ?></label>
+					<?php $this->render_column_select('btbl_chart_heatmap_x', $column_choices, (string) ($chart_options['heatmap_x'] ?? ''), __('Select column', 'baratables')); ?>
+					<p class="description"><?php esc_html_e('Categories shown across the chart.', 'baratables'); ?></p>
+				</div>
+				<div class="btbl-control">
+					<label class="btbl-small-heading" for="btbl_chart_heatmap_y"><?php esc_html_e('Y category column', 'baratables'); ?></label>
+					<?php $this->render_column_select('btbl_chart_heatmap_y', $column_choices, (string) ($chart_options['heatmap_y'] ?? ''), __('Select column', 'baratables')); ?>
+					<p class="description"><?php esc_html_e('Categories shown down the chart.', 'baratables'); ?></p>
+				</div>
+				<div class="btbl-control">
+					<label class="btbl-small-heading" for="btbl_chart_heatmap_value"><?php esc_html_e('Value column', 'baratables'); ?></label>
+					<?php $this->render_column_select('btbl_chart_heatmap_value', $column_choices, (string) ($chart_options['heatmap_value'] ?? ''), __('Select column', 'baratables')); ?>
+					<p class="description"><?php esc_html_e('Numeric values control each cell color; non-numeric rows are skipped.', 'baratables'); ?></p>
 				</div>
 			</div>
 			<div class="btbl-control-grid btbl-chart-grid btbl-chart-gantt">
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_gantt_label"><?php esc_html_e('Task / label column', 'baratables'); ?></label>
-					<select name="btbl_chart_gantt_label" id="btbl_chart_gantt_label">
-						<option value=""><?php esc_html_e('Select column', 'baratables'); ?></option>
-						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected($chart_options['gantt_label'] ?? '', $slug); ?>><?php echo esc_html($label); ?></option>
-						<?php endforeach; ?>
-					</select>
+					<?php $this->render_column_select('btbl_chart_gantt_label', $column_choices, (string) ($chart_options['gantt_label'] ?? ''), __('Select column', 'baratables')); ?>
 					<p class="description"><?php esc_html_e('Used for the task names on the Y-axis.', 'baratables'); ?></p>
 				</div>
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_gantt_start"><?php esc_html_e('Start date/time column', 'baratables'); ?></label>
-					<select name="btbl_chart_gantt_start" id="btbl_chart_gantt_start">
-						<option value=""><?php esc_html_e('Select column', 'baratables'); ?></option>
-						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected($chart_options['gantt_start'] ?? '', $slug); ?>><?php echo esc_html($label); ?></option>
-						<?php endforeach; ?>
-					</select>
+					<?php $this->render_column_select('btbl_chart_gantt_start', $column_choices, (string) ($chart_options['gantt_start'] ?? ''), __('Select column', 'baratables')); ?>
 					<p class="description"><?php esc_html_e('Dates should be parseable (e.g. 2024-01-31 or 2024-01-31 12:00).', 'baratables'); ?></p>
 				</div>
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_gantt_end"><?php esc_html_e('End date/time column', 'baratables'); ?></label>
-					<select name="btbl_chart_gantt_end" id="btbl_chart_gantt_end">
-						<option value=""><?php esc_html_e('Select column', 'baratables'); ?></option>
-						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected($chart_options['gantt_end'] ?? '', $slug); ?>><?php echo esc_html($label); ?></option>
-						<?php endforeach; ?>
-					</select>
+					<?php $this->render_column_select('btbl_chart_gantt_end', $column_choices, (string) ($chart_options['gantt_end'] ?? ''), __('Select column', 'baratables')); ?>
 					<p class="description"><?php esc_html_e('Each task needs both a start and end.', 'baratables'); ?></p>
 				</div>
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_gantt_group"><?php esc_html_e('Group / lane column (optional)', 'baratables'); ?></label>
-					<select name="btbl_chart_gantt_group" id="btbl_chart_gantt_group">
-						<option value=""><?php esc_html_e('None', 'baratables'); ?></option>
-						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected($chart_options['gantt_group'] ?? '', $slug); ?>><?php echo esc_html($label); ?></option>
-						<?php endforeach; ?>
-					</select>
+					<?php $this->render_column_select('btbl_chart_gantt_group', $column_choices, (string) ($chart_options['gantt_group'] ?? ''), __('None', 'baratables')); ?>
 					<p class="description"><?php esc_html_e('Use to color tasks by owner/lane.', 'baratables'); ?></p>
 				</div>
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_chart_gantt_progress"><?php esc_html_e('Progress % column (optional)', 'baratables'); ?></label>
-					<select name="btbl_chart_gantt_progress" id="btbl_chart_gantt_progress">
-						<option value=""><?php esc_html_e('None', 'baratables'); ?></option>
-						<?php foreach ($column_choices as $slug => $label) : ?>
-							<option value="<?php echo esc_attr($slug); ?>" <?php selected($chart_options['gantt_progress'] ?? '', $slug); ?>><?php echo esc_html($label); ?></option>
-						<?php endforeach; ?>
-					</select>
+					<?php $this->render_column_select('btbl_chart_gantt_progress', $column_choices, (string) ($chart_options['gantt_progress'] ?? ''), __('None', 'baratables')); ?>
 					<p class="description"><?php esc_html_e('Shown in tooltips; numbers should be 0-100.', 'baratables'); ?></p>
 				</div>
 			</div>
@@ -2015,14 +1367,13 @@ class BaraTables_Admin_Tab_Chart {
 					<div class="btbl-chart-type-chooser" role="group" aria-label="<?php esc_attr_e('Chart type', 'baratables'); ?>">
 						<?php
 						$current_type = $chart_options['type'] ?? 'bar';
-							$type_labels = BaraTables_Chart_Types::labels();
-							foreach ($type_labels as $slug => $label) :
+							foreach ($chart_types as $slug => $type) :
 								$image_url = '';
-								$filename = $chart_type_images[$slug] ?? '';
+								$filename = $type['image'];
 								if ($filename !== '') {
-									$full_path = $plugin_dir . 'assets/charts/' . $filename;
+									$full_path = $assets['dir'] . 'assets/charts/' . $filename;
 									if (file_exists($full_path)) {
-										$image_url = $plugin_url . 'assets/charts/' . $filename;
+										$image_url = $assets['url'] . 'assets/charts/' . $filename;
 									}
 								}
 								$is_active = $slug === $current_type;
@@ -2030,16 +1381,27 @@ class BaraTables_Admin_Tab_Chart {
 							<button type="button" class="btbl-chart-type-card<?php echo $is_active ? ' is-active' : ''; ?>" data-type="<?php echo esc_attr($slug); ?>" aria-pressed="<?php echo $is_active ? 'true' : 'false'; ?>">
 									<span class="btbl-chart-type-thumb<?php echo $image_url ? '' : ' is-placeholder'; ?>"<?php echo $image_url ? ' style="background-image:url(' . esc_url($image_url) . ');"' : ''; ?>>
 										<?php if (!$image_url) : ?>
-											<span class="btbl-chart-type-thumb-fallback" style="background-image:url('<?php echo esc_attr($placeholder_svg); ?>');"></span>
+										<span class="btbl-chart-type-thumb-fallback" style="background-image:url('<?php echo esc_attr($assets['placeholder']); ?>');"></span>
 										<?php endif; ?>
 									</span>
-								<span class="btbl-chart-type-label"><?php echo esc_html($label); ?></span>
+								<span class="btbl-chart-type-label"><?php echo esc_html($type['label']); ?></span>
 							</button>
 						<?php endforeach; ?>
 					</div>
 				</div>
 			</div>
 		</div>
+		<?php
+	}
+
+	private function render_column_select(string $field, array $choices, string $value, string $empty_label, bool $required = false): void {
+		?>
+		<select name="<?php echo esc_attr($field); ?>" id="<?php echo esc_attr($field); ?>"<?php echo $required ? ' required' : ''; ?>>
+			<option value=""><?php echo esc_html($empty_label); ?></option>
+			<?php foreach ($choices as $slug => $label) : ?>
+				<option value="<?php echo esc_attr($slug); ?>" <?php selected($value, $slug); ?>><?php echo esc_html($label); ?></option>
+			<?php endforeach; ?>
+		</select>
 		<?php
 	}
 }

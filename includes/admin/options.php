@@ -15,6 +15,7 @@ class BaraTables_Admin_Options {
 	public const PAGE_SLUG = 'baratables-options';
 	private const MAX_IMPORT_BYTES = 5242880;
 	private BaraTables_Service $service;
+	private BaraTables_Entity_Persistence $persistence;
 	/** @var string[] Errors collected while handling the request, rendered by render_page(). */
 	private array $errors = [];
 	/** @var array<string,mixed>|null Importer analysis, or null when there is nothing to preview. */
@@ -27,6 +28,7 @@ class BaraTables_Admin_Options {
 
 	public function __construct(BaraTables_Service $service) {
 		$this->service = $service;
+		$this->persistence = BaraTables_Entity_Persistence::from_descriptor(BaraTables_Entity_Descriptor::table());
 	}
 
 	public function register_menu(): void {
@@ -59,9 +61,8 @@ class BaraTables_Admin_Options {
 		}
 
 		$action = !empty($_POST['btbl_options_action']) ? sanitize_key(wp_unslash($_POST['btbl_options_action'])) : '';
-		$is_analyze = $action === 'import_analyze';
 		$is_create = $action === 'import_create';
-		if (!$is_analyze && !$is_create) {
+		if (!in_array($action, ['import_analyze', 'import_create'], true)) {
 			return;
 		}
 
@@ -114,8 +115,8 @@ class BaraTables_Admin_Options {
 			}
 		}
 
-		if (empty($errors) && $is_create && $analysis && !empty($analysis['definitions'])) {
-			$result = $this->persist_definition($analysis['definitions'][0]);
+		if (empty($errors) && $is_create && $analysis && !empty($analysis['definition'])) {
+			$result = $this->persist_definition($analysis['definition']);
 			if (!empty($result['error'])) {
 				$errors[] = $result['error'];
 			} elseif (!empty($result['post_id'])) {
@@ -236,7 +237,7 @@ class BaraTables_Admin_Options {
 						<p class="description"><?php esc_html_e('If both are provided, the uploaded file wins.', 'baratables'); ?></p>
 					</div>
 				</div>
-				<?php if ($analysis) : $preview = $analysis['previews'][0]; ?>
+					<?php if ($analysis) : $preview = $analysis['preview']; ?>
 					<div class="btbl-control">
 						<?php // translators: %s is the name of the table being imported. ?>
 						<h3><?php echo esc_html(sprintf(__('Import preview: %s', 'baratables'), $preview['title'])); ?></h3>
@@ -263,18 +264,15 @@ class BaraTables_Admin_Options {
 						// Show the actual table, not just a description of it. This is the moment the
 						// user decides whether to create it, and the editor already has a renderer that
 						// reflects the saved options -- reuse it instead of describing the shape in prose.
-						$import_definition = $analysis['definitions'][0] ?? null;
+						$import_definition = $analysis['definition'] ?? null;
 						if (is_array($import_definition)) {
-							$import_rows = $this->service->get_rows($import_definition, 25);
-							$import_definition = $this->service->ensure_columns_inferred($import_definition);
+							$row_result = $this->service->get_row_result($import_definition, 25);
+							$import_rows = $row_result->rows();
+							$import_definition = $this->service->definition_with_inferred_columns($import_definition, $row_result);
 							if (!empty($import_definition['columns'])) {
-								$import_pages = new BaraTables_Admin_Pages(
-									$this->service,
-									BaraTables_Admin::NONCE_ACTION,
-									BaraTables_Admin::NONCE_FIELD
-								);
+								$preview_renderer = new BaraTables_Admin_Preview_Renderer($this->service);
 								echo '<div class="btbl-admin btbl-admin-embed">';
-								$import_pages->render_preview_panel($import_definition, $import_rows);
+								$preview_renderer->render($import_definition, $import_rows);
 								echo '</div>';
 							}
 						}
@@ -332,7 +330,7 @@ class BaraTables_Admin_Options {
 		}
 		$definition['id'] = $table_id;
 
-		BaraTables_Base_Repository::persist((int) $post_id, BaraTables_Repository::META_KEY, BaraTables_Repository::META_SLUG, $definition, $table_id);
+		$this->persistence->persist((int) $post_id, $definition, $table_id);
 
 		return ['id' => $table_id, 'post_id' => (int) $post_id];
 	}
@@ -395,7 +393,7 @@ class BaraTables_Admin_Options {
 			'txt' => 'text/plain',
 		];
 		$file_type = wp_check_filetype($file_name, $allowed);
-		return in_array($file_type['ext'] ?? '', array_keys($allowed), true);
+		return isset($allowed[$file_type['ext'] ?? '']);
 	}
 
 	private function get_import_size_error(): string {

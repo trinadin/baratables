@@ -118,7 +118,9 @@ compare_packages() {
 compare_packages "$GIT_PACKAGE" "$SVN_PACKAGE" "Canonical SVN tag $VERSION versus Git $CONFIRM_HEAD"
 compare_packages "$SVN_PACKAGE" "$PUBLIC_PACKAGE" "Public WordPress.org ZIP versus canonical SVN tag $VERSION"
 
-TRUNK_STABLE_TAG="$(svn cat "$SVN_CANONICAL_URL/trunk/readme.txt" | awk -F': ' '/^Stable tag:/{print $2; exit}')"
+TRUNK_README="$VERIFY_TMP_DIR/trunk-readme.txt"
+svn cat "$SVN_CANONICAL_URL/trunk/readme.txt" >"$TRUNK_README"
+TRUNK_STABLE_TAG="$(awk -F': ' '/^Stable tag:/{print $2; exit}' "$TRUNK_README")"
 for package_dir in "$GIT_PACKAGE" "$SVN_PACKAGE" "$PUBLIC_PACKAGE"; do
 	plugin_version="$(awk -F': ' '/^[[:space:]]*\* Version:/{print $2; exit}' "$package_dir/baratables.php")"
 	package_stable_tag="$(awk -F': ' '/^Stable tag:/{print $2; exit}' "$package_dir/readme.txt")"

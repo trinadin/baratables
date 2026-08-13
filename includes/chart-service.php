@@ -25,19 +25,20 @@ class BaraTables_Chart_Service {
 
 	public function build_form_context(?array $chart_definition, ?string $selected_table_id = null): array {
 		$chart_definition = $chart_definition ?? [];
-		// Labels only: the dropdown needs id => name, not every table's stored definition.
-		$table_choices = $this->table_repo->get_definition_choices();
-
 		$table_definition = null;
 		$requested_table_id = $selected_table_id ?: ($chart_definition['table_id'] ?? '');
 		if ($requested_table_id !== '') {
 			$table_definition = $this->table_repo->find_definition($requested_table_id);
 		}
-		if (!$table_definition && !empty($table_choices)) {
-			// No (or unknown) selection: fall back to the first table, matching the previous
-			// title-ordered behaviour -- but hydrate just that one.
-			$first_id = (string) array_key_first($table_choices);
-			$table_definition = $first_id !== '' ? $this->table_repo->find_definition($first_id) : null;
+		if (!$table_definition) {
+			$table_definition = $this->table_repo->find_first_definition();
+		}
+		$table_choices = [];
+		if ($table_definition) {
+			$id = (string) ($table_definition['id'] ?? '');
+			if ($id !== '') {
+				$table_choices[$id] = (string) ($table_definition['name'] ?? $id);
+			}
 		}
 
 		$columns = $table_definition['columns'] ?? [];
@@ -46,7 +47,7 @@ class BaraTables_Chart_Service {
 			: $this->table_service->get_default_chart_options();
 		$chart_options = $this->table_service->sanitize_chart_options($chart_options_raw, $columns);
 
-		// R28: when showing the chart's OWN table (not a deliberate ?table switch), report any
+		// When showing the chart's own table (not a deliberate ?table switch), report any
 		// saved column choices that no longer exist on that table so the user isn't left guessing.
 		$dropped_columns = [];
 		$is_own_table = !empty($chart_definition) && $requested_table_id === ($chart_definition['table_id'] ?? '');
@@ -74,6 +75,10 @@ class BaraTables_Chart_Service {
 			'dropped_columns'  => $dropped_columns,
 			'active_tab'       => 'btbl-tab-chart',
 		];
+	}
+
+	public function search_table_choices(string $search, int $page = 1): array {
+		return $this->table_repo->search_definition_choices($search, $page);
 	}
 
 	public function prepare_chart_definition(array $request, ?array $existing_chart = null): array {
@@ -116,16 +121,83 @@ class BaraTables_Chart_Service {
 		if (!$table) {
 			return null;
 		}
-		$row_result = $this->table_service->get_row_result($table);
-		$table = $this->table_service->definition_with_inferred_columns($table, $row_result);
 		$chart_options = $this->table_service->sanitize_chart_options($chart['chart'] ?? [], $table['columns'] ?? []);
+		$has_stored_columns = !empty($table['columns']);
+		if ($has_stored_columns && !BaraTables_Chart_Types::is_configured($chart_options)) {
+			return [
+				'chart' => $chart,
+				'table' => $table,
+				'chart_options' => $chart_options,
+				'rows' => [],
+				'row_result' => new BaraTables_Row_Result(),
+			];
+		}
+
+		$source_table = $has_stored_columns
+			? $this->project_table_for_chart($table, $chart_options)
+			: $table;
+		$row_result = $this->table_service->get_row_result($source_table);
+		$source_table = $this->table_service->definition_with_inferred_columns($source_table, $row_result);
+		if (!$has_stored_columns) {
+			$chart_options = $this->table_service->sanitize_chart_options($chart['chart'] ?? [], $source_table['columns'] ?? []);
+		}
 
 		return [
 			'chart'         => $chart,
-			'table'         => $table,
+			'table'         => $source_table,
 			'chart_options' => $chart_options,
 			'rows'          => $row_result->rows(),
+			'row_result'    => $row_result,
 		];
+	}
+
+	/** Keep plotted columns plus row-token dependencies needed by their override rules. */
+	private function project_table_for_chart(array $table, array $chart_options): array {
+		$wanted = array_fill_keys(BaraTables_Chart_Types::referenced_columns($chart_options), true);
+		if (empty($wanted)) {
+			return $table;
+		}
+
+		$columns = isset($table['columns']) && is_array($table['columns']) ? $table['columns'] : [];
+		$token_to_slug = [];
+		foreach ($this->table_service->column_slugs_in_order($columns) as $slug) {
+			if ($slug === '') {
+				continue;
+			}
+			$token_to_slug[strtolower($slug)] = $slug;
+			$separator = strpos($slug, ':');
+			if ($separator !== false && substr($slug, $separator + 1) !== '') {
+				$token_to_slug[strtolower(substr($slug, $separator + 1))] = $slug;
+			}
+		}
+
+		foreach ((array) ($table['value_overrides'] ?? []) as $rule) {
+			if (!is_array($rule) || !isset($rule['column']) || ($rule['column'] !== '*' && !isset($wanted[$rule['column']]))) {
+				continue;
+			}
+			$replace = isset($rule['replace']) ? (string) $rule['replace'] : '';
+			if (!preg_match_all('/{{\\s*(?:row\\.)?([a-z0-9_:-]+)\\s*}}/i', $replace, $matches)) {
+				continue;
+			}
+			foreach ($matches[1] as $token) {
+				$key = strtolower((string) $token);
+				if (isset($token_to_slug[$key])) {
+					$wanted[$token_to_slug[$key]] = true;
+				}
+			}
+		}
+
+		$projected = [];
+		foreach ($columns as $column) {
+			$slug = is_array($column) ? (string) ($column['slug'] ?? '') : '';
+			if ($slug !== '' && isset($wanted[$slug])) {
+				$projected[] = $column;
+			}
+		}
+		if (!empty($projected) && count($projected) < count($columns)) {
+			$table['columns'] = $projected;
+		}
+		return $table;
 	}
 
 }

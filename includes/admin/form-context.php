@@ -121,6 +121,7 @@ class BaraTables_Admin_Form_Context {
 		$csv_delimiter = $source['csv_delimiter'];
 		$columns_should_reset = $source['columns_should_reset'];
 		$inferred = [];
+		$source_error = '';
 		if (BaraTables_Source_Type::is_csv($source_type)) {
 			$source_definition = array_merge($editing_defn, [
 				'source_type' => BaraTables_Source_Type::CSV,
@@ -128,11 +129,18 @@ class BaraTables_Admin_Form_Context {
 				'csv_has_header' => $csv_has_header,
 				'csv_delimiter' => $csv_delimiter,
 			]);
-			$inferred = $this->service->get_row_result($source_definition, 1)->inferred_columns();
+			// Match the preview's 50-row fetch so the request-scoped row-result cache serves both
+			// metaboxes from one CSV parse.
+			$result = $this->service->get_row_result($source_definition, 50);
+			$inferred = $result->inferred_columns();
+			$source_error = $result->has_error() ? $result->error_message() : '';
 		} elseif (BaraTables_Source_Type::is_external_db($source_type) && !empty($editing_defn['external_db'])) {
 			$source_definition = $editing_defn;
 			$source_definition['source_type'] = BaraTables_Source_Type::EXTERNAL_DB;
-			$inferred = $this->service->get_row_result($source_definition, 1)->inferred_columns();
+			// Match the preview's 50-row fetch so one external connection/query serves both boxes.
+			$result = $this->service->get_row_result($source_definition, 50);
+			$inferred = $result->inferred_columns();
+			$source_error = $result->has_error() ? $result->error_message() : '';
 		}
 
 		if ($custom_query_empty) {
@@ -164,7 +172,7 @@ class BaraTables_Admin_Form_Context {
 			$editing_defn['columns'] = [];
 		}
 
-		return compact('editing_defn', 'fields', 'taxonomies', 'should_show_source_hint', 'source_columns');
+		return compact('editing_defn', 'fields', 'taxonomies', 'should_show_source_hint', 'source_columns', 'source_error');
 	}
 
 	private function build_custom_data_context(array $editing_defn, string $source_type): array {
@@ -445,6 +453,7 @@ class BaraTables_Admin_Form_Context {
 			'selected_columns' => $state['selected_columns'],
 			'fields' => $state['fields'],
 			'source_type' => $state['source_type'],
+			'source_error' => $state['source_error'],
 			'custom_query_preview_raw' => $state['custom_query_preview_raw'],
 			'custom_query_args_for_fields' => $state['custom_query_args_for_fields'],
 		]);

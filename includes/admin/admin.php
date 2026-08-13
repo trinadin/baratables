@@ -83,13 +83,13 @@ class BaraTables_Admin {
 		}
 
 		$preview = $this->prepare_preview($definition);
-		// R15: a Refresh-preview button that appears only once the builder has unsaved
+		// Show a Refresh-preview button only once the builder has unsaved
 		// edits (revealed by JS on the first change). No standing help text.
 		echo '<p class="btbl-preview-toolbar" hidden>';
 		echo '<button type="button" class="button btbl-icon-button" id="btbl-refresh-preview" aria-label="' . esc_attr__('Refresh preview', 'baratables') . '" title="' . esc_attr__('Refresh preview', 'baratables') . '"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>';
 		echo '</p>';
 		echo '<div class="btbl-admin btbl-admin-embed" id="btbl-preview-target">';
-		$this->preview_renderer->render($preview['definition'], $preview['rows']);
+		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error']);
 		echo '</div>';
 	}
 
@@ -144,7 +144,7 @@ class BaraTables_Admin {
 		$preview = $this->prepare_preview($definition);
 
 		ob_start();
-		$this->preview_renderer->render($preview['definition'], $preview['rows']);
+		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error']);
 		$html = ob_get_clean();
 
 		wp_send_json_success(['html' => $html]);
@@ -165,6 +165,7 @@ class BaraTables_Admin {
 			return;
 		}
 
+		$snapshot = $this->persistence->snapshot($post_id, BaraTables_Post_Input::raw('original_post_status'));
 		$request = $this->actions->collect_table_request_data();
 		$existing = $this->get_existing_table_definition_for_post($post);
 		$definition = $this->actions->apply_request_to_definition($request, $existing, $update);
@@ -185,19 +186,62 @@ class BaraTables_Admin {
 				'error'
 			);
 		}
-		if ($identity['changed'] && $old_slug !== '') {
-			// Rename of an existing table: forward-fix linked charts (our own records)
-			// and flag the embeds we can't reach. No alias is stored.
-			$charts_updated = $this->service->rewrite_chart_table_id($old_slug, $slug);
-			$this->queue_table_rename_notice($old_slug, $slug, $requested_id, $charts_updated);
-		}
 		$definition['id'] = $slug;
 		$definition['name'] = $request['name'] !== '' ? $request['name'] : ($definition['name'] ?? $post->post_title);
 		$definition['status'] = $post->post_status;
 
-		$this->persistence->persist($post_id, $definition, $slug);
+		$persist_error = $this->persistence->persist($post_id, $definition, $slug);
+		if ($persist_error) {
+			$rollback_error = $this->persistence->restore($post_id, $snapshot, [$this, 'save_table_from_editor'], 3);
+			BaraTables_Admin_Notice::queue(
+				$rollback_error
+					? __('The table could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again.', 'baratables')
+					: __('The table could not be saved. Its previous data and Table ID were restored.', 'baratables'),
+				'error'
+			);
+			return;
+		}
 
-		// R1: warn (non-blocking) if the saved table has no effective columns and will render nothing.
+		if ($identity['changed'] && $old_slug !== '') {
+			// Commit linked charts only after the table itself is durable. The checked rewrite rolls
+			// every chart back if one write fails; then restore the table so no split identity remains.
+			$rewrite = $this->service->rewrite_chart_table_id_checked($old_slug, $slug);
+			if ($rewrite['error']) {
+				$rollback_error = $this->persistence->restore($post_id, $snapshot, [$this, 'save_table_from_editor'], 3);
+				$error_data = $rewrite['error']->get_error_data();
+				$failed_chart_ids = is_array($error_data) && isset($error_data['rollback_failed_chart_ids']) && is_array($error_data['rollback_failed_chart_ids'])
+					? array_values(array_unique(array_map('intval', $error_data['rollback_failed_chart_ids'])))
+					: [];
+				if (!$rollback_error && !empty($failed_chart_ids)) {
+					$queue_error = $this->service->queue_chart_link_recovery($failed_chart_ids, $slug, $old_slug);
+					BaraTables_Admin_Notice::queue(
+						$queue_error
+							? sprintf(
+								/* translators: %s is a comma-separated list of chart post IDs. */
+								__('The Table ID was restored, but linked chart post IDs %s could not be restored or queued for automatic recovery. Retry the save before editing those charts.', 'baratables'),
+								esc_html(implode(', ', $failed_chart_ids))
+							)
+							: sprintf(
+								/* translators: %d is the number of linked charts queued for recovery. */
+								_n('The Table ID was restored. %d linked chart will be restored automatically on the next admin request.', 'The Table ID was restored. %d linked charts will be restored automatically on the next admin request.', count($failed_chart_ids), 'baratables'),
+								count($failed_chart_ids)
+							),
+						'error'
+					);
+				} else {
+					BaraTables_Admin_Notice::queue(
+						$rollback_error
+							? __('The Table ID and linked charts could not be updated consistently. Retry the save before editing them again.', 'baratables')
+							: __('The Table ID change was cancelled because a linked chart could not be updated. Previous data was restored.', 'baratables'),
+						'error'
+					);
+				}
+				return;
+			}
+			$this->queue_table_rename_notice($old_slug, $slug, $requested_id, $rewrite['updated']);
+		}
+
+		// Warn without blocking if the saved table has no effective columns and will render nothing.
 		$effective = $this->service->resolve_columns($definition);
 		if (empty($effective['columns'])) {
 			BaraTables_Admin_Notice::queue(
@@ -206,7 +250,7 @@ class BaraTables_Admin {
 			);
 		}
 
-		// R6: the user typed value-override rules, but none survived parsing (invalid JSON discarded silently).
+		// Warn when typed value-override rules do not survive JSON parsing.
 		$overrides_raw = trim((string) ($request['value_overrides_raw_input'] ?? ''));
 		if ($overrides_raw !== '' && empty($request['value_overrides'])) {
 			BaraTables_Admin_Notice::queue(
@@ -214,7 +258,7 @@ class BaraTables_Admin {
 				'warning'
 			);
 		} elseif ($overrides_raw !== '') {
-			// R21: flag regex rules whose pattern is invalid (they silently pass values through unchanged).
+			// Flag invalid regex rules, which otherwise pass values through unchanged.
 			$decoded = json_decode($overrides_raw, true);
 			$bad_patterns = [];
 			if (is_array($decoded)) {
@@ -281,13 +325,14 @@ class BaraTables_Admin {
 			: null;
 	}
 
-	/** @return array{definition:array,rows:array} */
+	/** @return array{definition:array,rows:array,source_error:string} */
 	private function prepare_preview(array $definition): array {
 		$result = $this->service->get_row_result($definition, 50);
 		$definition = $this->service->definition_with_inferred_columns($definition, $result);
 		return [
 			'definition' => $definition,
 			'rows' => $this->preview_renderer->sort($result->rows(), $definition),
+			'source_error' => $result->has_error() ? $result->error_message() : '',
 		];
 	}
 
@@ -324,6 +369,7 @@ class BaraTables_Chart_Admin {
 		add_action('add_meta_boxes_' . BaraTables_Chart_Repository::CPT, [$this, 'register_meta_boxes']);
 		add_action('save_post_' . BaraTables_Chart_Repository::CPT, [$this, 'save_chart_from_editor'], 9, 2);
 		add_action('wp_ajax_btbl_refresh_chart_fields', [$this, 'ajax_refresh_chart_fields']);
+		add_action('wp_ajax_btbl_search_chart_tables', [$this, 'ajax_search_chart_tables']);
 	}
 
 	public function register_meta_boxes(): void {
@@ -336,7 +382,7 @@ class BaraTables_Chart_Admin {
 			'high'
 		);
 
-		// R16: a live chart preview, mirroring the Table Preview the table editor has.
+		// Provide the chart editor with the same live-preview behavior as the table editor.
 		add_meta_box(
 			'btbl-chart-preview',
 			__('Chart Preview', 'baratables'),
@@ -412,6 +458,13 @@ class BaraTables_Chart_Admin {
 		wp_send_json_success(['panel' => $this->render_chart_panel($context)]);
 	}
 
+	public function ajax_search_chart_tables(): void {
+		BaraTables_Admin_Ajax_Guard::verify($this->nonce_action, $this->nonce_field);
+		$search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Guard verified above.
+		$page = isset($_POST['page']) ? max(1, (int) $_POST['page']) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Guard verified above.
+		wp_send_json_success($this->chart_service->search_table_choices($search, $page));
+	}
+
 	/**
 	 * The saved chart for a chart post: the indexed lookup first, falling back to the raw meta for
 	 * a post whose slug index has not been written yet (first save / an import).
@@ -480,7 +533,7 @@ class BaraTables_Chart_Admin {
 		$chart = $prepared['definition'];
 		$table_missing = empty($prepared['table_definition']);
 		if ($table_missing) {
-			// R2: WordPress still publishes the post, so the shortcode would render
+			// WordPress still publishes the post, so the shortcode would render
 			// "Chart not found." with no explanation. Tell the user why and what to do.
 			$message = $table_id === ''
 				? __('This chart has no source table, so it will show "Chart not found." Edit the chart and choose one.', 'baratables')
@@ -491,6 +544,7 @@ class BaraTables_Chart_Admin {
 			// rename. Save what we have so their work survives; they can fix the table and update.
 		}
 
+		$snapshot = $this->persistence->snapshot($post_id, BaraTables_Post_Input::raw('original_post_status'));
 		$identity = $this->persistence->save_editor_slug(
 			$post_id,
 			$post,
@@ -508,18 +562,28 @@ class BaraTables_Chart_Admin {
 				'error'
 			);
 		}
-		if ($identity['changed'] && $old_slug !== '') {
-			// Nothing references a chart by id (charts reference tables, not vice versa), so
-			// no forward-rewrite is needed -- only flag the [bara_chart] embeds we can't reach.
-			$this->queue_chart_rename_notice($old_slug, $slug, $requested_id);
-		}
 		$chart['id'] = $slug;
 		$chart['name'] = $name !== '' ? $name : ($chart['name'] ?? $post->post_title);
 		$chart['status'] = $post->post_status;
 
-		$this->persistence->persist($post_id, $chart, $slug);
+		$persist_error = $this->persistence->persist($post_id, $chart, $slug);
+		if ($persist_error) {
+			$rollback_error = $this->persistence->restore($post_id, $snapshot, [$this, 'save_chart_from_editor'], 2);
+			BaraTables_Admin_Notice::queue(
+				$rollback_error
+					? __('The chart could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again.', 'baratables')
+					: __('The chart could not be saved. Its previous data and Chart ID were restored.', 'baratables'),
+				'error'
+			);
+			return;
+		}
+		if ($identity['changed'] && $old_slug !== '') {
+			// Nothing references a chart by id (charts reference tables, not vice versa), so
+			// no forward-rewrite is needed -- only flag the [bara_chart] embeds we cannot reach.
+			$this->queue_chart_rename_notice($old_slug, $slug, $requested_id);
+		}
 
-		// R2: a chart with no data series renders empty -- warn (non-blocking). Skip when the table
+		// A chart with no data series renders empty, so warn without blocking. Skip when the table
 		// is missing: the "Chart not found" error above already covers it and is the actionable one.
 		if (!$table_missing && self::should_warn_no_series($chart)) {
 			BaraTables_Admin_Notice::queue(

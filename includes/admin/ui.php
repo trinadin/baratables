@@ -8,6 +8,7 @@ if (!defined('ABSPATH')) {
 class BaraTables_Admin_Tab_General {
 	public function render(array $context, ?array $editing_defn): void {
 		$source_type = $context['source_type'] ?? 'wp_query';
+		$source_error = $context['source_error'] ?? '';
 		$post_types = $context['post_types'] ?? [];
 		$taxonomies = $context['taxonomies'] ?? [];
 		$current_pts = $context['current_pts'] ?? [];
@@ -60,6 +61,9 @@ class BaraTables_Admin_Tab_General {
 		$tax_filter_hidden = ($source_type !== 'wp_query' || empty($selected_taxonomy)) ? ' is-hidden' : '';
 		?>
 		<div id="btbl-tab-general" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-general-label">
+			<?php if ($source_error !== '') : ?>
+				<div class="notice notice-error inline"><p><?php echo esc_html($source_error); ?></p></div>
+			<?php endif; ?>
 			<div class="btbl-control-grid">
 				<div class="btbl-control">
 					<label class="btbl-small-heading" for="btbl_source_type"><?php esc_html_e('Data source', 'baratables'); ?></label>
@@ -1170,7 +1174,7 @@ class BaraTables_Admin_Tab_Advanced {
 				<strong class="btbl-small-heading"><?php esc_html_e('Access control', 'baratables'); ?></strong>
 				<p class="description btbl-help-text"><?php esc_html_e('Show a row only to visitors whose tokens match it. Set where row tokens and user tokens are stored. Leave blank to disable.', 'baratables'); ?></p>
 				<?php
-				// R31 (just-in-time): warn whenever this section will not survive the save. Without
+				// Warn whenever this section will not survive the save. Without
 				// the source's row-token field, sanitize_access_control() returns [] and
 				// apply_request_to_definition() unsets access_control entirely -- so choosing
 				// "Logged-out visitors see: No rows" on its own is silently discarded and the
@@ -1253,7 +1257,7 @@ class BaraTables_Admin_Tab_Chart {
 			<?php endif; ?>
 			<div class="btbl-control">
 				<label class="btbl-small-heading" for="btbl_chart_table"><?php esc_html_e('Table', 'baratables'); ?></label>
-				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" required>
+				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" data-search-placeholder="<?php echo esc_attr__('Search tables...', 'baratables'); ?>" data-searching-label="<?php echo esc_attr__('Searching...', 'baratables'); ?>" required>
 					<option value=""><?php esc_html_e('Select table', 'baratables'); ?></option>
 					<?php foreach ($table_choices as $id => $label) : ?>
 						<option value="<?php echo esc_attr($id); ?>" <?php selected($selected_table, $id); ?>><?php echo esc_html($label); ?></option>

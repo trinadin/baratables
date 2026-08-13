@@ -65,10 +65,8 @@ jQuery(function($) {
 
 		var filterEnabled = filterType !== 'none';
 		var dropdownEnabled = checked && filterType === 'dropdown';
-		var dateRowEnabled = checked;
 
 		var sortableEnabled = checked && !hideColumnChecked && orderingEnabled;
-		var sortToggleEnabled = checked;
 		var sortInputsEnabled = sortEnabled && checked;
 
 		$optionsToggle.toggleClass('is-hidden', !checked);
@@ -91,7 +89,7 @@ jQuery(function($) {
 		$filterLabelRow.toggleClass('is-hidden', !filterEnabled);
 
 		if (isDateCandidate) {
-			$dateRow.toggleClass('is-hidden', !dateRowEnabled);
+			$dateRow.toggleClass('is-hidden', !checked);
 		} else {
 			$dateRow.addClass('is-hidden');
 		}
@@ -102,23 +100,17 @@ jQuery(function($) {
 		$sortRow.toggleClass('is-hidden', !sortInputsEnabled);
 		// updateSortVisibility() below fills a blank priority with 1 when sort is enabled.
 
-		if (!filterEnabled) {
+		if (!filterEnabled || !checked) {
 			$select.val('none');
 			$sortSelect.val('asc');
 		}
 		if (!dropdownEnabled) {
 			$dropdownInputs.prop('checked', false);
 		}
-		if (!sortToggleEnabled) {
+		if (!checked) {
 			$sortToggle.prop('checked', false);
 			$sortRow.addClass('is-hidden');
-		}
-
-		if (!checked) {
 			setOptionsOpen($label, false);
-			$select.val('none');
-			$sortSelect.val('asc');
-			$dropdownInputs.prop('checked', false);
 		}
 
 		updateSortVisibility($label);
@@ -126,8 +118,8 @@ jQuery(function($) {
 
 	// Set while "Select all columns" is flipping every checkbox in turn. Each change would
 	// otherwise trigger a full order-list rebuild plus a document-wide attribute sweep per
-	// selected column -- O(N^2) for a result the bulk handler recomputes once at the end
-	// (~40ms at 80 fields). toggleFilterControls() deliberately still runs per row: that is
+	// selected column -- O(N^2) for a result the bulk handler recomputes once at the end.
+	// toggleFilterControls() deliberately still runs per row: that is
 	// per-row state, not a whole-list rebuild.
 	var bulkColumnToggle = false;
 
@@ -223,8 +215,7 @@ jQuery(function($) {
 			// btbl_refresh_fields (the same AJAX swap the post-type switch uses), no full reload.
 			// CSV column inference still runs through the CSV controls' own refresh (file upload /
 			// delimiter / header), and custom-query/external columns load via their own actions.
-			var postTypeVal = $postTypeSelect.length ? $postTypeSelect.val() : '';
-			var typeParam = Array.isArray(postTypeVal) ? postTypeVal.join(',') : (postTypeVal || '');
+			var typeParam = normalizeSelectValues($postTypeSelect.length ? $postTypeSelect.val() : '').join(',');
 			refreshSourceFields(typeParam);
 		});
 		syncSourceVisibility();
@@ -232,8 +223,7 @@ jQuery(function($) {
 
 	if ($postTypeSelect.length) {
 		$postTypeSelect.on('change', function() {
-			var selected = $(this).val();
-			var typeParam = Array.isArray(selected) ? selected.join(',') : (selected || '');
+			var typeParam = normalizeSelectValues($(this).val()).join(',');
 			refreshSourceFields(typeParam);
 		});
 	}
@@ -544,7 +534,7 @@ jQuery(function($) {
 		var typeVal = $postTypeSelect.length ? $postTypeSelect.val() : '';
 		var payload = {
 			action: 'btbl_refresh_fields',
-			type: Array.isArray(typeVal) ? typeVal.join(',') : (typeVal || ''),
+			type: normalizeSelectValues(typeVal).join(','),
 			source: 'csv'
 		};
 		if (clearCsv) {
@@ -802,7 +792,7 @@ jQuery(function($) {
 			updateInput();
 		}
 
-		// R19: keyboard reordering (parity with drag-and-drop).
+		// Provide keyboard reordering alongside drag-and-drop.
 		$list.on('keydown', 'li', function(e) {
 			if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
 				return;
@@ -1091,7 +1081,7 @@ jQuery(function($) {
 	});
 
 
-	// R6: validate a JSON textarea on blur so a typo doesn't silently discard what was typed.
+	// Validate JSON textareas on blur so a typo does not silently discard what was typed.
 	// Both JSON inputs in the editor fail the same way -- invalid JSON is discarded at save with
 	// no visible sign -- so they share one validator instead of only Value overrides having it.
 	// Opt in with class="btbl-json-check" + data-error-target="<id of the message element>".
@@ -1111,7 +1101,7 @@ jQuery(function($) {
 		$ta.toggleClass('btbl-invalid', !valid);
 	});
 
-	// R15/R45: show the Refresh-preview button only while the builder differs from the
+	// Show the Refresh-preview button only while the builder differs from the
 	// state the preview currently reflects; hide it again when edits are reverted.
 	var $builderForm = $('#btbl-table-builder').closest('form');
 	if (!$builderForm.length) { $builderForm = $('#post'); }
@@ -1128,7 +1118,7 @@ jQuery(function($) {
 	}
 	// Debounce the input-driven path only. A manual-data grid is thousands of text inputs inside
 	// this form, and syncRefreshPreviewVisibility() serialize()s the whole #post form; running that
-	// synchronously on every keystroke lagged typing badly at the 25,000-cell cap (~58ms/key). The
+	// synchronously on every keystroke lags badly near the cell cap. The
 	// Refresh-preview button only needs to appear shortly after edits settle, not on the exact
 	// keystroke. Direct callers (post-refresh, and the reset at load) still invoke it synchronously.
 	var refreshPreviewDebounce;
@@ -1137,7 +1127,7 @@ jQuery(function($) {
 		refreshPreviewDebounce = setTimeout(syncRefreshPreviewVisibility, 200);
 	});
 
-	// R15: refresh the table preview against the current (unsaved) builder state.
+	// Refresh the table preview against the current unsaved builder state.
 	$(document).on('click', '#btbl-refresh-preview', function(e) {
 		e.preventDefault();
 		var $btn = $(this);

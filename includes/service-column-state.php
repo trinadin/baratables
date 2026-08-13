@@ -215,7 +215,7 @@ trait BaraTables_Column_State_Trait {
 	 * All normalization belongs to build_editor_column_records_from_definition(); this method is
 	 * now only a projection and can no longer drift from the editor's canonical state.
 	 *
-	 * @deprecated Use build_editor_column_records_from_definition().
+	 * @deprecated 1.2.5 Use build_editor_column_records_from_definition().
 	 */
 	public function build_column_state_from_definition(array $columns): array {
 		$state = [
@@ -294,7 +294,7 @@ trait BaraTables_Column_State_Trait {
 		return $state;
 	}
 
-	/** @deprecated Filter canonical records with filter_editor_column_records_by_slug_map(). */
+	/** @deprecated 1.2.5 Filter canonical records with filter_editor_column_records_by_slug_map(). */
 	public function filter_column_state_by_slug_map(array $state, array $slug_map): array {
 		if (empty($slug_map)) {
 			return $state;
@@ -307,7 +307,7 @@ trait BaraTables_Column_State_Trait {
 		return $state;
 	}
 
-	/** @deprecated Apply defaults with apply_editor_column_record_defaults(). */
+	/** @deprecated 1.2.5 Apply defaults with apply_editor_column_record_defaults(). */
 	public function apply_column_state_defaults(array $state, array $selected_columns): array {
 		$defaults = [
 			'selected_searchable' => true,
@@ -324,7 +324,7 @@ trait BaraTables_Column_State_Trait {
 		return $state;
 	}
 
-	/** @deprecated Use build_column_records_from_request(). */
+	/** @deprecated 1.2.5 Use build_column_records_from_request(). */
 	public function build_column_state_from_request(array $raw, array $columns): array {
 		return $this->sanitize_column_request_maps($raw, $columns);
 	}

@@ -4,31 +4,12 @@ if (!defined('ABSPATH')) {
 	exit;
 }
 
-// Front-end + shared layer. The admin half (the seven includes/admin/*.php files) is loaded on
-// demand in load_admin() only when a request actually touches wp-admin, AJAX or WP-CLI -- it is
-// roughly half the plugin's PHP and a plain front-end page view needs none of it. Verified there
-// are no admin-class references anywhere in this layer, so the front end never triggers the load.
-require_once __DIR__ . '/core.php';
-require_once __DIR__ . '/chart-types.php';
-require_once __DIR__ . '/repositories.php';
-require_once __DIR__ . '/row-result.php';
-// BaraTables_Service collaborators and concern traits -- must load before services.php.
-require_once __DIR__ . '/service-query-sanitize.php';
-require_once __DIR__ . '/service-filter-options.php';
-require_once __DIR__ . '/service-value-format.php';
-require_once __DIR__ . '/service-fields-discovery.php';
-require_once __DIR__ . '/service-column-state.php';
-require_once __DIR__ . '/services.php';
-require_once __DIR__ . '/table-presentation.php';
-require_once __DIR__ . '/chart-service.php';
-require_once __DIR__ . '/frontend.php';
-
 class BaraTables {
 	private BaraTables_Repository $repo;
 	private BaraTables_Chart_Repository $chart_repo;
-	private BaraTables_Service $service;
-	private BaraTables_Chart_Service $chart_service;
-	private BaraTables_Frontend $frontend;
+	private ?BaraTables_Service $service = null;
+	private ?BaraTables_Chart_Service $chart_service = null;
+	private ?BaraTables_Frontend $frontend = null;
 	private string $plugin_url;
 	private string $plugin_path;
 
@@ -37,52 +18,117 @@ class BaraTables {
 		$this->plugin_path = plugin_dir_path($plugin_file);
 		$this->repo = new BaraTables_Repository();
 		$this->chart_repo = new BaraTables_Chart_Repository();
-		$this->service = new BaraTables_Service($this->repo);
-		$this->chart_service = new BaraTables_Chart_Service($this->repo, $this->chart_repo, $this->service);
-		$this->frontend = new BaraTables_Frontend($this->service, $this->chart_service, $this->plugin_url, $this->plugin_path);
 
 		// CPTs must register on the front end too so [bara_table]/[bara_chart] can resolve them.
 		// Register straight from the repositories (always loaded), not via the admin objects, so a
 		// front-end request has no reason to construct the admin layer at all.
 		add_action('init', [$this->repo, 'register_cpt']);
 		add_action('init', [$this->chart_repo, 'register_cpt']);
-		add_action('wp_enqueue_scripts', [$this->frontend, 'register_frontend_assets']);
-		add_shortcode('bara_table', [$this->frontend, 'render_shortcode']);
-		add_shortcode('bara_chart', [$this->frontend, 'render_chart_shortcode']);
+		add_action('wp_enqueue_scripts', [$this, 'maybe_register_frontend_assets']);
+		add_shortcode('bara_table', [$this, 'render_table_shortcode']);
+		add_shortcode('bara_chart', [$this, 'render_chart_shortcode']);
 
 		if (is_admin() || wp_doing_ajax() || (defined('WP_CLI') && WP_CLI)) {
 			$this->load_admin();
 		}
 	}
 
-	/**
-	 * Load and wire the admin half. Called only for wp-admin, AJAX and WP-CLI requests, never for a
-	 * plain front-end page view -- the requires and object graph below are otherwise dead weight.
-	 */
+	private function service(): BaraTables_Service {
+		if ($this->service === null) {
+			$this->service = new BaraTables_Service($this->repo);
+		}
+		return $this->service;
+	}
+
+	private function chart_service(): BaraTables_Chart_Service {
+		if ($this->chart_service === null) {
+			$this->chart_service = new BaraTables_Chart_Service($this->repo, $this->chart_repo, $this->service());
+		}
+		return $this->chart_service;
+	}
+
+	private function frontend(): BaraTables_Frontend {
+		if ($this->frontend === null) {
+			$this->frontend = new BaraTables_Frontend($this->service(), $this->chart_service(), $this->plugin_url, $this->plugin_path);
+		}
+		return $this->frontend;
+	}
+
+	public function maybe_register_frontend_assets(): void {
+		if ($this->main_query_has_shortcode()) {
+			$this->frontend()->register_frontend_assets();
+		}
+	}
+
+	public function render_table_shortcode($atts): string {
+		return $this->frontend()->render_shortcode($atts);
+	}
+
+	public function render_chart_shortcode($atts): string {
+		return $this->frontend()->render_chart_shortcode($atts);
+	}
+
+	private function main_query_has_shortcode(): bool {
+		$has_shortcode = static function ($content): bool {
+			$content = (string) $content;
+			return $content !== '' && (has_shortcode($content, 'bara_table') || has_shortcode($content, 'bara_chart'));
+		};
+		if (is_singular()) {
+			$post = get_queried_object();
+			return $post instanceof WP_Post && $has_shortcode($post->post_content);
+		}
+		foreach ((array) ($GLOBALS['wp_query']->posts ?? []) as $post) {
+			if ($post instanceof WP_Post && $has_shortcode($post->post_content)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Wire the admin half only for wp-admin, AJAX and WP-CLI requests. */
 	private function load_admin(): void {
-		require_once __DIR__ . '/admin/support.php';
-		require_once __DIR__ . '/admin/form-context.php';
-		require_once __DIR__ . '/admin/ui.php';
-		require_once __DIR__ . '/admin/actions.php';
-		require_once __DIR__ . '/admin/preview.php';
-		require_once __DIR__ . '/admin/pages.php';
-		require_once __DIR__ . '/admin/import.php';
-		require_once __DIR__ . '/admin/options.php';
-		require_once __DIR__ . '/admin/admin.php';
+		$service = $this->service();
+		$admin = new BaraTables_Admin($service, $this->repo, $this->plugin_url, $this->plugin_path);
+		new BaraTables_Chart_Admin($this->chart_service(), $this->chart_repo, $service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD);
 
-		$admin = new BaraTables_Admin($this->service, $this->repo, $this->plugin_url, $this->plugin_path);
-		new BaraTables_Chart_Admin($this->chart_service, $this->chart_repo, $this->service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD);
-
-		// One-time label backfill, admin side only: admin_init never fires on a front-end page
-		// render, so a public request never pays for the write pass over every table. The gate is a
-		// non-autoloaded option -- read only here, never on the front end -- so after the first run
-		// each admin-side request spends a single indexed option lookup and returns.
-		add_action('admin_init', [$this->service, 'migrate_legacy_english_labels']);
+		// Run durable, idempotent data upgrades only in the admin. One autoloaded schema gate keeps
+		// subsequent admin requests query-free and remains unset after a failed write so it retries.
+		add_action('admin_init', [$this, 'run_data_migrations']);
 
 		add_action('admin_menu', [$this, 'cleanup_admin_menu'], 20);
 		add_filter('parent_file', [$this, 'highlight_tables_parent_menu']);
 		add_filter('submenu_file', [$this, 'highlight_tables_submenu'], 10, 1);
 		add_action('admin_enqueue_scripts', [$admin, 'enqueue_admin_assets']);
+	}
+
+	public function run_data_migrations(): void {
+		$recovery = $this->service()->retry_chart_link_recovery();
+		if ($recovery['remaining'] > 0 || $recovery['error']) {
+			BaraTables_Admin_Notice::queue(
+				sprintf(
+					/* translators: %d is the number of linked charts still awaiting recovery. */
+					_n('BaraTables is still restoring %d linked chart after a cancelled Table ID change. It will retry automatically.', 'BaraTables is still restoring %d linked charts after a cancelled Table ID change. It will retry automatically.', max(1, $recovery['remaining']), 'baratables'),
+					max(1, $recovery['remaining'])
+				),
+				'error'
+			);
+		} elseif ($recovery['recovered'] > 0) {
+			BaraTables_Admin_Notice::queue(
+				sprintf(
+					/* translators: %d is the number of linked charts restored. */
+					_n('BaraTables restored %d linked chart after a cancelled Table ID change.', 'BaraTables restored %d linked charts after a cancelled Table ID change.', $recovery['recovered'], 'baratables'),
+					$recovery['recovered']
+				),
+				'success'
+			);
+		}
+		$error = $this->service()->migrate_data_schema();
+		if ($error) {
+			BaraTables_Admin_Notice::queue(
+				__('BaraTables could not finish upgrading its saved data. Your previous data was kept and the upgrade will retry automatically.', 'baratables'),
+				'error'
+			);
+		}
 	}
 
 	public function cleanup_admin_menu(): void {

@@ -63,6 +63,10 @@
 		}).get();
 	}
 
+	function asArray(value) {
+		return Array.isArray(value) ? value : [value];
+	}
+
 	function applyTerms(context, terms) {
 		if (terms.length) {
 			context.apply(terms);
@@ -146,7 +150,7 @@
 				context.changed();
 			});
 			if (context.preset) {
-				$select.val(Array.isArray(context.preset) ? context.preset[0] : context.preset).trigger('change');
+				$select.val(asArray(context.preset)[0]).trigger('change');
 			}
 		},
 		reset: function(context) {
@@ -182,7 +186,7 @@
 				applyTerms(context, terms);
 			});
 			if (context.preset) {
-				$select.val(compactValues(Array.isArray(context.preset) ? context.preset : [context.preset])).trigger('change');
+				$select.val(compactValues(asArray(context.preset))).trigger('change');
 			}
 		},
 		reset: function(context) {
@@ -204,7 +208,7 @@
 				applyTerms(context, terms);
 			});
 			if (context.preset) {
-				var values = Array.isArray(context.preset) ? context.preset : [context.preset];
+				var values = asArray(context.preset);
 				$checkboxes.each(function() {
 					if (values.indexOf($(this).val()) !== -1) {
 						$(this).prop('checked', true);
@@ -237,7 +241,7 @@
 				context.changed();
 			});
 			if (context.preset) {
-				var preset = Array.isArray(context.preset) ? context.preset[0] : context.preset;
+				var preset = asArray(context.preset)[0];
 				var $match = $radios.filter(function() {
 					return String($(this).val()) === String(preset);
 				});
@@ -293,6 +297,8 @@
 
 	function create(options) {
 		var resetting = false;
+		var initializing = true;
+		var initialDrawNeeded = false;
 		var contexts = [];
 
 		function resolveColumn(originalIndex) {
@@ -315,13 +321,13 @@
 			} catch (e) {
 			}
 			var api = expression ? column.search(expression) : column.search(pattern, true, false);
-			if (!resetting) {
+			if (!resetting && !initializing) {
 				api.draw();
 			}
 		}
 
 		function changed() {
-			if (typeof options.onChange === 'function') {
+			if (!resetting && !initializing && typeof options.onChange === 'function') {
 				options.onChange(readActive(options.$wrapper));
 			}
 		}
@@ -344,7 +350,7 @@
 				},
 				clear: function() {
 					var api = resolveColumn(index).search('');
-					if (!resetting) {
+					if (!resetting && !initializing) {
 						api.draw();
 					}
 				},
@@ -353,11 +359,18 @@
 			contexts.push({ adapter: adapter, context: context });
 			initializeSelect2(context);
 			adapter.bind(context);
+			if (context.preset !== null && context.preset !== undefined) {
+				initialDrawNeeded = true;
+			}
 		});
+		initializing = false;
 
 		return {
 			readActive: function() {
 				return readActive(options.$wrapper);
+			},
+			needsInitialDraw: function() {
+				return initialDrawNeeded;
 			},
 			reset: function() {
 				resetting = true;

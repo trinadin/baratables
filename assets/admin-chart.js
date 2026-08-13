@@ -6,11 +6,50 @@ jQuery(function($) {
 
 	var $chartTableSelect = $('#btbl_chart_table');
 	if ($chartTableSelect.length) {
+		var auth = adminCore.formAuth($chartTableSelect);
+		$chartTableSelect.select2({
+			width: '100%',
+			placeholder: $chartTableSelect.find('option[value=""]').first().text() || '',
+			ajax: {
+				url: window.ajaxurl,
+				type: 'POST',
+				dataType: 'json',
+				delay: 250,
+				data: function(params) {
+					return {
+						action: 'btbl_search_chart_tables',
+						_baratables_nonce: auth.nonce,
+						post_id: auth.postId,
+						search: params.term || '',
+						page: params.page || 1
+					};
+				},
+				processResults: function(response) {
+					var data = response && response.success && response.data ? response.data : {};
+					return {
+						results: Array.isArray(data.results) ? data.results : [],
+						pagination: {more: !!data.more}
+					};
+				},
+				cache: true
+			},
+			language: {
+				searching: function() { return $chartTableSelect.data('searching-label') || 'Searching...'; }
+			}
+		});
+		$chartTableSelect.data('previous', $chartTableSelect.val());
 		$chartTableSelect.on('focus', function() {
 			$(this).data('previous', $(this).val());
 		});
+		$chartTableSelect.on('select2:opening', function() {
+			$(this).data('previous', $(this).val());
+		});
+		$chartTableSelect.on('select2:open', function() {
+			$('.select2-container--open .select2-search__field').last()
+				.attr('placeholder', $chartTableSelect.data('search-placeholder') || '');
+		});
 		$chartTableSelect.on('change', function() {
-			// R29: warn before the reload discards the current column choices.
+			// Confirm before rebuilding the column pickers and clearing their current choices.
 			var hasChoices = ($('#btbl_chart_x_axis').val() || '') !== '' ||
 				$('#btbl_chart_series input[type="checkbox"]:checked').length > 0 ||
 				['#btbl_chart_heatmap_x', '#btbl_chart_heatmap_y', '#btbl_chart_heatmap_value'].some(function(sel) {
@@ -18,7 +57,7 @@ jQuery(function($) {
 				});
 			var confirmMsg = $(this).data('switch-confirm');
 			if (hasChoices && confirmMsg && !window.confirm(confirmMsg)) {
-				$(this).val($(this).data('previous') || '');
+				$(this).val($(this).data('previous') || '').trigger('change.select2');
 				return;
 			}
 			var selected = $(this).val() || '';
@@ -85,7 +124,7 @@ jQuery(function($) {
 		if (!$series.length) {
 			return;
 		}
-		// R8: checkbox series list -- hide and uncheck the column chosen as the X-axis.
+		// A column cannot be both the X-axis and a data series.
 		$series.find('.btbl-chart-series-option').each(function() {
 			var $opt = $(this);
 			var isXAxis = xAxis !== '' && String($opt.data('slug')) === xAxis;
@@ -150,7 +189,7 @@ jQuery(function($) {
 				return;
 			}
 			$modal.removeClass('is-open');
-			// R10: return focus to the control that opened the modal.
+			// Return focus to the control that opened the modal.
 			if (lastFocus && typeof lastFocus.focus === 'function') {
 				lastFocus.focus();
 			}
@@ -159,7 +198,7 @@ jQuery(function($) {
 		function openModal(trigger) {
 			lastFocus = trigger || document.activeElement;
 			$modal.addClass('is-open');
-			// R10: move focus into the dialog (active card, else first card/close).
+			// Move focus into the dialog (active card, else first card/close).
 			var $target = $chooser.find('.btbl-chart-type-card.is-active').first();
 			if (!$target.length) {
 				$target = $chooser.find('.btbl-chart-type-card').first();
@@ -173,7 +212,15 @@ jQuery(function($) {
 			}
 		}
 
-		// R10: trap Tab within the open dialog.
+		function bindActivation($elements, activate) {
+			$elements.on('click keydown', function(e) {
+				if (!isActivationEvent(e)) { return; }
+				e.preventDefault();
+				activate(this);
+			});
+		}
+
+		// Trap Tab within the open dialog.
 		$modal.on('keydown', function(e) {
 			if (e.key !== 'Tab' || !$modal.hasClass('is-open')) {
 				return;
@@ -220,21 +267,8 @@ jQuery(function($) {
 		$select.on('change', syncFromSelect);
 		syncFromSelect();
 
-		$openers.on('click keydown', function(e) {
-			if (!isActivationEvent(e)) {
-				return;
-			}
-			e.preventDefault();
-			openModal(this);
-		});
-
-		$closers.on('click keydown', function(e) {
-			if (!isActivationEvent(e)) {
-				return;
-			}
-			e.preventDefault();
-			closeModal();
-		});
+		bindActivation($openers, openModal);
+		bindActivation($closers, closeModal);
 
 		$(document).on('keydown', function(e) {
 			if (e.key === 'Escape' && $modal.hasClass('is-open')) {

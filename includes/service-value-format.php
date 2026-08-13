@@ -40,10 +40,9 @@ trait BaraTables_Value_Format_Trait {
 		// authoritative for all five sources: the front-end <td> (frontend.php) and the admin
 		// preview (pages.php) both wp_kses_post() every cell, and the chart payload's values pass
 		// through btblExtractText()/btblParseNumber() in baratables.js before reaching ECharts.
-		// A pass here could not be authoritative anyway -- apply_overrides() runs immediately
-		// after resolve_value() and can reintroduce markup. The CSV, external-DB and manual paths
-		// never kses'd at row-build time either, so this keeps all five consistent. At the
-		// 10,000-row ceiling the removed pass was ~250-880ms of duplicated work per render.
+		// A pass here could not be authoritative anyway -- the compiled override pass runs after
+		// value resolution and can reintroduce markup. The CSV, external-DB and manual paths never
+		// kses'd at row-build time either, so this keeps all five consistent.
 		return $value;
 	}
 
@@ -160,30 +159,42 @@ trait BaraTables_Value_Format_Trait {
 		if (empty(array_filter($slugs))) {
 			return $rows;
 		}
+		$compiled = $this->compile_overrides_for_columns($overrides, $slugs);
+		if (empty($compiled['rules'])) {
+			return $rows;
+		}
 		foreach ($rows as &$row) {
 			if (!is_array($row)) {
 				continue;
 			}
 			$row_tokens = [];
-			foreach ($slugs as $idx => $slug) {
-				if ($slug === '' || !array_key_exists($idx, $row)) {
-					continue;
-				}
-				$value = (string) $row[$idx];
-				$row_tokens[strtolower($slug)] = $value;
-				$separator = strpos($slug, ':');
-				if ($separator !== false) {
-					$key = substr($slug, $separator + 1);
-					if ($key !== '') {
-						$row_tokens[strtolower($key)] = $value;
+			if ($compiled['uses_row_tokens']) {
+				foreach ($slugs as $idx => $slug) {
+					if ($slug === '' || !array_key_exists($idx, $row)) {
+						continue;
+					}
+					$value = (string) $row[$idx];
+					$row_tokens[strtolower($slug)] = $value;
+					$separator = strpos($slug, ':');
+					if ($separator !== false) {
+						$key = substr($slug, $separator + 1);
+						if ($key !== '') {
+							$row_tokens[strtolower($key)] = $value;
+						}
 					}
 				}
 			}
 			foreach ($slugs as $idx => $slug) {
-				if ($slug === '' || !array_key_exists($idx, $row)) {
+				if ($slug === '' || !array_key_exists($idx, $row) || empty($compiled['rules'][$slug])) {
 					continue;
 				}
-				$row[$idx] = $this->apply_overrides_for_row((string) $row[$idx], $slug, $overrides, $row_tokens);
+				$row[$idx] = $this->apply_compiled_overrides_with(
+					(string) $row[$idx],
+					$compiled['rules'][$slug],
+					function (string $replace) use ($row_tokens): string {
+						return $this->replace_row_tokens($replace, $row_tokens);
+					}
+				);
 			}
 		}
 		unset($row);
@@ -237,51 +248,75 @@ trait BaraTables_Value_Format_Trait {
 		return date_i18n($format, $timestamp);
 	}
 
-	private function apply_overrides_with(string $value, string $column_slug, array $overrides, callable $resolve_replace): string {
-		if ($value === '' || empty($overrides)) {
+	/**
+	 * Compile wildcard and column-specific rules into the exact ordered list each column needs.
+	 * Regex validity is checked once per row set instead of once per matching cell.
+	 *
+	 * @return array{rules:array<string,array<int,array<string,mixed>>>,uses_row_tokens:bool}
+	 */
+	private function compile_overrides_for_columns(array $overrides, array $column_slugs): array {
+		$rules = [];
+		foreach (array_unique(array_filter(array_map('strval', $column_slugs))) as $slug) {
+			$rules[$slug] = [];
+		}
+		$uses_row_tokens = false;
+		foreach ($overrides as $rule) {
+			if (!is_array($rule) || !isset($rule['column'], $rule['search']) || (string) $rule['column'] === '' || (string) $rule['search'] === '') {
+				continue;
+			}
+			$column = (string) $rule['column'];
+			$search = (string) $rule['search'];
+			$replace = isset($rule['replace']) ? (string) $rule['replace'] : '';
+			$is_regex = !empty($rule['regex']);
+			if ($is_regex) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Validate a user-supplied pattern without emitting a warning.
+				set_error_handler(static function () {});
+				$valid = preg_match($search, '') !== false;
+				restore_error_handler();
+				if (!$valid) {
+					continue;
+				}
+			}
+			$compiled_rule = [
+				'search' => $search,
+				'replace' => $replace,
+				'regex' => $is_regex,
+			];
+			if (preg_match('/{{\\s*(?:row\\.)?[a-z0-9_:-]+\\s*}}/i', $replace)) {
+				$uses_row_tokens = true;
+			}
+			if ($column === '*') {
+				foreach ($rules as &$column_rules) {
+					$column_rules[] = $compiled_rule;
+				}
+				unset($column_rules);
+			} elseif (isset($rules[$column])) {
+				$rules[$column][] = $compiled_rule;
+			}
+		}
+		$rules = array_filter($rules);
+		return ['rules' => $rules, 'uses_row_tokens' => $uses_row_tokens];
+	}
+
+	private function apply_compiled_overrides_with(string $value, array $rules, callable $resolve_replace): string {
+		if ($value === '' || empty($rules)) {
 			return $value;
 		}
 
-		foreach ($overrides as $rule) {
-			if (!is_array($rule) || !isset($rule['column']) || $rule['column'] === '') {
-				continue;
-			}
-			if ($rule['column'] !== $column_slug && $rule['column'] !== '*') {
-				continue;
-			}
-			$search = isset($rule['search']) ? (string) $rule['search'] : '';
-			$replace = isset($rule['replace']) ? (string) $rule['replace'] : '';
-			if ($search === '') {
-				continue;
-			}
-			$resolved_replace = $resolve_replace($replace);
+		foreach ($rules as $rule) {
+			$search = $rule['search'];
 			if (!empty($rule['regex'])) {
-				$pattern = $search;
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Suppresses warnings from user-supplied regex patterns; handler is immediately restored.
-				set_error_handler(static function () {});
-				$result = preg_replace($pattern, $resolved_replace, $value);
-				restore_error_handler();
+				$resolved_replace = $resolve_replace($rule['replace']);
+				$result = preg_replace($search, $resolved_replace, $value);
 				if (is_string($result)) {
 					$value = $result;
 				}
-			} else {
-				$value = str_replace($search, $resolved_replace, $value);
+			} elseif (strpos($value, $search) !== false) {
+				$value = str_replace($search, $resolve_replace($rule['replace']), $value);
 			}
 		}
 
 		return $value;
-	}
-
-	private function apply_overrides(string $value, string $column_slug, array $overrides, WP_Post $post): string {
-		return $this->apply_overrides_with($value, $column_slug, $overrides, function (string $replace) use ($post): string {
-			return $this->replace_merge_tags($replace, $post);
-		});
-	}
-
-	private function apply_overrides_for_row(string $value, string $column_slug, array $overrides, array $row_tokens): string {
-		return $this->apply_overrides_with($value, $column_slug, $overrides, function (string $replace) use ($row_tokens): string {
-			return $this->replace_row_tokens($replace, $row_tokens);
-		});
 	}
 
 	private function replace_merge_tags(string $text, WP_Post $post): string {
@@ -330,12 +365,17 @@ trait BaraTables_Value_Format_Trait {
 	 * so legacy/imported columns such as `core:post_name` keep working. `post_password` and
 	 * `post_content_filtered` are the sensitive omissions.
 	 */
-	private const ALLOWED_CORE_KEYS = [
-		'ID', 'post_author', 'post_date', 'post_date_gmt', 'post_content', 'post_title',
-		'post_excerpt', 'post_status', 'comment_status', 'ping_status', 'post_name',
-		'post_modified', 'post_modified_gmt', 'post_parent', 'guid', 'menu_order',
-		'post_type', 'post_mime_type', 'comment_count', 'permalink',
-	];
+	private static function allowed_core_keys(): array {
+		// Constants declared by traits require PHP 8.2. Keep this request-local immutable list in a
+		// method so BaraTables continues to load on its declared PHP 7.4 platform floor.
+		static $keys = [
+			'ID', 'post_author', 'post_date', 'post_date_gmt', 'post_content', 'post_title',
+			'post_excerpt', 'post_status', 'comment_status', 'ping_status', 'post_name',
+			'post_modified', 'post_modified_gmt', 'post_parent', 'guid', 'menu_order',
+			'post_type', 'post_mime_type', 'comment_count', 'permalink',
+		];
+		return $keys;
+	}
 
 	public function get_core_value(WP_Post $post, string $key) {
 		// Password-protected posts: WordPress lists them publicly but withholds their content, and
@@ -344,12 +384,8 @@ trait BaraTables_Value_Format_Trait {
 		// and the excerpt fast path bypassed the gate get_the_excerpt() used to provide.
 		// Matches core's own semantics: the row still appears, the protected text does not.
 		//
-		// Test order matters enormously. post_password_required() runs a phpass CheckPassword (8
-		// stretching rounds, ~1.1ms MEASURED) for any visitor holding a wp-postpass_ cookie, and
-		// that cookie is site-wide -- unlocking one protected post makes every protected row pay it.
-		// So: cheapest test first (is this even a content column), then the free field check core
-		// itself opens with, and only then the hash. Those two guards take a 4-column protected row
-		// from 4679us to 211us (measured); every remaining call is one a correct answer requires.
+		// Test the column and password field before post_password_required(), whose password hash
+		// check is expensive and applies to every protected row when the site-wide cookie exists.
 		//
 		// Deliberately NOT memoized. Caching the verdict per post makes this stateful, and the
 		// state it depends on (the wp-postpass_ cookie) is exactly what the caller may change --
@@ -428,7 +464,7 @@ trait BaraTables_Value_Format_Trait {
 			case 'permalink':
 				return get_permalink($post);
 			default:
-				if (!in_array($key, self::ALLOWED_CORE_KEYS, true)) {
+				if (!in_array($key, self::allowed_core_keys(), true)) {
 					return '';
 				}
 					return $post->$key ?? '';

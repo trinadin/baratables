@@ -196,7 +196,7 @@ class BaraTables_Admin_Action_Handler {
 		}
 
 		$request_columns = $request['columns'];
-		// R1: a brand-new WP Query table saved with no columns gets a default Title column,
+		// A brand-new WP Query table saved with no columns gets a default Title column,
 		// so the most common first action (pick a source -> Publish) yields a working table.
 		// Gated to genuinely new tables (no prior definition) so deselecting every column on
 		// an existing table still saves as empty.

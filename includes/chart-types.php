@@ -86,9 +86,8 @@ class BaraTables_Chart_Types {
 
 	/** Ordered, de-duplicated column slugs referenced by a saved chart configuration. */
 	public static function referenced_columns(array $options, bool $required_only = false): array {
-		$roles = $required_only
-			? self::get((string) ($options['type'] ?? 'bar'))['required_roles']
-			: self::column_role_keys();
+		$type = self::get((string) ($options['type'] ?? 'bar'));
+		$roles = $required_only ? $type['required_roles'] : $type['column_roles'];
 		$slugs = [];
 		foreach ($roles as $role) {
 			$values = $role === 'series' ? (array) ($options[$role] ?? []) : [$options[$role] ?? ''];

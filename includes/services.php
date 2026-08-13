@@ -196,7 +196,13 @@ class BaraTables_Service {
 	// Ceiling on terms fetched per taxonomy for the editor's term picker. Already-selected terms
 	// are always merged in on top of this, so the cap can never drop an existing selection.
 	public const MAX_TERM_PICKER_TERMS = 200;
+	public const AUTO_LABEL_MIGRATION_OPTION = 'btbl_auto_label_migrated';
 	public const LABEL_I18N_MIGRATION_OPTION = 'btbl_label_i18n_migrated';
+	public const DATA_SCHEMA_OPTION = 'btbl_data_schema_version';
+	public const CHART_LINK_RECOVERY_OPTION = 'btbl_chart_link_recovery';
+	// Generation 1 could be stamped after an unchecked write. Revisit it once through the
+	// verified persistence path; only generation 2 proves the complete site scan succeeded.
+	private const DATA_MIGRATION_GENERATION = 2;
 	/**
 	 * The English label defaults that the table-option schema carried before 1.2.3, and that the
 	 * editor therefore baked into its input fields as a VALUE and persisted on every save. Any
@@ -222,42 +228,56 @@ class BaraTables_Service {
 	];
 	/** @var array<string,BaraTables_Row_Result> Per-request atomic row results. */
 	private array $row_cache = [];
+	/** @var array<string,wpdb> Per-request external connections keyed by credentials + charset. */
+	private array $external_connections = [];
 	private BaraTables_Repository $repo;
-	private BaraTables_Query_Sanitizer $query_sanitizer;
-	private BaraTables_Fields_Discovery $fields_discovery;
+	private ?BaraTables_Query_Sanitizer $query_sanitizer = null;
+	private ?BaraTables_Fields_Discovery $fields_discovery = null;
 
 	public function __construct(BaraTables_Repository $repo) {
 		$this->repo = $repo;
-		$this->query_sanitizer = new BaraTables_Query_Sanitizer();
-		$this->fields_discovery = new BaraTables_Fields_Discovery($this->query_sanitizer);
+	}
+
+	private function query_sanitizer(): BaraTables_Query_Sanitizer {
+		if ($this->query_sanitizer === null) {
+			$this->query_sanitizer = new BaraTables_Query_Sanitizer();
+		}
+		return $this->query_sanitizer;
+	}
+
+	private function fields_discovery(): BaraTables_Fields_Discovery {
+		if ($this->fields_discovery === null) {
+			$this->fields_discovery = new BaraTables_Fields_Discovery($this->query_sanitizer());
+		}
+		return $this->fields_discovery;
 	}
 
 	public function sanitize_custom_query_json(string $raw_json): array {
-		return $this->query_sanitizer->sanitize_custom_query_json($raw_json);
+		return $this->query_sanitizer()->sanitize_custom_query_json($raw_json);
 	}
 
 	public function sanitize_value_overrides(string $raw_json): array {
-		return $this->query_sanitizer->sanitize_value_overrides($raw_json);
+		return $this->query_sanitizer()->sanitize_value_overrides($raw_json);
 	}
 
 	public function get_supported_post_types(): array {
-		return $this->fields_discovery->get_supported_post_types();
+		return $this->fields_discovery()->get_supported_post_types();
 	}
 
 	public function get_taxonomies_for_post_type(string $post_type, array $include_term_ids = []): array {
-		return $this->fields_discovery->get_taxonomies_for_post_type($post_type, $include_term_ids);
+		return $this->fields_discovery()->get_taxonomies_for_post_type($post_type, $include_term_ids);
 	}
 
 	public function get_taxonomies_for_post_types(array $post_types, array $include_term_ids = []): array {
-		return $this->fields_discovery->get_taxonomies_for_post_types($post_types, $include_term_ids);
+		return $this->fields_discovery()->get_taxonomies_for_post_types($post_types, $include_term_ids);
 	}
 
 	public function get_available_fields(string $post_type): array {
-		return $this->fields_discovery->get_available_fields($post_type);
+		return $this->fields_discovery()->get_available_fields($post_type);
 	}
 
 	public function get_available_fields_for_post_types(array $post_types): array {
-		return $this->fields_discovery->get_available_fields_for_post_types($post_types);
+		return $this->fields_discovery()->get_available_fields_for_post_types($post_types);
 	}
 
 	public static function allowed_inline_html(): array {
@@ -547,48 +567,86 @@ class BaraTables_Service {
 	 *
 	 * Idempotent and gated by an option; safe to call on every admin load.
 	 */
-	public function migrate_legacy_english_labels(): void {
-		if (get_option(self::LABEL_I18N_MIGRATION_OPTION)) {
-			return;
+	public function migrate_data_schema(): ?WP_Error {
+		if ((int) get_option(self::DATA_SCHEMA_OPTION, 0) >= self::DATA_MIGRATION_GENERATION) {
+			return null;
 		}
-		// Include 'trash' (which get_posts excludes under 'any') for the same reason
-		// rewrite_chart_table_id() does: a trashed table that is later restored must come back
-		// migrated, not carrying literals this pass will never run again to clear.
-		$ids = get_posts([
-			'post_type' => BaraTables_Repository::CPT,
-			'post_status' => ['publish', 'draft', 'pending', 'future', 'private', 'trash'],
-			'numberposts' => -1, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page -- One-time migration must visit every table once.
-			'fields' => 'ids',
-			'no_found_rows' => true,
-		]);
-		if (!empty($ids)) {
-			_prime_post_caches($ids, false, true);
-		}
-		foreach ($ids as $id) {
+
+		$add_auto_labels = (int) get_option(self::AUTO_LABEL_MIGRATION_OPTION, 0) < self::DATA_MIGRATION_GENERATION;
+		$clear_legacy_labels = (int) get_option(self::LABEL_I18N_MIGRATION_OPTION, 0) < self::DATA_MIGRATION_GENERATION;
+		foreach (($add_auto_labels || $clear_legacy_labels) ? $this->get_migration_table_ids() : [] as $id) {
 			$defn = get_post_meta((int) $id, BaraTables_Repository::META_KEY, true);
-			if (!is_array($defn) || empty($defn['table_options']) || !is_array($defn['table_options'])) {
+			if (!is_array($defn)) {
 				continue;
 			}
 			$changed = false;
-			foreach (self::LEGACY_ENGLISH_LABEL_DEFAULTS as $key => $legacy_english) {
-				if (!array_key_exists($key, $defn['table_options'])) {
-					continue;
+			if ($add_auto_labels && !empty($defn['columns']) && is_array($defn['columns'])) {
+				foreach ($defn['columns'] as &$column) {
+					if (!is_array($column) || array_key_exists('auto_label', $column)) {
+						continue;
+					}
+					$column['auto_label'] = $this->legacy_column_is_auto($column);
+					$changed = true;
 				}
-				// Compare the raw stored scalar. No trim() and no case folding: a label the admin
-				// altered even by a space is theirs, and clearing it would silently discard their
-				// wording rather than fix a translation.
-				$stored = $defn['table_options'][$key];
-				if (!is_string($stored) || $stored !== $legacy_english) {
-					continue;
+				unset($column);
+			}
+			if ($clear_legacy_labels && !empty($defn['table_options']) && is_array($defn['table_options'])) {
+				foreach (self::LEGACY_ENGLISH_LABEL_DEFAULTS as $key => $legacy_english) {
+					if (!array_key_exists($key, $defn['table_options'])) {
+						continue;
+					}
+					// Compare the raw stored scalar. No trim() and no case folding: a label the admin
+					// altered even by a space is theirs, and clearing it would discard their wording.
+					$stored = $defn['table_options'][$key];
+					if (!is_string($stored) || $stored !== $legacy_english) {
+						continue;
+					}
+					$defn['table_options'][$key] = '';
+					$changed = true;
 				}
-				$defn['table_options'][$key] = '';
-				$changed = true;
 			}
 			if ($changed) {
-				update_post_meta((int) $id, BaraTables_Repository::META_KEY, $defn);
+				$error = BaraTables_Base_Repository::persist_definition((int) $id, BaraTables_Repository::META_KEY, $defn);
+				if ($error) {
+					return $error;
+				}
 			}
 		}
-		update_option(self::LABEL_I18N_MIGRATION_OPTION, 1, false);
+
+		update_option(self::DATA_SCHEMA_OPTION, self::DATA_MIGRATION_GENERATION, true);
+		if ((int) get_option(self::DATA_SCHEMA_OPTION, 0) !== self::DATA_MIGRATION_GENERATION) {
+			return new WP_Error('baratables_migration_not_completed', __('WordPress could not record that the BaraTables data upgrade completed.', 'baratables'));
+		}
+		delete_option(self::AUTO_LABEL_MIGRATION_OPTION);
+		delete_option(self::LABEL_I18N_MIGRATION_OPTION);
+		return null;
+	}
+
+	/** @return int[] Every table status, including Trash, auto-drafts and custom workflow states. */
+	private function get_migration_table_ids(): array {
+		$ids = array_map('intval', get_posts([
+			'post_type' => BaraTables_Repository::CPT,
+			'post_status' => array_values(get_post_stati()),
+			'numberposts' => -1, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page -- A migration cannot mark itself complete until every table was visited.
+			'fields' => 'ids',
+			'no_found_rows' => true,
+		]));
+		if (!empty($ids)) {
+			_prime_post_caches($ids, false, true);
+		}
+		return $ids;
+	}
+
+	private function legacy_column_is_auto(array $column): bool {
+		if (($column['source'] ?? '') !== 'custom') {
+			return false;
+		}
+		$key = (string) ($column['key'] ?? '');
+		if (!preg_match('/^col_(\d+)$/', $key, $match)) {
+			return false;
+		}
+		$label = (string) ($column['label'] ?? '');
+		return $label === '' || $label === sprintf('Column %d', (int) $match[1]);
 	}
 
 	public function get_default_table_options(): array {
@@ -766,7 +824,7 @@ class BaraTables_Service {
 		if (!BaraTables_Source_Type::supports_post_type_selection($source_type)) {
 			return ['post'];
 		}
-		return $this->query_sanitizer->sanitize_public_post_types($post_types_raw, true);
+		return $this->query_sanitizer()->sanitize_public_post_types($post_types_raw, true);
 	}
 
 	public function prepare_columns_from_request(array $columns_raw, string $custom_meta_raw, string $column_order_raw = ''): array {
@@ -819,7 +877,7 @@ class BaraTables_Service {
 	/**
 	 * Compatibility adapter for the pre-record column API.
 	 *
-	 * @deprecated Build records with build_column_records_from_request(), then call
+	 * @deprecated 1.2.5 Build records with build_column_records_from_request(), then call
 	 *             build_columns_from_records().
 	 */
 	public function build_columns(array $columns, array $filter_types, array $filter_sorts = [], array $filter_type_priority = [], array $custom_labels = [], array $filter_labels = [], array $hide_titles = [], array $hidden_columns = [], array $searchable = [], array $sort_priority = [], array $sort_direction = [], array $sort_enabled = [], array $sortable = [], array $filter_values = [], array $format_date_flags = [], array $date_formats = []): array {
@@ -864,7 +922,7 @@ class BaraTables_Service {
 		return $this->normalize_column_record_values($record);
 	}
 
-	/** @deprecated Pass a single record to normalize_column_record(). */
+	/** @deprecated 1.2.5 Pass a single record to normalize_column_record(). */
 	public function normalize_column(string $raw, string $filter_type = 'none', string $filter_sort = 'asc', string $custom_label = '', ?string $filter_label = null, bool $hide_title = false, bool $hidden = false, bool $searchable = true, int $sort_priority = 0, string $sort_direction = 'asc', bool $sort_enabled = false, bool $sortable = true, array $filter_values = [], array $filter_type_priority = [], bool $format_date = false, string $date_format = ''): array {
 		return $this->normalize_column_record([
 			'slug' => $raw,
@@ -1153,8 +1211,18 @@ class BaraTables_Service {
 	 * link survives the rename without leaving an alias behind. Returns the count updated.
 	 */
 	public function rewrite_chart_table_id(string $old_id, string $new_id): int {
+		$result = $this->rewrite_chart_table_id_checked($old_id, $new_id);
+		return $result['error'] ? 0 : $result['updated'];
+	}
+
+	/**
+	 * Verified all-or-nothing chart-link rewrite used by the table editor.
+	 *
+	 * @return array{updated:int,error:?WP_Error}
+	 */
+	public function rewrite_chart_table_id_checked(string $old_id, string $new_id): array {
 		if ($old_id === '' || $new_id === '' || $old_id === $new_id) {
-			return 0;
+			return ['updated' => 0, 'error' => null];
 		}
 		// Include 'trash' (which get_posts excludes under 'any'): a trashed chart that is
 		// later restored must still point at the renamed table, not a dead id.
@@ -1162,7 +1230,7 @@ class BaraTables_Service {
 		// lookup is not altered by third-party query filters without setting it explicitly.
 		$ids = get_posts([
 			'post_type' => BaraTables_Chart_Repository::CPT,
-			'post_status' => ['publish', 'draft', 'pending', 'future', 'private', 'trash'],
+			'post_status' => array_values(get_post_stati()),
 			'numberposts' => -1,
 			'fields' => 'ids',
 			'no_found_rows' => true,
@@ -1173,17 +1241,101 @@ class BaraTables_Service {
 		if (!empty($ids)) {
 			_prime_post_caches($ids, false, true);
 		}
-		$updated = 0;
+		$updated = [];
 		foreach ($ids as $id) {
 			$chart = get_post_meta((int) $id, BaraTables_Chart_Repository::META_KEY, true);
 			if (!is_array($chart) || ($chart['table_id'] ?? '') !== $old_id) {
 				continue;
 			}
+			$previous = $chart;
 			$chart['table_id'] = $new_id;
-			update_post_meta((int) $id, BaraTables_Chart_Repository::META_KEY, $chart);
-			$updated++;
+			$error = BaraTables_Base_Repository::persist_definition((int) $id, BaraTables_Chart_Repository::META_KEY, $chart);
+			if ($error) {
+				$rollback_failures = [];
+				foreach (array_reverse($updated, true) as $updated_id => $old_chart) {
+					$rollback = BaraTables_Base_Repository::persist_definition((int) $updated_id, BaraTables_Chart_Repository::META_KEY, $old_chart);
+					if ($rollback) {
+						$rollback_failures[] = (int) $updated_id;
+					}
+				}
+				$rewrite_error = new WP_Error('baratables_chart_links_not_saved', __('WordPress could not update every linked chart, so the table rename was cancelled.', 'baratables'));
+				if (!empty($rollback_failures)) {
+					$rewrite_error->add_data(['rollback_failed_chart_ids' => $rollback_failures]);
+				}
+				return ['updated' => 0, 'error' => $rewrite_error];
+			}
+			$updated[(int) $id] = $previous;
 		}
-		return $updated;
+		return ['updated' => count($updated), 'error' => null];
+	}
+
+	/** Persist a retry journal for chart-link rollbacks that could not finish in the save request. */
+	public function queue_chart_link_recovery(array $chart_ids, string $failed_id, string $restore_id): ?WP_Error {
+		$pending = get_option(self::CHART_LINK_RECOVERY_OPTION, []);
+		$pending = is_array($pending) ? $pending : [];
+		foreach (array_unique(array_map('intval', $chart_ids)) as $chart_id) {
+			if ($chart_id <= 0) {
+				continue;
+			}
+			$pending[$chart_id] = ['from' => $failed_id, 'to' => $restore_id];
+		}
+		if (empty($pending)) {
+			return null;
+		}
+		if (!add_option(self::CHART_LINK_RECOVERY_OPTION, $pending, '', 'no')) {
+			update_option(self::CHART_LINK_RECOVERY_OPTION, $pending);
+		}
+		return get_option(self::CHART_LINK_RECOVERY_OPTION, []) === $pending
+			? null
+			: new WP_Error('baratables_chart_recovery_not_queued', __('WordPress could not queue the linked-chart recovery.', 'baratables'));
+	}
+
+	/**
+	 * Retry every pending chart-link rollback. The operation is idempotent and preserves a chart
+	 * that an administrator has deliberately pointed somewhere else since the failed rename.
+	 *
+	 * @return array{recovered:int,remaining:int,error:?WP_Error}
+	 */
+	public function retry_chart_link_recovery(): array {
+		$pending = get_option(self::CHART_LINK_RECOVERY_OPTION, []);
+		if (!is_array($pending) || empty($pending)) {
+			return ['recovered' => 0, 'remaining' => 0, 'error' => null];
+		}
+		$recovered = 0;
+		$remaining = [];
+		foreach ($pending as $chart_id => $repair) {
+			$chart_id = (int) $chart_id;
+			$chart = get_post_meta($chart_id, BaraTables_Chart_Repository::META_KEY, true);
+			$from = is_array($repair) ? (string) ($repair['from'] ?? '') : '';
+			$to = is_array($repair) ? (string) ($repair['to'] ?? '') : '';
+			if (!is_array($chart) || $from === '' || $to === '') {
+				$recovered++;
+				continue;
+			}
+			$current = (string) ($chart['table_id'] ?? '');
+			if ($current === $to || $current !== $from) {
+				$recovered++;
+				continue;
+			}
+			$chart['table_id'] = $to;
+			if (BaraTables_Base_Repository::persist_definition($chart_id, BaraTables_Chart_Repository::META_KEY, $chart)) {
+				$remaining[$chart_id] = $repair;
+				continue;
+			}
+			$recovered++;
+		}
+
+		if (empty($remaining)) {
+			delete_option(self::CHART_LINK_RECOVERY_OPTION);
+			$stored = get_option(self::CHART_LINK_RECOVERY_OPTION, null);
+			$error = $stored === null ? null : new WP_Error('baratables_chart_recovery_journal_not_cleared', __('WordPress could not clear the completed linked-chart recovery.', 'baratables'));
+		} else {
+			update_option(self::CHART_LINK_RECOVERY_OPTION, $remaining);
+			$error = get_option(self::CHART_LINK_RECOVERY_OPTION, []) === $remaining
+				? null
+				: new WP_Error('baratables_chart_recovery_journal_not_saved', __('WordPress could not update the linked-chart recovery journal.', 'baratables'));
+		}
+		return ['recovered' => $recovered, 'remaining' => count($remaining), 'error' => $error];
 	}
 
 
@@ -1368,7 +1520,24 @@ class BaraTables_Service {
 	}
 
 	public function find_definition(string $id, bool $require_publish = false): ?array {
-		$defn = $this->repo->find_definition($id);
+		return $this->normalize_loaded_definition($this->repo->find_definition($id), $require_publish);
+	}
+
+	/** @return array<string,array{definition:array,post_id:int}> */
+	public function find_definitions_with_post_ids(array $ids): array {
+		$records = $this->repo->find_definitions_with_post_ids($ids);
+		foreach ($records as $id => $record) {
+			$definition = $this->normalize_loaded_definition($record['definition'] ?? null, false);
+			if (!$definition) {
+				unset($records[$id]);
+				continue;
+			}
+			$records[$id]['definition'] = $definition;
+		}
+		return $records;
+	}
+
+	private function normalize_loaded_definition(?array $defn, bool $require_publish): ?array {
 		if (!$defn) {
 			return null;
 		}
@@ -1505,7 +1674,7 @@ class BaraTables_Service {
 		$post_types_raw = isset($definition['post_types']) && is_array($definition['post_types']) && !empty($definition['post_types'])
 			? array_values(array_filter($definition['post_types']))
 			: [$definition['post_type'] ?? 'post'];
-		$post_types = $this->query_sanitizer->sanitize_public_post_types($post_types_raw, true);
+		$post_types = $this->query_sanitizer()->sanitize_public_post_types($post_types_raw, true);
 		$query_args = [
 			'post_type'      => $post_types,
 			'posts_per_page' => $row_limit,
@@ -1518,7 +1687,7 @@ class BaraTables_Service {
 			if (empty($definition['custom_query']) || !is_array($definition['custom_query'])) {
 				return null;
 			}
-			$query_args = $this->query_sanitizer->sanitize_wp_query_args($definition['custom_query']);
+			$query_args = $this->query_sanitizer()->sanitize_wp_query_args($definition['custom_query']);
 			if (empty($query_args)) {
 				return null;
 			}
@@ -1574,8 +1743,9 @@ class BaraTables_Service {
 			cache_users(array_unique(array_map('intval', wp_list_pluck($posts, 'post_author'))));
 		}
 
-		// get_permalink() on a hierarchical type walks ancestors via get_page_uri(), querying once
-		// per uncached parent. Prime one level in a single query (shared ancestors then hit cache).
+		// get_permalink() on a hierarchical type walks the complete ancestor chain via
+		// get_page_uri(). Prime each depth in one bulk query so many deep pages cost one query per
+		// hierarchy level instead of one query per row and ancestor.
 		if (!empty($requirements['permalink']) && !empty($posts)) {
 			$parent_ids = [];
 			foreach ($posts as $post) {
@@ -1584,23 +1754,45 @@ class BaraTables_Service {
 					$parent_ids[$parent_id] = true;
 				}
 			}
-			if (!empty($parent_ids)) {
-				_prime_post_caches(array_keys($parent_ids), false, false);
+			$seen = [];
+			while (!empty($parent_ids)) {
+				$current_ids = array_values(array_diff(array_map('intval', array_keys($parent_ids)), array_keys($seen)));
+				if (empty($current_ids)) {
+					break;
+				}
+				_prime_post_caches($current_ids, false, false);
+				$parent_ids = [];
+				foreach ($current_ids as $parent_id) {
+					$seen[$parent_id] = true;
+					$parent = get_post($parent_id);
+					$next_id = $parent ? (int) $parent->post_parent : 0;
+					if ($next_id > 0 && !isset($seen[$next_id])) {
+						$parent_ids[$next_id] = true;
+					}
+				}
 			}
 		}
 	}
 
 	private function build_wp_post_rows(array $posts, array $definition, array $access_policy): array {
 		$rows = [];
+		$slugs = $this->column_slugs_in_order($definition['columns']);
+		$compiled_overrides = $this->compile_overrides_for_columns($definition['value_overrides'] ?? [], $slugs);
 		foreach ($posts as $post) {
 			if (!empty($access_policy['post_meta_key']) && !$this->post_passes_access_policy($post, $access_policy)) {
 				continue;
 			}
 			$row = [];
-			foreach ($definition['columns'] as $col) {
+			foreach ($definition['columns'] as $index => $col) {
 				$raw_value = $this->resolve_value($post, $col);
-				$slug = $this->resolve_column_slug($col);
-				$row[] = $this->apply_overrides($raw_value, $slug, $definition['value_overrides'] ?? [], $post);
+				$slug = $slugs[$index] ?? '';
+				$row[] = $this->apply_compiled_overrides_with(
+					$raw_value,
+					$compiled_overrides['rules'][$slug] ?? [],
+					function (string $replace) use ($post): string {
+						return $this->replace_merge_tags($replace, $post);
+					}
+				);
 			}
 			$rows[] = $row;
 		}
@@ -1608,6 +1800,15 @@ class BaraTables_Service {
 	}
 
 	private function get_row_result_from_wp_posts(array $definition, int $row_limit, array $access_policy): BaraTables_Row_Result {
+		if ($definition['source_type'] === BaraTables_Source_Type::CUSTOM_QUERY) {
+			$custom_query = isset($definition['custom_query']) && is_array($definition['custom_query'])
+				? $this->query_sanitizer()->sanitize_wp_query_args($definition['custom_query'])
+				: [];
+			if (empty($custom_query)) {
+				return BaraTables_Row_Result::failure('custom_query_invalid');
+			}
+			$definition['custom_query'] = $custom_query;
+		}
 		$query_args = $this->build_wp_source_query_args($definition, $row_limit, $access_policy);
 		if ($query_args === null) {
 			return new BaraTables_Row_Result();
@@ -1685,18 +1886,24 @@ class BaraTables_Service {
 		$inferred = [];
 		$attachment_id = isset($definition['csv_attachment_id']) ? (int) $definition['csv_attachment_id'] : 0;
 		if ($attachment_id <= 0) {
-			return new BaraTables_Row_Result();
+			return BaraTables_Row_Result::failure('csv_missing');
 		}
 		if (!$this->is_valid_csv_attachment($attachment_id)) {
-			return new BaraTables_Row_Result();
+			return BaraTables_Row_Result::failure('csv_missing');
 		}
 		$path = get_attached_file($attachment_id);
-		if (!$path || !file_exists($path) || !is_readable($path)) {
-			return new BaraTables_Row_Result();
+		if (!$path || !file_exists($path)) {
+			return BaraTables_Row_Result::failure('csv_missing');
+		}
+		if (!is_readable($path)) {
+			return BaraTables_Row_Result::failure('csv_unreadable');
 		}
 		$file_size = filesize($path);
-		if ($file_size === false || $file_size > self::MAX_CSV_BYTES) {
-			return new BaraTables_Row_Result();
+		if ($file_size === false) {
+			return BaraTables_Row_Result::failure('csv_read_failed');
+		}
+		if ($file_size > self::MAX_CSV_BYTES) {
+			return BaraTables_Row_Result::failure('csv_too_large');
 		}
 
 		$has_header = !empty($definition['csv_has_header']);
@@ -1704,12 +1911,10 @@ class BaraTables_Service {
 			? $definition['csv_delimiter']
 			: ',';
 
-		// With row-level access control the limit must apply to the rows the visitor may SEE, not
-		// to the file's first N lines -- otherwise a visitor whose permitted rows sit past line N
-		// gets a short or empty table. So when access is enforced, read the whole file (already
-		// bounded to MAX_CSV_BYTES above) and apply the limit after filtering, below. Without
-		// access control, keep stopping at the limit so a large file is never fully read.
-		$defer_limit = !empty($access_policy['csv_column']);
+		$access_active = !empty($access_policy['csv_column']);
+		if ($access_active) {
+			return $this->get_csv_rows_with_access($path, $delimiter, $has_header, $definition, $limit, $access_policy);
+		}
 
 		// Parsed rows are cached BEFORE access filtering, which is per-visitor and must never be
 		// cached. filemtime + size are in the key, so an edited file can never serve stale rows.
@@ -1727,7 +1932,7 @@ class BaraTables_Service {
 			(string) get_post_modified_time('U', true, $attachment_id),
 			$delimiter,
 			$has_header ? '1' : '0',
-			$defer_limit ? 'all' : (string) $limit,
+			(string) $limit,
 		]));
 		$cached = wp_cache_get($csv_cache_key, 'baratables');
 		if (is_array($cached) && array_key_exists('rows', $cached)) {
@@ -1737,46 +1942,47 @@ class BaraTables_Service {
 			$rows = [];
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- fgetcsv requires a file handle; WP_Filesystem has no CSV parsing equivalent.
 			$handle = fopen($path, 'rb');
-			if ($handle !== false) {
-				$count = 0;
-				while (true) {
-					$data = fgetcsv($handle, self::MAX_CSV_LINE_LENGTH, $delimiter, '"', '\\');
-					if ($data === false) {
-						break;
-					}
-					// fgetcsv() yields [null] for a blank physical line (a trailing newline, or a
-					// spacer row). Counting it would render an all-empty <tr> and, worse, spend one
-					// of the row-limit slots on it. The importer's own reader already skips this.
-					if ($data === [null]) {
-						continue;
-					}
-					if ($has_header && $count === 0) {
-						$inferred = $this->infer_columns_from_header($data);
-						$count++;
-						continue;
-					}
-					$rows[] = $data;
+			if ($handle === false) {
+				return BaraTables_Row_Result::failure('csv_read_failed');
+			}
+			$count = 0;
+			while (true) {
+				$data = fgetcsv($handle, self::MAX_CSV_LINE_LENGTH, $delimiter, '"', '\\');
+				if ($data === false) {
+					break;
+				}
+				// fgetcsv() yields [null] for a blank physical line (a trailing newline, or a
+				// spacer row). Counting it would render an all-empty <tr> and, worse, spend one
+				// of the row-limit slots on it. The importer's own reader already skips this.
+				if ($data === [null]) {
+					continue;
+				}
+				if ($has_header && $count === 0) {
+					$inferred = $this->infer_columns_from_header($data);
 					$count++;
-					if (!$defer_limit && $limit > 0 && $count >= $limit + ($has_header ? 1 : 0)) {
-						break;
-					}
+					continue;
 				}
-				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing handle opened for fgetcsv; WP_Filesystem has no CSV parsing equivalent.
-				fclose($handle);
-				// Only worth writing when a persistent backend can actually serve it on a LATER
-				// request -- without one, wp_cache_set() just retains up to 5MB for the rest of this
-				// request that nothing can read back (get_rows()'s own per-request cache already
-				// short-circuits the repeat). Gate on BYTES, not row count: the hazard is a
-				// backend's per-item ceiling (memcached defaults to 1MB), and 5,000 wide rows blow
-				// past that while passing a row-count test.
-				if (wp_using_ext_object_cache() && $file_size <= 256 * KB_IN_BYTES && count($rows) <= 5000) {
-					wp_cache_set(
-						$csv_cache_key,
-						['rows' => $rows, 'inferred' => $inferred],
-						'baratables',
-						5 * MINUTE_IN_SECONDS
-					);
+				$rows[] = $data;
+				$count++;
+				if ($limit > 0 && $count >= $limit + ($has_header ? 1 : 0)) {
+					break;
 				}
+			}
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing handle opened for fgetcsv; WP_Filesystem has no CSV parsing equivalent.
+			fclose($handle);
+			// Only worth writing when a persistent backend can actually serve it on a LATER
+			// request -- without one, wp_cache_set() just retains up to 5MB for the rest of this
+			// request that nothing can read back (get_rows()'s own per-request cache already
+			// short-circuits the repeat). Gate on BYTES, not row count: the hazard is a
+			// backend's per-item ceiling (memcached defaults to 1MB), and 5,000 wide rows blow
+			// past that while passing a row-count test.
+			if (wp_using_ext_object_cache() && $file_size <= 256 * KB_IN_BYTES && count($rows) <= 5000) {
+				wp_cache_set(
+					$csv_cache_key,
+					['rows' => $rows, 'inferred' => $inferred],
+					'baratables',
+					5 * MINUTE_IN_SECONDS
+				);
 			}
 		}
 
@@ -1795,33 +2001,81 @@ class BaraTables_Service {
 
 		$csv_index_map = $this->build_slug_index_map($inferred);
 
-		// Access control is enforced regardless of whether display columns are configured, so
-		// a CSV table with access control but no selected columns never returns unfiltered
-		// rows (matching the external-DB path).
-		if ($defer_limit) {
-			$access_index = $this->resolve_csv_access_column_index($csv_index_map, (string) $access_policy['csv_column']);
-			if ($access_index === null) {
-				return new BaraTables_Row_Result([], $inferred);
-			}
-			$rows = array_values(array_filter($rows, static function ($row) use ($access_index) {
-				return is_array($row) && array_key_exists($access_index, $row);
-			}));
-			$rows = $this->filter_rows_by_access($rows, function ($row) use ($access_index) {
-				return $row[$access_index];
-			}, $access_policy);
-		}
-
-		// Deferred limit: now that only visible rows remain, trim to the configured ceiling.
-		if ($defer_limit && $limit > 0 && count($rows) > $limit) {
-			$rows = array_slice($rows, 0, $limit);
-		}
-
 		if (!empty($definition['columns'])) {
 			$rows = $this->reorder_rows_by_slug_map($rows, $definition['columns'], $csv_index_map);
 			$rows = $this->finalize_ordered_rows($rows, $definition['columns'], $definition['value_overrides'] ?? []);
 		}
 
 		return new BaraTables_Row_Result($rows, $inferred);
+	}
+
+	/** Stream a visitor-specific CSV result and stop as soon as its visible-row limit is full. */
+	private function get_csv_rows_with_access(string $path, string $delimiter, bool $has_header, array $definition, int $limit, array $access_policy): BaraTables_Row_Result {
+		$rows = [];
+		$inferred = [];
+		$access_index = null;
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- fgetcsv requires a file handle; WP_Filesystem has no CSV parsing equivalent.
+		$handle = fopen($path, 'rb');
+		if ($handle === false) {
+			return BaraTables_Row_Result::failure('csv_read_failed');
+		}
+
+		$first_data_row = true;
+		$max_columns = 0;
+		while (($data = fgetcsv($handle, self::MAX_CSV_LINE_LENGTH, $delimiter, '"', '\\')) !== false) {
+			if ($data === [null]) {
+				continue;
+			}
+			if ($has_header && $first_data_row) {
+				$inferred = $this->infer_columns_from_header($data);
+				$first_data_row = false;
+				$access_index = $this->resolve_csv_access_column_index(
+					$this->build_slug_index_map($inferred),
+					(string) $access_policy['csv_column']
+				);
+				if ($access_index === null) {
+					break;
+				}
+				continue;
+			}
+			if ($first_data_row) {
+				$first_data_row = false;
+				$access_index = $this->resolve_headerless_csv_access_index((string) $access_policy['csv_column']);
+				if ($access_index === null) {
+					break;
+				}
+			}
+			$max_columns = max($max_columns, count($data));
+			if (!array_key_exists($access_index, $data) || !$this->row_passes_access($data[$access_index], $access_policy)) {
+				continue;
+			}
+			$rows[] = $data;
+			if ($limit > 0 && count($rows) >= $limit) {
+				break;
+			}
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing handle opened for fgetcsv; WP_Filesystem has no CSV parsing equivalent.
+		fclose($handle);
+
+		if (!$has_header && $max_columns > 0) {
+			$inferred = $this->infer_columns_from_header(array_fill(0, $max_columns, ''), false);
+		}
+		if ($access_index === null) {
+			return new BaraTables_Row_Result([], $inferred);
+		}
+		if (!empty($definition['columns'])) {
+			$rows = $this->reorder_rows_by_slug_map($rows, $definition['columns'], $this->build_slug_index_map($inferred));
+			$rows = $this->finalize_ordered_rows($rows, $definition['columns'], $definition['value_overrides'] ?? []);
+		}
+		return new BaraTables_Row_Result($rows, $inferred);
+	}
+
+	private function resolve_headerless_csv_access_index(string $column): ?int {
+		$column = (string) preg_replace('/^csv:/i', '', trim($column));
+		if (!preg_match('/^col_([1-9][0-9]*)$/i', sanitize_key($column), $matches)) {
+			return null;
+		}
+		return (int) $matches[1] - 1;
 	}
 
 	private function is_valid_csv_attachment(int $attachment_id): bool {
@@ -1943,11 +2197,11 @@ class BaraTables_Service {
 	}
 
 	/**
-	 * One external fetch. $columns empty means SELECT *. Returns null on any DB error so the
+	 * One external fetch. $columns empty means SELECT *. Returns WP_Error on any DB error so the
 	 * caller can fall back -- a column list that has drifted from the real schema must degrade to
 	 * today's SELECT * behaviour, never to a broken table.
 	 */
-	private function fetch_external_rows($ext_db, string $table, int $fetch_limit, array $columns): ?array {
+	private function fetch_external_rows($ext_db, string $table, int $fetch_limit, array $columns) {
 		// ONE prepared statement for both shapes -- '*' when nothing can be narrowed, otherwise one
 		// %i identifier placeholder per column. Only the NUMBER of placeholders is dynamic; every
 		// value, including each column name, is bound by prepare(). Kept as a single call so the
@@ -1957,7 +2211,7 @@ class BaraTables_Service {
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Format string is built only from literal '%i' placeholders; all values are bound.
 		$sql = $ext_db->prepare('SELECT ' . $select_list . ' FROM %i LIMIT %d', ...$args);
 		if (!is_string($sql) || $sql === '') {
-			return null;
+			return new WP_Error('external_read_failed');
 		}
 		// Suppress while probing: a narrowed SELECT is allowed to fail (that is what the caller's
 		// SELECT * fallback is for), and wpdb::print_error() would otherwise write to the PHP error
@@ -1968,17 +2222,17 @@ class BaraTables_Service {
 		$failed = $ext_db->last_error !== '';
 		$ext_db->suppress_errors($suppressed);
 		if ($failed) {
-			return null;
+			return new WP_Error('external_read_failed');
 		}
-		return is_array($results) ? $results : null;
+		return is_array($results) ? $results : new WP_Error('external_read_failed');
 	}
 
 	private function get_row_result_from_external(array $definition, int $limit, array $access_policy): BaraTables_Row_Result {
 		$inferred = [];
 		$config = isset($definition['external_db']) && is_array($definition['external_db']) ? $definition['external_db'] : [];
 		$source = $this->connect_external_source($config);
-		if ($source === null) {
-			return new BaraTables_Row_Result();
+		if (is_wp_error($source)) {
+			return BaraTables_Row_Result::failure($source->get_error_code());
 		}
 		$ext_db = $source['db'];
 		$table = $source['table'];
@@ -2001,6 +2255,9 @@ class BaraTables_Service {
 		$results = empty($select_columns)
 			? null
 			: $this->fetch_external_rows($ext_db, $table, $fetch_limit, $select_columns);
+		if (is_wp_error($results)) {
+			$results = null;
+		}
 
 		// A narrowed fetch that SUCCEEDS but lacks the token column would make the access filter
 		// deny every row -- an empty table, silently. Re-check and fall back if so.
@@ -2014,7 +2271,10 @@ class BaraTables_Service {
 		if (!is_array($results)) {
 			$results = $this->fetch_external_rows($ext_db, $table, $fetch_limit, []);
 		}
-		if (!is_array($results) || empty($results)) {
+		if (is_wp_error($results)) {
+			return BaraTables_Row_Result::failure('external_read_failed');
+		}
+		if (empty($results)) {
 			return new BaraTables_Row_Result();
 		}
 
@@ -2073,28 +2333,33 @@ class BaraTables_Service {
 	}
 
 	/** Validate and connect an external source before row-fetch policy is applied. */
-	private function connect_external_source(array $config): ?array {
+	private function connect_external_source(array $config) {
 		$host = $config['host'] ?? '';
 		$dbname = $config['name'] ?? '';
 		$user = $config['user'] ?? '';
 		$password = BaraTables_Crypto::decrypt($config['pass'] ?? '');
-		$table = $config['table'] ?? '';
+		$table = $this->sanitize_external_identifier((string) ($config['table'] ?? ''));
 		$charset = $config['charset'] ?? '';
 		$port = isset($config['port']) ? (int) $config['port'] : 0;
 		if ($host === '' || $dbname === '' || $user === '' || $table === '') {
-			return null;
+			return new WP_Error('external_configuration');
 		}
 		$host_with_port = $port > 0 ? $host . ':' . $port : $host;
-		$ext_db = $this->create_external_db_connection($user, $password, $dbname, $host_with_port);
-		if (!$ext_db) {
-			return null;
-		}
-		if ($charset !== '') {
-			$ext_db->set_charset($ext_db->dbh, $charset);
-		}
-		$table = $this->sanitize_external_identifier((string) $table);
-		if ($table === '' || !method_exists($ext_db, 'has_cap') || !$ext_db->has_cap('identifier_placeholders')) {
-			return null;
+		$connection_key = hash('sha256', implode("\0", [$host_with_port, $dbname, $user, $password, $charset]));
+		if (isset($this->external_connections[$connection_key])) {
+			$ext_db = $this->external_connections[$connection_key];
+		} else {
+			$ext_db = $this->create_external_db_connection($user, $password, $dbname, $host_with_port);
+			if (!$ext_db) {
+				return new WP_Error('external_connection');
+			}
+			if ($charset !== '') {
+				$ext_db->set_charset($ext_db->dbh, $charset);
+			}
+			if (!method_exists($ext_db, 'has_cap') || !$ext_db->has_cap('identifier_placeholders')) {
+				return new WP_Error('external_configuration');
+			}
+			$this->external_connections[$connection_key] = $ext_db;
 		}
 		return ['db' => $ext_db, 'table' => $table];
 	}
@@ -2130,9 +2395,8 @@ class BaraTables_Service {
 			return $rows;
 		}
 		// Every row in a SQL result set carries the identical key set, so resolve each definition
-		// column to its actual row key ONCE against a probe row instead of re-running the
-		// regex/sanitize_key-heavy matcher for every cell. At 10,000 rows x 12 columns that is
-		// 12 resolutions instead of 120,000 (~554ms -> ~2ms).
+		// column to its actual row key once against a probe row instead of re-running the
+		// regex/sanitize_key-heavy matcher for every cell.
 		$probe = null;
 		foreach ($rows as $row) {
 			if (is_array($row)) {
@@ -2681,13 +2945,17 @@ class BaraTables_Service {
 	}
 
 	private function filter_rows_by_access(array $rows, callable $token_resolver, array $access_policy): array {
-		$logged_out_policy = $access_policy['logged_out_policy'] ?? 'public_only';
-		$user_tokens = $access_policy['user_tokens'] ?? [];
-		return array_values(array_filter($rows, function ($row) use ($token_resolver, $user_tokens, $logged_out_policy) {
-			$raw_tokens = $token_resolver($row);
-			$tokens = $this->normalize_tokens($raw_tokens);
-			return $this->passes_access_tokens($tokens, $user_tokens, $logged_out_policy);
+		return array_values(array_filter($rows, function ($row) use ($token_resolver, $access_policy) {
+			return $this->row_passes_access($token_resolver($row), $access_policy);
 		}));
+	}
+
+	private function row_passes_access($raw_tokens, array $access_policy): bool {
+		return $this->passes_access_tokens(
+			$this->normalize_tokens($raw_tokens),
+			$access_policy['user_tokens'] ?? [],
+			$access_policy['logged_out_policy'] ?? 'public_only'
+		);
 	}
 
 	private function get_user_tokens(string $user_meta_key): array {

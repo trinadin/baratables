@@ -1,9 +1,49 @@
 (function($) {
 	var utils = window.BaraTablesUtils;
+
+	function findWrapper(tableId) {
+		var wrappers = document.querySelectorAll('.btbl-table-wrapper[data-table-id]');
+		for (var i = 0; i < wrappers.length; i++) {
+			if (wrappers[i].getAttribute('data-table-id') === String(tableId || '')) {
+				return wrappers[i];
+			}
+		}
+		return null;
+	}
+
+	function showRuntimeError(wrapper) {
+		if (!wrapper) { return; }
+		var message = wrapper.querySelector('.btbl-runtime-error');
+		if (message) { message.hidden = false; }
+	}
+
+	function revealFailure(wrapper, error) {
+		if (wrapper) {
+			wrapper.classList.remove('is-loading');
+			wrapper.classList.add('is-init-failed');
+			showRuntimeError(wrapper);
+		}
+		if (window.console && console.error) {
+			console.error('[BaraTables] Front-end initialization failed.', error || 'Required runtime unavailable.');
+		}
+	}
+
+	if (!$ || !utils) {
+		var revealUninitializedTables = function() {
+			document.querySelectorAll('.btbl-table-wrapper:not(.is-chart-only)').forEach(function(wrapper) {
+				revealFailure(wrapper, 'jQuery or BaraTables utilities unavailable.');
+			});
+		};
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', revealUninitializedTables, {once: true});
+		} else {
+			revealUninitializedTables();
+		}
+		return;
+	}
 	var btblExtractText = utils.extractText;
 	var btblEscapeHtml = utils.escapeHtml;
 	var btblParseDate = utils.parseDate;
-	var normalizeSearchText = utils.normalizeSearchText;
 	var btblParseNumber = utils.parseNumber;
 	var btblParseOptionalNumber = utils.parseOptionalNumber;
 	var slugIdx = utils.slugIndex;
@@ -13,13 +53,8 @@
 
 	// Registered lazily, NOT at parse time.
 	//
-	// baratables.js deliberately does not depend on DataTables, so WordPress is free to print it BEFORE
-	// dataTables.min.js -- which is exactly what happens on a page carrying several tables. At that
-	// point $.fn.dataTable is undefined, the old parse-time guard failed silently, and the custom
-	// date type was never registered at all: date columns quietly fell back to DataTables' own
-	// detection. Table init cannot suffer the same fate (it runs on DOM ready, and is the moment we
-	// call .DataTable()), so register there instead. Adding the DataTables handle as a dependency
-	// would work too, but would drag ~100KB onto chart-only pages that never load it.
+	// Register the custom date type at table initialization, when DataTables is guaranteed to be
+	// present. Making this file depend on DataTables would also load it on chart-only pages.
 	var btblDateTypeRegistered = false;
 	function btblRegisterDateType() {
 		if (btblDateTypeRegistered || !$.fn.dataTable || !$.fn.dataTable.ext) {
@@ -85,16 +120,25 @@
 
 	function initChart(chartConfig, tableInstance, tableId, slugToIndex) {
 		if (!window.BaraTablesCharts) {
+			if (chartConfig && chartConfig.enabled) { showRuntimeError(findWrapper(tableId)); }
 			return null;
 		}
-		return window.BaraTablesCharts.init(chartConfig, tableInstance, tableId, slugToIndex, {
-			extractText: btblExtractText,
-			escapeHtml: btblEscapeHtml,
-			parseDate: btblParseDate,
-			parseNumber: btblParseNumber,
-			parseOptionalNumber: btblParseOptionalNumber,
-			slugIdx: slugIdx
-		});
+		try {
+			var chart = window.BaraTablesCharts.init(chartConfig, tableInstance, tableId, slugToIndex, {
+				extractText: btblExtractText,
+				escapeHtml: btblEscapeHtml,
+				parseDate: btblParseDate,
+				parseNumber: btblParseNumber,
+				parseOptionalNumber: btblParseOptionalNumber,
+				slugIdx: slugIdx
+			});
+			if (chartConfig && chartConfig.enabled && !chart) { showRuntimeError(findWrapper(tableId)); }
+			return chart;
+		} catch (error) {
+			showRuntimeError(findWrapper(tableId));
+			if (window.console && console.error) { console.error('[BaraTables] Chart initialization failed.', error); }
+			return null;
+		}
 	}
 	function resolveTableOptions(tableOptions) {
 		var resolved = $.extend(true, {}, tableOptions || {});
@@ -205,6 +249,9 @@
 		}
 		if (Array.isArray(config.nonSortable) && config.nonSortable.length) {
 			definitions.push({ targets: config.nonSortable, orderable: false });
+		}
+		if (Array.isArray(config.nonSearchable) && config.nonSearchable.length) {
+			definitions.push({ targets: config.nonSearchable, searchable: false });
 		}
 		if (config.slugToIndex && typeof config.slugToIndex === 'object') {
 			Object.keys(config.slugToIndex).forEach(function(slug) {
@@ -318,7 +365,8 @@
 			order: order,
 			columnDefs: buildColumnDefinitions(config),
 			language: languageResult.language,
-			search: { search: '', smart: true }
+			search: { search: '', smart: true },
+			searchDelay: 250
 		};
 		if (scrollY > 0) {
 			tableConfig.scrollY = scrollY + 'px';
@@ -328,30 +376,7 @@
 		return tableConfig;
 	}
 
-	function buildGlobalSearchLimiter(table, nonSearchable) {
-		// DataTables runs every ext.search entry once per row, per draw -- and ext.search is global,
-		// so drawing one table also runs every other table's limiter. Cache the table node instead of
-		// building a fresh API object for every row.
-		var tableNode = table.table().node();
-		return function(settings, data) {
-			if (settings.nTable !== tableNode) {
-				return true;
-			}
-			var term = table.search();
-			if (!term || !term.trim()) {
-				return true;
-			}
-			var normalizedTerm = term.toLowerCase();
-			for (var i = 0; i < data.length; i++) {
-				if (!nonSearchable[i] && normalizeSearchText(data[i]).indexOf(normalizedTerm) !== -1) {
-					return true;
-				}
-			}
-			return false;
-		};
-	}
-
-	function initInstance(config) {
+	function initInstanceUnsafe(config) {
 		if (!config || !config.tableId) {
 			return;
 		}
@@ -379,12 +404,6 @@
 			if ($wrapper.length) {
 				$wrapper.removeClass('is-loading');
 			}
-		}
-
-		if (config.chartOnly && config.chart && config.chart.enabled) {
-			initChart(config.chart, null, tableId, slugToIndex);
-			markReady();
-			return;
 		}
 
 		if (!$table.length || !$table.DataTable) {
@@ -460,25 +479,9 @@
 		var $searchInput = searchController.input;
 		var searchState = searchController.getState();
 		var searchableColumns = searchController.getColumns();
-		var scopedSearchFilter = searchController.hasScopedFilter();
-
 		var presetFilters = config.presetFilters || {};
 		var filterController = null;
 		var $emptyState = $wrapper.find('.btbl-empty-state');
-		// Only needed when the scoped filter is absent (no search box rendered). With both
-		// registered, the limiter cannot change the outcome because ext.search entries are ANDed.
-		var globalSearchLimiter;
-		if (!scopedSearchFilter) {
-			globalSearchLimiter = buildGlobalSearchLimiter(table, nonSearchableSet);
-			$.fn.dataTable.ext.search.push(globalSearchLimiter);
-			// ext.search is global and outlives the table, so every push needs a matching removal.
-			table.on('destroy', function() {
-				var globalIndex = $.fn.dataTable.ext.search.indexOf(globalSearchLimiter);
-				if (globalIndex !== -1) {
-					$.fn.dataTable.ext.search.splice(globalIndex, 1);
-				}
-			});
-		}
 
 		function toggleEmptyState() {
 			var hasRows = table.rows({ search: 'applied' }).data().length > 0;
@@ -587,9 +590,14 @@
 			syncStateToUrl();
 		});
 
-		table.draw(false);
-		toggleEmptyState();
-		updateFilterStateClass();
+		var needsInitialDraw = searchController.needsInitialDraw() || filterController.needsInitialDraw();
+		if (needsInitialDraw) {
+			table.draw(false);
+			syncStateToUrl();
+		} else {
+			toggleEmptyState();
+			updateFilterStateClass();
+		}
 		var chartInstance = initChart(config.chart, table, tableId, slugToIndex);
 		if (chartInstance) {
 			table.on('destroy', function() {
@@ -602,6 +610,23 @@
 			});
 		}
 		markReady();
+	}
+
+	function initInstance(config) {
+		try {
+			initInstanceUnsafe(config);
+		} catch (error) {
+			var tableId = config && config.tableId ? config.tableId : '';
+			var tableElement = tableId ? document.getElementById('btbl-table-' + tableId) : null;
+			try {
+				if (tableElement && $.fn.dataTable && $.fn.dataTable.isDataTable(tableElement)) {
+					$(tableElement).DataTable().destroy();
+				}
+			} catch (destroyError) {
+				// The recovery path still reveals the server-rendered wrapper below.
+			}
+			revealFailure(findWrapper(tableId), error);
+		}
 	}
 
 	function bootQueue() {
@@ -624,4 +649,4 @@
 	window.BaraTablesFrontend = {
 		init: initInstance
 	};
-})(jQuery);
+	})(window.jQuery);

@@ -111,7 +111,7 @@ class BaraTables_Admin_Pages {
 		return (string) ob_get_clean();
 	}
 
-	/** @deprecated Use BaraTables_Admin_Preview_Renderer::render(). */
+	/** @deprecated 1.2.5 Use BaraTables_Admin_Preview_Renderer::render(). */
 	public function render_preview_panel(array $definition, array $rows): void {
 		if (!$this->legacy_preview_renderer) {
 			throw new LogicException('Preview rendering requires the legacy service constructor argument.');
@@ -119,7 +119,7 @@ class BaraTables_Admin_Pages {
 		$this->legacy_preview_renderer->render($definition, $rows);
 	}
 
-	/** @deprecated Use BaraTables_Admin_Preview_Renderer::sort(). */
+	/** @deprecated 1.2.5 Use BaraTables_Admin_Preview_Renderer::sort(). */
 	public function apply_preview_sort(array $rows, array $definition): array {
 		if (!$this->legacy_preview_renderer) {
 			throw new LogicException('Preview sorting requires the legacy service constructor argument.');

@@ -52,7 +52,7 @@ class BaraTables_Post_Input {
 
 /**
  * Queues admin notices across the post-save redirect using a short-lived,
- * per-user transient. Used to tell the user when a save produced something
+ * per-user transient. It tells the user when a save produced something
  * that will not render (e.g. a table with no columns, a chart with no table).
  */
 class BaraTables_Admin_Notice {
@@ -160,7 +160,7 @@ class BaraTables_Help {
 		wp_send_json_success(['hidden' => $hide]);
 	}
 
-	/** True only on a brand-new site/account that has no saved tables yet (R30 first-run gate). */
+	/** True only on a brand-new site/account that has no saved tables yet. */
 	public static function is_first_table(): bool {
 		$counts = wp_count_posts(BaraTables_Repository::CPT);
 		$existing = (int) ($counts->publish ?? 0) + (int) ($counts->draft ?? 0)
@@ -171,7 +171,7 @@ class BaraTables_Help {
 
 
 /**
- * R7: adds a "Duplicate" row action to the Tables and Charts lists. Copies the
+ * Adds a "Duplicate" row action to the Tables and Charts lists. Copies the
  * post + its definition meta into a new draft with a freshly-minted slug/id so
  * the clone's shortcode never collides with the original.
  */
@@ -237,7 +237,9 @@ class BaraTables_Admin_Duplicator {
 		}
 		$conf = $map[$post->post_type];
 		$definition = get_post_meta($post_id, $conf['meta_key'], true);
-		$definition = is_array($definition) ? $definition : [];
+		if (!is_array($definition) || empty($definition)) {
+			return new WP_Error('btbl_duplicate_missing_definition', __('The original item has no saved definition to duplicate.', 'baratables'));
+		}
 
 		/* translators: %s is the original item title. */
 		$new_title = sprintf(__('%s (copy)', 'baratables'), $post->post_title);
@@ -250,30 +252,52 @@ class BaraTables_Admin_Duplicator {
 			return $new_id;
 		}
 
-		// Mint a unique slug/id so the clone's shortcode differs from the original.
+		$new_post = get_post((int) $new_id);
+		if (!$new_post instanceof WP_Post) {
+			return $this->cleanup_failed_duplicate((int) $new_id, new WP_Error('btbl_duplicate_missing_post', __('The duplicated item could not be loaded.', 'baratables')));
+		}
+		$persistence = BaraTables_Entity_Persistence::from_descriptor($conf);
+		// Drafts bypass WordPress' normal slug-collision check, so use the entity identity
+		// coordinator instead of calling wp_unique_post_slug() with the draft status.
 		$base = sanitize_title($new_title) ?: ('btbl-copy-' . $new_id);
-		$new_slug = wp_unique_post_slug($base, (int) $new_id, 'draft', $post->post_type, 0);
+		$new_slug = $persistence->unique_slug($base, (int) $new_id, $new_post);
 		$definition['id'] = $new_slug;
 		$definition['name'] = $new_title;
 		$definition['status'] = 'draft';
-		$new_post = get_post((int) $new_id);
-		if (!$new_post instanceof WP_Post) {
-			return new WP_Error('btbl_duplicate_missing_post', __('The duplicated item could not be loaded.', 'baratables'));
-		}
-		$persistence = BaraTables_Entity_Persistence::from_descriptor($conf);
 		$error = $persistence->repair((int) $new_id, $new_post, $definition, $new_slug);
 		if ($error instanceof WP_Error) {
-			return $error;
+			return $this->cleanup_failed_duplicate((int) $new_id, $error);
 		}
 
 		return (int) $new_id;
+	}
+
+	private function cleanup_failed_duplicate(int $post_id, WP_Error $original): WP_Error {
+		$cleanup = BaraTables_Post_Cleanup::delete_or_quarantine($post_id);
+		if (!$cleanup) {
+			return $original;
+		}
+		$data = $cleanup->get_error_data();
+		return new WP_Error(
+			'btbl_duplicate_cleanup_failed',
+			sprintf(
+				/* translators: %d is the WordPress post ID of an incomplete draft. */
+				__('The item could not be duplicated. An incomplete, non-public draft remains (post ID %d).', 'baratables'),
+				$post_id
+			),
+			[
+				'post_id' => $post_id,
+				'original_error' => $original->get_error_code(),
+				'cleanup' => is_array($data) ? $data : [],
+			]
+		);
 	}
 }
 
 
 class BaraTables_Admin_Page_Utils {
 	public static function render_shortcode_cell(string $shortcode): string {
-		// R9: accessible click-to-copy -- the label includes the shortcode so list rows
+		// Accessible click-to-copy: the label includes the shortcode so list rows
 		// stay distinguishable to screen readers, and "Copied" is localized via a data attribute.
 		return sprintf(
 			'<code class="btbl-shortcode btbl-shortcode--copy" data-shortcode="%1$s" data-copied-label="%2$s" tabindex="0" role="button" title="%3$s" aria-label="%3$s">%4$s</code>',
@@ -434,6 +458,78 @@ final class BaraTables_Admin_Definition_Loader {
 }
 
 
+/** Capture the post fields WordPress is about to replace before save_post runs. */
+final class BaraTables_Pre_Update_State {
+	private static bool $registered = false;
+	private static array $states = [];
+
+	public static function register(): void {
+		if (self::$registered) {
+			return;
+		}
+		self::$registered = true;
+		add_action('pre_post_update', [self::class, 'capture'], 10, 2);
+	}
+
+	public static function capture(int $post_id, array $data): void {
+		unset($data);
+		if (BaraTables_Persistence_Guard::active()) {
+			return;
+		}
+		$post = get_post($post_id);
+		if (!$post instanceof WP_Post || !in_array($post->post_type, [BaraTables_Repository::CPT, BaraTables_Chart_Repository::CPT], true)) {
+			return;
+		}
+		self::$states[$post_id] = [
+			'post_title' => (string) $post->post_title,
+			'post_name' => (string) $post->post_name,
+			'post_status' => (string) $post->post_status,
+		];
+	}
+
+	public static function take(int $post_id): ?array {
+		$state = self::$states[$post_id] ?? null;
+		unset(self::$states[$post_id]);
+		return is_array($state) ? $state : null;
+	}
+}
+
+
+/** Verified cleanup for an incomplete plugin post; any survivor is forced non-public. */
+final class BaraTables_Post_Cleanup {
+	public static function delete_or_quarantine(int $post_id): ?WP_Error {
+		if ($post_id <= 0 || !get_post($post_id)) {
+			return null;
+		}
+		wp_delete_post($post_id, true);
+		$post = get_post($post_id);
+		if (!$post instanceof WP_Post) {
+			return null;
+		}
+
+		if (!in_array($post->post_status, ['draft', 'pending', 'auto-draft', 'trash'], true)) {
+			BaraTables_Persistence_Guard::begin();
+			try {
+				wp_update_post(['ID' => $post_id, 'post_status' => 'draft'], true);
+			} finally {
+				BaraTables_Persistence_Guard::end();
+			}
+			$post = get_post($post_id);
+		}
+
+		$status = $post instanceof WP_Post ? (string) $post->post_status : '';
+		$quarantined = in_array($status, ['draft', 'pending', 'auto-draft', 'trash'], true);
+		return new WP_Error(
+			'btbl_incomplete_post_not_deleted',
+			$quarantined
+				? __('WordPress did not delete an incomplete item, but BaraTables kept it non-public.', 'baratables')
+				: __('WordPress did not delete or quarantine an incomplete item.', 'baratables'),
+			['post_id' => $post_id, 'status' => $status, 'quarantined' => $quarantined]
+		);
+	}
+}
+
+
 /**
  * Keep a table/chart post slug, definition id and lookup-meta slug as one persistence unit.
  *
@@ -449,10 +545,30 @@ class BaraTables_Entity_Persistence {
 		$this->cpt = $cpt;
 		$this->meta_key = $meta_key;
 		$this->meta_slug_key = $meta_slug_key;
+		BaraTables_Pre_Update_State::register();
 	}
 
 	public static function from_descriptor(array $descriptor): self {
 		return new self($descriptor['cpt'], $descriptor['meta_key'], $descriptor['meta_slug']);
+	}
+
+	/** @return array{post_title:string,post_name:string,post_status:string,definition:array,meta_slug:array} */
+	public function snapshot(int $post_id, string $previous_post_status = ''): array {
+		$pre_update = BaraTables_Pre_Update_State::take($post_id);
+		$stored_status = (string) get_post_field('post_status', $post_id, 'raw');
+		$previous_post_status = sanitize_key($previous_post_status);
+		if (is_array($pre_update) && in_array((string) ($pre_update['post_status'] ?? ''), array_values(get_post_stati()), true)) {
+			$previous_post_status = (string) $pre_update['post_status'];
+		} elseif (!in_array($previous_post_status, array_values(get_post_stati()), true)) {
+			$previous_post_status = $stored_status;
+		}
+		return [
+			'post_title' => is_array($pre_update) ? (string) ($pre_update['post_title'] ?? '') : (string) get_post_field('post_title', $post_id, 'raw'),
+			'post_name' => is_array($pre_update) ? (string) ($pre_update['post_name'] ?? '') : (string) get_post_field('post_name', $post_id, 'raw'),
+			'post_status' => $previous_post_status,
+			'definition' => BaraTables_Base_Repository::snapshot_meta($post_id, $this->meta_key),
+			'meta_slug' => BaraTables_Base_Repository::snapshot_meta($post_id, $this->meta_slug_key),
+		];
 	}
 
 	/**
@@ -484,12 +600,14 @@ class BaraTables_Entity_Persistence {
 		if ($callback_registered) {
 			remove_action($save_hook, $save_callback, 9);
 		}
+		BaraTables_Persistence_Guard::begin();
 		try {
 			$updated = wp_update_post([
 				'ID'        => $post_id,
 				'post_name' => $slug,
 			], true);
 		} finally {
+			BaraTables_Persistence_Guard::end();
 			if ($callback_registered) {
 				add_action($save_hook, $save_callback, 9, $accepted_args);
 			}
@@ -509,18 +627,84 @@ class BaraTables_Entity_Persistence {
 	}
 
 	/** Write the definition and its lookup slug together through the one canonical path. */
-	public function persist(int $post_id, array $definition, string $slug): void {
+	public function persist(int $post_id, array $definition, string $slug): ?WP_Error {
 		$definition['id'] = $slug;
-		BaraTables_Base_Repository::persist($post_id, $this->meta_key, $this->meta_slug_key, $definition, $slug);
+		return BaraTables_Base_Repository::persist($post_id, $this->meta_key, $this->meta_slug_key, $definition, $slug);
+	}
+
+	/** Restore the exact plugin identity/data snapshot captured before an editor operation. */
+	public function restore(int $post_id, array $snapshot, callable $save_callback, int $accepted_args): ?WP_Error {
+		$save_hook = 'save_post_' . $this->cpt;
+		$callback_registered = has_action($save_hook, $save_callback) !== false;
+		if ($callback_registered) {
+			remove_action($save_hook, $save_callback, 9);
+		}
+
+		$post_error = null;
+		$definition_error = null;
+		$slug_error = null;
+		BaraTables_Persistence_Guard::begin();
+		try {
+			$previous_title = (string) ($snapshot['post_title'] ?? get_post_field('post_title', $post_id, 'raw'));
+			$previous_slug = (string) ($snapshot['post_name'] ?? '');
+			$previous_status = (string) ($snapshot['post_status'] ?? get_post_field('post_status', $post_id, 'raw'));
+			if (
+				(string) get_post_field('post_title', $post_id, 'raw') !== $previous_title
+				|| (string) get_post_field('post_name', $post_id, 'raw') !== $previous_slug
+				|| (string) get_post_field('post_status', $post_id, 'raw') !== $previous_status
+			) {
+				$updated = wp_update_post(['ID' => $post_id, 'post_title' => $previous_title, 'post_name' => $previous_slug, 'post_status' => $previous_status], true);
+				if (is_wp_error($updated)) {
+					$post_error = $updated;
+				}
+			}
+
+			$definition_error = BaraTables_Base_Repository::restore_meta_snapshot(
+				$post_id,
+				$this->meta_key,
+				$snapshot['definition'] ?? ['exists' => false, 'value' => ''],
+				true
+			);
+			$slug_error = BaraTables_Base_Repository::restore_meta_snapshot(
+				$post_id,
+				$this->meta_slug_key,
+				$snapshot['meta_slug'] ?? ['exists' => false, 'value' => '']
+			);
+		} finally {
+			BaraTables_Persistence_Guard::end();
+			if ($callback_registered) {
+				add_action($save_hook, $save_callback, 9, $accepted_args);
+			}
+		}
+
+		$previous_title = (string) ($snapshot['post_title'] ?? get_post_field('post_title', $post_id, 'raw'));
+		$previous_slug = (string) ($snapshot['post_name'] ?? '');
+		$previous_status = (string) ($snapshot['post_status'] ?? get_post_field('post_status', $post_id, 'raw'));
+		if (
+			$post_error
+			|| (string) get_post_field('post_title', $post_id, 'raw') !== $previous_title
+			|| (string) get_post_field('post_name', $post_id, 'raw') !== $previous_slug
+			|| (string) get_post_field('post_status', $post_id, 'raw') !== $previous_status
+			|| $definition_error
+			|| $slug_error
+		) {
+			return new WP_Error('baratables_entity_rollback_failed', __('WordPress could not completely restore the previous plugin data.', 'baratables'));
+		}
+		return null;
 	}
 
 	/** Used by repair hooks that already guard themselves against recursive post/meta callbacks. */
 	public function repair(int $post_id, WP_Post $post, array $definition, string $slug): ?WP_Error {
 		if ($post->post_name !== $slug) {
-			$updated = wp_update_post([
-				'ID'        => $post_id,
-				'post_name' => $slug,
-			], true);
+			BaraTables_Persistence_Guard::begin();
+			try {
+				$updated = wp_update_post([
+					'ID'        => $post_id,
+					'post_name' => $slug,
+				], true);
+			} finally {
+				BaraTables_Persistence_Guard::end();
+			}
 			if (is_wp_error($updated)) {
 				return $updated;
 			}
@@ -530,12 +714,38 @@ class BaraTables_Entity_Persistence {
 			}
 		}
 
-		$this->persist($post_id, $definition, $slug);
-		return null;
+		return $this->persist($post_id, $definition, $slug);
 	}
 
-	private function unique_slug(string $base, int $post_id, WP_Post $post): string {
-		return wp_unique_post_slug($base, $post_id, $post->post_status, $this->cpt, $post->post_parent);
+	/** Return an identity unique across every post status and legacy lookup metadata. */
+	public function unique_slug(string $base, int $post_id, WP_Post $post): string {
+		$root = sanitize_title($base);
+		if ($root === '') {
+			$root = (string) $post_id;
+		}
+		$attempt = 1;
+		do {
+			$requested = $attempt === 1 ? $root : $root . '-' . $attempt;
+			// Passing a publishing status deliberately bypasses wp_unique_post_slug()'s early
+			// return for drafts/pending posts while retaining core's reserved-name rules.
+			$candidate = wp_unique_post_slug($requested, $post_id, 'publish', $this->cpt, $post->post_parent);
+			$attempt++;
+		} while ($this->meta_slug_is_claimed($candidate, $post_id));
+		return $candidate;
+	}
+
+	private function meta_slug_is_claimed(string $slug, int $post_id): bool {
+		$ids = get_posts([
+			'post_type' => $this->cpt,
+			'post_status' => array_values(get_post_stati()),
+			'numberposts' => 1,
+			'fields' => 'ids',
+			'post__not_in' => [$post_id], // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in -- One exact identity lookup; excluding the current entity is the correctness condition.
+			'meta_key' => $this->meta_slug_key, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Legacy identity metadata must be checked for collisions even if post_name drifted.
+			'meta_value' => $slug, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Exact legacy identity lookup paired with the plugin's post type.
+			'no_found_rows' => true,
+		]);
+		return !empty($ids);
 	}
 
 	/**
@@ -566,7 +776,7 @@ abstract class BaraTables_Base_Slug_Manager {
 	}
 
 	public function ensure_slug_on_save(int $post_id, WP_Post $post): void {
-		if ($this->syncing_slug) {
+		if ($this->syncing_slug || BaraTables_Persistence_Guard::active()) {
 			return;
 		}
 		if ($post->post_type !== $this->descriptor['cpt']) {
@@ -575,6 +785,14 @@ abstract class BaraTables_Base_Slug_Manager {
 		if (wp_is_post_revision($post_id) || (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)) {
 			return;
 		}
+		// An earlier save_post callback may have coordinated a slug update. WordPress keeps passing
+		// the original WP_Post object to later callbacks, so compare metadata with the durable row,
+		// not that stale hook argument (otherwise a successful editor rename is "repaired" back).
+		$stored_post = get_post($post_id);
+		if (!$stored_post instanceof WP_Post) {
+			return;
+		}
+		$post = $stored_post;
 
 		$meta_slug = get_post_meta($post_id, $this->descriptor['meta_slug'], true);
 		$definition = get_post_meta($post_id, $this->descriptor['meta_key'], true);
@@ -588,7 +806,7 @@ abstract class BaraTables_Base_Slug_Manager {
 	// dropped instead, and the hooks are registered with a matching accepted_args of 3.
 	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- fixed hook signature.
 	public function ensure_slug_on_meta($meta_id, $object_id, $meta_key): void {
-		if ($this->syncing_slug) {
+		if ($this->syncing_slug || BaraTables_Persistence_Guard::active()) {
 			return;
 		}
 		if (!in_array($meta_key, [$this->descriptor['meta_key'], $this->descriptor['meta_slug']], true)) {
@@ -611,7 +829,11 @@ abstract class BaraTables_Base_Slug_Manager {
 
 	private function maybe_resync_slug(int $post_id, WP_Post $post, $meta_slug, array $definition): void {
 		$current_slug = $post->post_name;
-		if (!is_string($meta_slug) || strpos($meta_slug, $this->get_slug_prefix()) !== 0) {
+		$meta_slug = is_string($meta_slug) ? $meta_slug : '';
+		// A newly inserted CPT post reaches save_post before the editor has written either plugin
+		// metadata record. There is no identity drift to repair yet, and synthesizing a definition
+		// here would turn an intentionally incomplete draft into a false saved table/chart.
+		if ($meta_slug === '' && empty($definition)) {
 			return;
 		}
 
@@ -620,30 +842,42 @@ abstract class BaraTables_Base_Slug_Manager {
 			if ($base === '') {
 				$base = (string) $post_id;
 			}
-			$current_slug = wp_unique_post_slug($base, $post_id, $post->post_status, $post->post_type, $post->post_parent);
+			$current_slug = $this->persistence->unique_slug($base, $post_id, $post);
 			if ($current_slug === '') {
 				return;
 			}
+		} else {
+			$current_slug = $this->persistence->unique_slug($current_slug, $post_id, $post);
 		}
 
-		if ($meta_slug === $current_slug) {
+		if ($meta_slug === $current_slug && (string) ($definition['id'] ?? '') === $current_slug) {
 			return;
 		}
 
 		$definition = $this->hydrate_definition($definition, $post, $meta_slug);
 		$definition['id'] = $current_slug;
 
+		$snapshot = $this->persistence->snapshot($post_id);
 		$this->syncing_slug = true;
 		try {
-			$this->persistence->repair($post_id, $post, $definition, $current_slug);
+			$error = $this->persistence->repair($post_id, $post, $definition, $current_slug);
+			if ($error) {
+				$rollback = $this->persistence->restore($post_id, $snapshot, static function (): void {}, 0);
+				if (class_exists('BaraTables_Admin_Notice')) {
+					BaraTables_Admin_Notice::queue(
+						$rollback
+							? __('BaraTables could not synchronize this item\'s ID or restore its previous data. Retry the save before editing it again.', 'baratables')
+							: __('BaraTables could not synchronize this item\'s ID. Its previous data was restored.', 'baratables'),
+						'error'
+					);
+				}
+			}
 		} finally {
 			$this->syncing_slug = false;
 		}
 	}
 
 	abstract protected function get_descriptor(): array;
-
-	abstract protected function get_slug_prefix(): string;
 
 	abstract protected function hydrate_definition(array $definition, WP_Post $post, string $meta_slug): array;
 }
@@ -652,10 +886,6 @@ abstract class BaraTables_Base_Slug_Manager {
 class BaraTables_Admin_Slug_Manager extends BaraTables_Base_Slug_Manager {
 	protected function get_descriptor(): array {
 		return BaraTables_Entity_Descriptor::table();
-	}
-
-	protected function get_slug_prefix(): string {
-		return 'btbl_';
 	}
 
 	protected function hydrate_definition(array $definition, WP_Post $post, string $meta_slug): array {
@@ -682,10 +912,6 @@ class BaraTables_Admin_Slug_Manager extends BaraTables_Base_Slug_Manager {
 class BaraTables_Chart_Slug_Manager extends BaraTables_Base_Slug_Manager {
 	protected function get_descriptor(): array {
 		return BaraTables_Entity_Descriptor::chart();
-	}
-
-	protected function get_slug_prefix(): string {
-		return 'btbl-chart-';
 	}
 
 	protected function hydrate_definition(array $definition, WP_Post $post, string $meta_slug): array {
@@ -737,15 +963,28 @@ class BaraTables_Admin_Assets {
 			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/admin.css')
 		);
 
-		// Only the TABLE editor has a media control -- the CSV "Choose file" button. The chart
-		// editor renders no media UI, so enqueueing here pulled ~660KB of media-library JS plus its
-		// inline templates onto every chart edit screen for nothing.
+		// Only the table editor has a media control: the CSV "Choose file" button.
 		if ($is_btbl_editor && $hook_post_type === BaraTables_Repository::CPT) {
 			wp_enqueue_media();
 		}
 
 		$is_table_editor = $is_btbl_editor && $hook_post_type === BaraTables_Repository::CPT;
 		$is_chart_editor = $is_btbl_editor && $hook_post_type === BaraTables_Chart_Repository::CPT;
+		if ($is_chart_editor) {
+			wp_enqueue_style(
+				'baratables-select2',
+				$this->plugin_url . 'assets/vendor/select2/select2.min.css',
+				[],
+				'4.1.0-rc.0'
+			);
+			wp_enqueue_script(
+				'baratables-select2',
+				$this->plugin_url . 'assets/vendor/select2/select2.min.js',
+				['jquery'],
+				'4.1.0-rc.0',
+				true
+			);
+		}
 		$admin_dependencies = ['jquery', 'baratables-admin-core'];
 		if ($is_table_editor) {
 			$admin_dependencies[] = 'baratables-admin-layout';
@@ -756,7 +995,7 @@ class BaraTables_Admin_Assets {
 			['baratables-utils', 'assets/baratables-utils.js', [], $is_table_editor],
 			['baratables-admin-layout', 'assets/admin-layout.js', ['jquery', 'baratables-admin-core'], $is_table_editor],
 			['baratables-admin-grid', 'assets/admin-grid.js', ['jquery', 'baratables-utils'], $is_table_editor],
-			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core'], $is_chart_editor],
+			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core', 'baratables-select2'], $is_chart_editor],
 			['baratables-admin', 'assets/admin.js', $admin_dependencies, $is_btbl_editor],
 		];
 		foreach ($scripts as [$handle, $relative, $dependencies, $enabled]) {
@@ -889,7 +1128,7 @@ class BaraTables_Admin_List_Columns extends BaraTables_Admin_List_Columns_Base {
 					return;
 				}
 				$output = implode(', ', $labels);
-				// R43: at-a-glance row count for manual tables.
+				// Show an at-a-glance row count for manual tables.
 				$source = $definition['source_type'] ?? '';
 				if (in_array($source, ['custom_data', 'custom'], true) && !empty($definition['custom_data']['rows'])) {
 					$count = count($definition['custom_data']['rows']);
@@ -923,6 +1162,8 @@ class BaraTables_Admin_List_Columns extends BaraTables_Admin_List_Columns_Base {
 class BaraTables_Chart_List_Columns extends BaraTables_Admin_List_Columns_Base {
 	private BaraTables_Service $table_service;
 	private array $table_definitions = [];
+	private array $table_post_ids = [];
+	private bool $table_definitions_primed = false;
 
 	public function __construct(BaraTables_Service $table_service) {
 		$this->table_service = $table_service;
@@ -940,8 +1181,8 @@ class BaraTables_Chart_List_Columns extends BaraTables_Admin_List_Columns_Base {
 					return;
 				}
 				$name = (string) ($table['name'] ?? ($table['id'] ?? ''));
-				// R14: link straight to the source table's editor.
-				$post_id = !empty($table['id']) ? $this->table_service->get_definition_post_id((string) $table['id']) : 0;
+				// Link straight to the source table's editor.
+				$post_id = !empty($table['id']) ? $this->get_table_post_id((string) $table['id']) : 0;
 				$edit_link = $post_id ? get_edit_post_link($post_id) : '';
 				if ($edit_link) {
 					printf('<a href="%s">%s</a>', esc_url($edit_link), esc_html($name));
@@ -956,7 +1197,7 @@ class BaraTables_Chart_List_Columns extends BaraTables_Admin_List_Columns_Base {
 					return;
 				}
 				$chart_types = BaraTables_Chart_Types::all();
-				// R42: a scannable Dashicon alongside the text label (now defined for every type).
+				// Show a scannable Dashicon alongside every chart-type label.
 				if (isset($chart_types[$type]['icon'])) {
 					printf('<span class="dashicons dashicons-%s" aria-hidden="true" style="vertical-align:text-bottom;"></span> ', esc_attr($chart_types[$type]['icon']));
 				}
@@ -1003,9 +1244,43 @@ class BaraTables_Chart_List_Columns extends BaraTables_Admin_List_Columns_Base {
 		if ($table_id === '') {
 			return null;
 		}
+		$this->prime_table_definitions();
 		if (!array_key_exists($table_id, $this->table_definitions)) {
 			$this->table_definitions[$table_id] = $this->table_service->find_definition($table_id);
+			$this->table_post_ids[$table_id] = $this->table_definitions[$table_id]
+				? $this->table_service->get_definition_post_id($table_id)
+				: 0;
 		}
 		return $this->table_definitions[$table_id];
+	}
+
+	private function get_table_post_id(string $table_id): int {
+		$this->prime_table_definitions();
+		return (int) ($this->table_post_ids[$table_id] ?? 0);
+	}
+
+	private function prime_table_definitions(): void {
+		if ($this->table_definitions_primed) {
+			return;
+		}
+		$this->table_definitions_primed = true;
+		$table_ids = [];
+		foreach (($GLOBALS['wp_query']->posts ?? []) as $post) {
+			if (!$post instanceof WP_Post || $post->post_type !== BaraTables_Chart_Repository::CPT) {
+				continue;
+			}
+			$chart = get_post_meta($post->ID, BaraTables_Chart_Repository::META_KEY, true);
+			if (is_array($chart) && !empty($chart['table_id'])) {
+				$table_ids[] = (string) $chart['table_id'];
+			}
+		}
+		foreach (array_unique($table_ids) as $table_id) {
+			$this->table_definitions[$table_id] = null;
+			$this->table_post_ids[$table_id] = 0;
+		}
+		foreach ($this->table_service->find_definitions_with_post_ids($table_ids) as $table_id => $record) {
+			$this->table_definitions[$table_id] = $record['definition'];
+			$this->table_post_ids[$table_id] = (int) $record['post_id'];
+		}
 	}
 }

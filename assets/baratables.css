@@ -7,21 +7,19 @@
 	width: 100%;
 }
 
-.btbl-filter-wrapper {
+.btbl-filter-wrapper,
+.btbl-filter {
 	display: flex;
 	flex-direction: column;
+}
+
+.btbl-filter-wrapper {
 	gap: 12px;
 	margin-bottom: 12px;
 	position: relative;
 }
 
-.btbl-reset-button {
-	cursor: pointer;
-}
-
 .btbl-filter {
-	display: flex;
-	flex-direction: column;
 	gap: 6px;
 }
 
@@ -166,6 +164,15 @@
 	margin-top: 10px;
 	padding: 10px 12px;
 	border: 1px dashed #d63638;
+	background: #fff5f5;
+	color: #8a1f11;
+}
+
+.btbl-runtime-error,
+.btbl-source-error {
+	margin: 10px 0;
+	padding: 10px 12px;
+	border: 1px solid #d63638;
 	background: #fff5f5;
 	color: #8a1f11;
 }

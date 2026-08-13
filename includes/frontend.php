@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
 class BaraTables_Frontend {
 	private BaraTables_Service $service;
 	private BaraTables_Chart_Service $chart_service;
-	private BaraTables_Table_Presentation $table_presentation;
+	private ?BaraTables_Table_Presentation $table_presentation = null;
 	private string $plugin_url;
 	private string $plugin_path;
 	private bool $assets_registered = false;
@@ -17,9 +17,15 @@ class BaraTables_Frontend {
 	public function __construct(BaraTables_Service $service, BaraTables_Chart_Service $chart_service, string $plugin_url, string $plugin_path) {
 		$this->service = $service;
 		$this->chart_service = $chart_service;
-		$this->table_presentation = new BaraTables_Table_Presentation($service);
 		$this->plugin_url = $plugin_url;
 		$this->plugin_path = $plugin_path;
+	}
+
+	private function table_presentation(): BaraTables_Table_Presentation {
+		if ($this->table_presentation === null) {
+			$this->table_presentation = new BaraTables_Table_Presentation($this->service);
+		}
+		return $this->table_presentation;
 	}
 
 	public function register_frontend_assets(): void {
@@ -43,7 +49,7 @@ class BaraTables_Frontend {
 	 * (up to rowLimit rows) painting completely unstyled first, and the .is-loading mask that is
 	 * supposed to hide it until DataTables initializes is itself defined in that late CSS.
 	 *
-	 * Only the ~3KB base file moves; the DataTables/Select2 vendor CSS stays on-demand so pages
+	 * Only the base file moves; the DataTables/Select2 vendor CSS stays on-demand so pages
 	 * without those features keep their current payload. This is best-effort by design: shortcodes
 	 * coming from widgets, blocks or templates are not detected here and simply fall back to the
 	 * existing late enqueue, exactly as before.
@@ -86,6 +92,9 @@ class BaraTables_Frontend {
 		if (!$context) {
 			return '<p>' . esc_html__('Table not found.', 'baratables') . '</p>';
 		}
+		if ($context['result']->has_error()) {
+			return $this->render_source_error($context['result']);
+		}
 
 		if (empty($context['definition']['columns'])) {
 			return '<p>' . esc_html__('No columns selected for this table.', 'baratables') . '</p>';
@@ -111,6 +120,10 @@ class BaraTables_Frontend {
 		$rows = $context['rows'] ?? [];
 		$chart_definition = $context['chart'] ?? [];
 		$chart_options = $context['chart_options'] ?? $this->service->get_default_chart_options();
+		$source_result = $context['row_result'] ?? null;
+		if ($source_result instanceof BaraTables_Row_Result && $source_result->has_error()) {
+			return $this->render_source_error($source_result);
+		}
 
 		if (empty($definition['columns'])) {
 			return '<p>' . esc_html__('No columns selected for the source table.', 'baratables') . '</p>';
@@ -152,15 +165,28 @@ class BaraTables_Frontend {
 	 *
 	 * All three ship off by default -- `buttons` defaults to [], `colReorder` to false, and a
 	 * column's `filter` to 'none' (Select2 is only ever instantiated for dropdown filters). They
-	 * were previously enqueued on every table page regardless, which put roughly 265KB of
-	 * unusable JS/CSS on a stock table: the Buttons family + JSZip, Select2, and ColReorder.
+	 * are loaded only when used. Buttons extensions are selected per configured action, so JSZip
+	 * ships only with Excel rather than with every Copy/CSV/Print/visibility control.
 	 */
 	private function get_table_asset_features(array $definition): array {
 		$features = [];
 		$options = $this->service->get_table_options($definition);
 
-		if (!empty($options['buttons'])) {
+		$buttons = array_values(array_filter((array) ($options['buttons'] ?? []), 'is_string'));
+		if (!empty($buttons)) {
 			$features[] = 'buttons';
+			if (in_array('excel', $buttons, true)) {
+				$features[] = 'buttons-html5';
+				$features[] = 'buttons-excel';
+			} elseif (array_intersect($buttons, ['copy', 'csv'])) {
+				$features[] = 'buttons-html5';
+			}
+			if (in_array('print', $buttons, true)) {
+				$features[] = 'buttons-print';
+			}
+			if (in_array('colvis', $buttons, true)) {
+				$features[] = 'buttons-colvis';
+			}
 		}
 		if (!empty($options['colReorder'])) {
 			$features[] = 'colreorder';
@@ -190,9 +216,7 @@ class BaraTables_Frontend {
 			if (!$include_chart && !empty($spec['chart_only'])) {
 				return false;
 			}
-			// Specs tagged with a feature only load when that feature is actually configured.
-			// Every member of a feature group is gated together, so the buttons.html5 -> jszip
-			// dependency edge is preserved intact whenever the Buttons family does load.
+			// Specs tagged with a feature load only when that exact capability is configured.
 			return empty($spec['feature']) || in_array($spec['feature'], $features, true);
 		};
 
@@ -220,7 +244,17 @@ class BaraTables_Frontend {
 		return [
 			'definition' => $definition,
 			'rows'       => $result->rows(),
+			'result'     => $result,
 		];
+	}
+
+	private function render_source_error(BaraTables_Row_Result $result): string {
+		$this->ensure_assets_registered();
+		wp_enqueue_style('baratables');
+		$message = current_user_can('manage_options')
+			? $result->error_message()
+			: __('This table is temporarily unavailable.', 'baratables');
+		return '<p class="btbl-source-error" role="alert">' . esc_html($message) . '</p>';
 	}
 
 	private function ensure_assets_registered(): void {
@@ -232,11 +266,11 @@ class BaraTables_Frontend {
 	private function get_style_specs(): array {
 		if ($this->style_specs === null) {
 			$this->style_specs = [
-				$this->style_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '2.3.8', ['table_only' => true]),
-				$this->style_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
-				$this->style_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
-				$this->style_spec('baratables-select2', 'assets/vendor/select2/select2.min.css', [], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
-				$this->style_spec('baratables', 'assets/baratables.css'),
+				$this->asset_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '2.3.8', ['table_only' => true]),
+				$this->asset_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				$this->asset_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->asset_spec('baratables-select2', 'assets/vendor/select2/select2.min.css', [], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
+				$this->asset_spec('baratables', 'assets/baratables.css'),
 			];
 		}
 		return $this->style_specs;
@@ -248,25 +282,24 @@ class BaraTables_Frontend {
 				$this->script_spec('baratables-utils', 'assets/baratables-utils.js'),
 				$this->script_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.min.js', ['jquery'], '2.3.8', ['table_only' => true]),
 				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
-				// JSZip stays a hard dependency of buttons.html5 so the Excel button cannot
-				// silently vanish. The whole Buttons family is feature-gated together.
-				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons']),
-				$this->script_spec('baratables-datatables-buttons-html5', 'assets/vendor/datatables/buttons.html5.min.js', ['baratables-datatables-buttons', 'baratables-jszip'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
-				$this->script_spec('baratables-datatables-buttons-print', 'assets/vendor/datatables/buttons.print.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
-				$this->script_spec('baratables-datatables-buttons-colvis', 'assets/vendor/datatables/buttons.colVis.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons-excel']),
+				$this->script_spec('baratables-datatables-buttons-html5', 'assets/vendor/datatables/buttons.html5.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons-html5']),
+				$this->script_spec('baratables-datatables-buttons-print', 'assets/vendor/datatables/buttons.print.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons-print']),
+				$this->script_spec('baratables-datatables-buttons-colvis', 'assets/vendor/datatables/buttons.colVis.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons-colvis']),
 				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
 				$this->script_spec('baratables-select2', 'assets/vendor/select2/select2.min.js', ['jquery'], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
 				$this->script_spec('baratables-echarts', 'assets/vendor/echarts/echarts.min.js', [], '6.1.0', ['chart_only' => true]),
 				$this->script_spec('baratables-charts', 'assets/baratables-charts.js', ['baratables-echarts'], null, ['chart_only' => true]),
 				$this->script_spec('baratables-search', 'assets/baratables-search.js', ['jquery', 'baratables-utils'], null, ['table_only' => true]),
 				$this->script_spec('baratables-filters', 'assets/baratables-filters.js', ['jquery', 'baratables-utils'], null, ['table_only' => true]),
-				$this->script_spec('baratables-frontend', 'assets/baratables.js', ['jquery', 'baratables-utils']),
+				$this->script_spec('baratables-frontend', 'assets/baratables.js', ['jquery', 'baratables-utils', 'baratables-search', 'baratables-filters'], null, ['table_only' => true]),
+				$this->script_spec('baratables-chart-bootstrap', 'assets/baratables-chart-bootstrap.js', ['baratables-utils', 'baratables-charts'], null, ['chart_only' => true]),
 			];
 		}
 		return $this->script_specs;
 	}
 
-	private function style_spec(string $handle, string $relative, array $deps = [], ?string $version = null, array $flags = []): array {
+	private function asset_spec(string $handle, string $relative, array $deps = [], ?string $version = null, array $flags = []): array {
 		return array_merge([
 			'handle' => $handle,
 			'src' => $this->plugin_url . $relative,
@@ -276,13 +309,7 @@ class BaraTables_Frontend {
 	}
 
 	private function script_spec(string $handle, string $relative, array $deps = [], ?string $version = null, array $flags = []): array {
-		return array_merge([
-			'handle' => $handle,
-			'src' => $this->plugin_url . $relative,
-			'deps' => $deps,
-			'ver' => $version ?? BaraTables_Asset_Utils::get_asset_version($this->plugin_path, $relative),
-			'in_footer' => true,
-		], $flags);
+		return array_merge($this->asset_spec($handle, $relative, $deps, $version, $flags), ['in_footer' => true]);
 	}
 
 	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $table_id, bool $render_table): string {
@@ -290,10 +317,9 @@ class BaraTables_Frontend {
 
 		// Only the table markup consumes $filters. A [bara_chart] render always passes
 		// $render_table = false, so building them there walks every row, normalizes, decorates and
-		// sorts each option, then throws the result away -- cheap on a small table, ~600ms on a
-		// high-cardinality 10,000-row one.
+		// sorts each option, then throws the result away -- expensive on a high-cardinality table.
 		$filters = $render_table ? $this->service->build_filter_options($definition, $rows) : [];
-		$presentation = $render_table ? $this->table_presentation->build($definition, $rows) : null;
+		$presentation = $render_table ? $this->table_presentation()->build($definition, $rows) : null;
 		$allowed_inline = $render_table ? BaraTables_Service::allowed_inline_html() : [];
 		$table_options = $render_table ? $presentation['options'] : $this->service->get_table_options($definition);
 		$wrapper_compact_class = !empty($table_options['compact']) ? ' is-compact' : '';
@@ -318,6 +344,7 @@ class BaraTables_Frontend {
 				<span class="btbl-spinner" aria-hidden="true"></span>
 				<span class="screen-reader-text"><?php esc_html_e('Loading table...', 'baratables'); ?></span>
 			</div>
+			<p class="btbl-runtime-error" role="alert" hidden><?php esc_html_e('Interactive content could not load. Reload the page to try again.', 'baratables'); ?></p>
 			<?php
 			$chart_id = 'btbl-chart-' . $table_id;
 			$chart_height = isset($chart_options['height']) ? (int) $chart_options['height'] : 360;
@@ -516,9 +543,12 @@ class BaraTables_Frontend {
 		if (!$config) {
 			return;
 		}
+		$chart_only = !empty($payload['chartOnly']);
+		$handle = $chart_only ? 'baratables-chart-bootstrap' : 'baratables-frontend';
+		$queue = $chart_only ? 'BaraTablesChartQueue' : 'BaraTablesFrontendQueue';
 		wp_add_inline_script(
-			'baratables-frontend',
-			'window.BaraTablesFrontendQueue = window.BaraTablesFrontendQueue || []; window.BaraTablesFrontendQueue.push(' . $config . ');',
+			$handle,
+			'window.' . $queue . ' = window.' . $queue . ' || []; window.' . $queue . '.push(' . $config . ');',
 			'before'
 		);
 	}

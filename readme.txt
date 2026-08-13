@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.2.4
+Stable tag: 1.2.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,7 +14,7 @@ Create searchable, sortable WordPress tables and charts from CSV files, manual r
 
 BaraTables builds interactive tables and charts from your site data. Use manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publish with a shortcode.
 
-Import a JSON, XML, CSV, or TXT export from another table plugin or a spreadsheet to rebuild an existing table.
+Import a JSON, XML, HTML, CSV, TXT, or ZIP export from another table plugin or a spreadsheet to rebuild an existing table.
 
 Tables can include search, sorting, pagination, filters, export buttons, column visibility controls, and custom control layouts. Charts draw from any BaraTables table and embed separately with their own shortcode.
 
@@ -24,12 +24,12 @@ Tables can include search, sorting, pagination, filters, export buttons, column 
 * Add search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, including filtering by category or tag
 * Export table data to CSV or Excel, copy it, or print it
 * Reorder columns and control column visibility
-* Restrict rows by user role or user metadata with row-level access control
+* Restrict WordPress-content, CSV, and external-database rows by user role or user metadata
 * Remember table state between visits, and control scrolling, column sizing, and row loading limits
 * Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts with ECharts
 * Customize table controls, labels, layout, and display options
 * Light frontend styles that are easy to override with CSS
-* Import an existing table from another plugin or a spreadsheet (JSON, XML, CSV, or TXT)
+* Import an existing table from another plugin or a spreadsheet (JSON, XML, HTML, CSV, TXT, or ZIP)
 
 == Installation ==
 
@@ -43,6 +43,14 @@ Tables can include search, sorting, pagination, filters, export buttons, column 
 = What data sources are supported? =
 
 CSV files from the media library, manual data entry via the admin editor, WordPress content, and external MySQL/MariaDB databases.
+
+= Which table plugin exports can I import? =
+
+For TablePress, use a single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports are supported; export an externally connected table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and data-only CSV exports from wpDataTables and Tablesome are also supported. HTML table exports can be imported directly. For a ZIP containing multiple tables, BaraTables previews and imports the first supported table and tells you how many were found.
+
+Imports rebuild the table data and compatible display settings. Plugin-specific styling, formulas, shortcodes, charts, and external data connections are not carried over. Export XLS or XLSX files as CSV first.
+
+An upload or pasted import can be up to 5 MB. ZIP files can contain up to 50 entries, with each entry up to 5 MB and up to 20 MB total when expanded.
 
 = How many rows can a table load? =
 
@@ -76,6 +84,35 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 4. Chart builder and chart-type gallery with all supported chart types.
 
 == Changelog ==
+
+= 1.2.5 =
+New:
+
+* Imports WP Table Builder XML, Ninja Tables drag-and-drop JSON, Visualizer CSV, Supsystic JSON or CSV, and League Table XML exports.
+* Reads table exports from HTML and ZIP files.
+
+Improvements:
+
+* Chart-only pages load faster and large-table searches stay more responsive.
+* The chart editor searches table choices as you type, keeping it fast on sites with many tables.
+
+Fixes:
+
+* Empty or incomplete Ninja Tables exports no longer become a live table of WordPress posts.
+* Quoted commas and multiline headings no longer break semicolon-delimited imports.
+* Hidden columns, footer values, intentional blank rows, and nested cell values are preserved instead of discarded.
+* A failed import no longer leaves an incomplete published table behind.
+* The plugin activates normally on PHP 7.4 through PHP 8.1.
+* A failed table or chart save keeps its previous data, ID, and linked charts together.
+* Duplicating the same table or chart more than once gives every copy its own ID.
+* Missing CSV files and external database failures show a clear error instead of looking like an empty table.
+* If an interactive table or chart script fails to load, the loading screen clears and shows the available table or an error.
+* Renaming a Table ID no longer removes backslashes from linked chart names.
+* Manual column headings saved by early versions follow the site language after a direct upgrade.
+
+Security:
+
+* Validates the contents of table import uploads before processing them.
 
 = 1.2.4 =
 
@@ -203,6 +240,9 @@ Security:
 
 == Upgrade Notice ==
 
+= 1.2.5 =
+Broader and more accurate table imports, faster tables and chart-only pages, reliable saves, clear load errors, PHP 7.4 compatibility, and secure import validation.
+
 = 1.2.4 =
 Adds radar, heatmap, and treemap charts.
 
@@ -257,5 +297,6 @@ Source code and uncompressed distribution files for the bundled compressed asset
 * pako source: https://github.com/nodeca/pako
 * ECharts v6.1.0 source: https://github.com/apache/echarts/tree/6.1.0
 * ECharts v6.1.0 uncompressed JavaScript: https://raw.githubusercontent.com/apache/echarts/6.1.0/dist/echarts.js
+* BaraTables ECharts bundle entry and build command: https://github.com/trinadin/baratables/blob/main/tools/echarts-entry.js
 * Apache ECharts example thumbnail source files: https://echarts.apache.org/examples/data/thumb/
 * Apache ECharts examples source: https://github.com/apache/echarts-examples

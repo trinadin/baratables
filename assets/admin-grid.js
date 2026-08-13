@@ -67,7 +67,7 @@ jQuery(function($) {
 	var gridConfirmShrinkOne = $customGrid.data('confirm-shrink-one') || 'Reducing the grid will remove %d filled cell. Continue?';
 	var gridConfirmShrinkMany = $customGrid.data('confirm-shrink-many') || 'Reducing the grid will remove %d filled cells. Continue?';
 
-	// R17: read the current header labels from the DOM so resizes preserve them
+	// Read the current header labels from the DOM so resizes preserve them
 	// instead of resetting to the generic "Column N" placeholders.
 	function readCustomGridHeaders() {
 		var headers = [];
@@ -91,7 +91,7 @@ jQuery(function($) {
 		return rows;
 	}
 
-	// R11: how many filled cells would be discarded if we shrink to these counts.
+	// Count how many filled cells would be discarded if the grid shrinks.
 	function countDroppedCells(rows, counts) {
 		var dropped = 0;
 		for (var r = 0; r < rows.length; r++) {
@@ -105,16 +105,12 @@ jQuery(function($) {
 		return dropped;
 	}
 
-	// R12: per-row delete / insert-below / duplicate controls.
+	// Per-row delete, insert-below and duplicate controls.
 	// Uniform dashicons (shared 20x20 metrics) so the three actions align and size
 	// identically, instead of three mismatched text glyphs.
-	// The grid is built as one HTML string and parsed once, rather than as ~13 jQuery objects per
-	// row plus 4 per cell. At the 25,000-cell budget that was roughly 65,000 element constructions
-	// on editor load AND again on every row action (move/insert/duplicate/delete), which made a
-	// single row-action click take hundreds of milliseconds and reset the scroll position.
-	function escGridHtml(value) {
-		return window.BaraTablesUtils.escapeHtml(value);
-	}
+	// Build the grid as one HTML string and parse it once. Constructing jQuery objects per row and
+	// cell scales poorly and also resets the scroll position during row actions.
+	var escGridHtml = window.BaraTablesUtils.escapeHtml;
 	function rowActionHtml(cls, dashicon, label, disabled) {
 		return '<button type="button" class="button-link ' + cls + '"'
 			+ ' title="' + escGridHtml(label) + '" aria-label="' + escGridHtml(label) + '"'
@@ -154,7 +150,7 @@ jQuery(function($) {
 			var rowValues = rows[r] || [];
 			for (var c2 = 0; c2 < counts.cols; c2++) {
 				var cellVal = rowValues[c2] || '';
-				// R39: title mirrors the value so truncated cells reveal on hover.
+				// Mirror the value in the title so truncated cells reveal on hover.
 				html.push('<td><input type="text" name="btbl_custom_data[' + r + '][' + c2 + ']"'
 					+ ' title="' + escGridHtml(cellVal) + '" value="' + escGridHtml(cellVal) + '" /></td>');
 			}
@@ -196,7 +192,7 @@ jQuery(function($) {
 	}
 
 	if ($customGrid.length) {
-		// R26/R45: the "Update grid size" button only appears while the column/row counts
+		// The "Update grid size" button appears only while the column/row counts
 		// differ from the grid that's actually rendered, and hides again on revert.
 		function syncGridRefreshVisibility() {
 			var counts = getCustomCounts();
@@ -214,11 +210,11 @@ jQuery(function($) {
 		});
 		$customColsInput.add($customRowsInput).on('change input', syncGridRefreshVisibility);
 		syncGridRefreshVisibility(); // hidden on load (counts match the rendered grid)
-		// R39: keep the hover title in sync as the user types.
+		// Keep the hover title in sync as the user types.
 		$customGrid.on('input', 'input[name^="btbl_custom_data"]', function() {
 			$(this).attr('title', $(this).val());
 		});
-		// Reorder rows (R44): move the focused row up/down one position.
+		// Move the focused row up or down one position.
 		function focusMovedRow(newIdx, dir) {
 			var primary = dir === 'up' ? '.btbl-row-move-up' : '.btbl-row-move-down';
 			var fallback = dir === 'up' ? '.btbl-row-move-down' : '.btbl-row-move-up';
@@ -229,49 +225,35 @@ jQuery(function($) {
 			}
 			$btn.trigger('focus');
 		}
-		$customGrid.on('click', '.btbl-row-move-up', function() {
+		$customGrid.on('click', '.btbl-row-move-up, .btbl-row-move-down', function() {
 			var idx = $(this).closest('tr').index();
-			if (idx <= 0) { return; }
 			var rows = readCustomGridValues();
+			var direction = $(this).hasClass('btbl-row-move-up') ? -1 : 1;
+			var newIdx = idx + direction;
+			if (newIdx < 0 || newIdx >= rows.length) { return; }
 			var moved = rows.splice(idx, 1)[0];
-			rows.splice(idx - 1, 0, moved);
+			rows.splice(newIdx, 0, moved);
 			renderRows(rows);
-			focusMovedRow(idx - 1, 'up');
+			focusMovedRow(newIdx, direction < 0 ? 'up' : 'down');
 		});
-		$customGrid.on('click', '.btbl-row-move-down', function() {
+		// Row actions.
+		$customGrid.on('click', '.btbl-row-delete, .btbl-row-insert, .btbl-row-duplicate', function() {
+			var $button = $(this);
 			var idx = $(this).closest('tr').index();
 			var rows = readCustomGridValues();
-			if (idx >= rows.length - 1) { return; }
-			var moved = rows.splice(idx, 1)[0];
-			rows.splice(idx + 1, 0, moved);
-			renderRows(rows);
-			focusMovedRow(idx + 1, 'down');
-		});
-		// R12: row actions.
-		$customGrid.on('click', '.btbl-row-delete', function() {
-			var idx = $(this).closest('tr').index();
-			var rows = readCustomGridValues();
-			if (rows.length <= 1) {
-				rows = [[]];
+			if ($button.hasClass('btbl-row-delete')) {
+				if (rows.length <= 1) {
+					rows = [[]];
+				} else {
+					rows.splice(idx, 1);
+				}
 			} else {
-				rows.splice(idx, 1);
+				var inserted = $button.hasClass('btbl-row-duplicate') ? (rows[idx] || []).slice() : [];
+				rows.splice(idx + 1, 0, inserted);
 			}
 			renderRows(rows);
 		});
-		$customGrid.on('click', '.btbl-row-insert', function() {
-			var idx = $(this).closest('tr').index();
-			var rows = readCustomGridValues();
-			rows.splice(idx + 1, 0, []);
-			renderRows(rows);
-		});
-		$customGrid.on('click', '.btbl-row-duplicate', function() {
-			var idx = $(this).closest('tr').index();
-			var rows = readCustomGridValues();
-			var copy = (rows[idx] || []).slice();
-			rows.splice(idx + 1, 0, copy);
-			renderRows(rows);
-		});
-		// R13: paste tab/newline-delimited data from a spreadsheet.
+		// Paste tab/newline-delimited data from a spreadsheet.
 		$customGrid.on('paste', 'input[name^="btbl_custom_data"]', function(e) {
 			var clip = (e.originalEvent || e).clipboardData || window.clipboardData;
 			if (!clip) { return; }

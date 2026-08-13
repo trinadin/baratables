@@ -3,6 +3,10 @@
 	--btbl-border-medium: #c3c4c7;
 	--btbl-bg-surface: #f8fafc;
 	--btbl-bg-muted: #f6f7f7;
+	--btbl-color-primary: #2271b1;
+	--btbl-color-primary-hover: #135e96;
+	--btbl-color-ink: #1d2327;
+	--btbl-color-danger: #d63638;
 	--btbl-radius-sm: 4px;
 	--btbl-radius-pill: 999px;
 }
@@ -128,8 +132,8 @@
 
 .btbl-chip.is-selected,
 .btbl-chip[aria-pressed="true"] {
-	background: #1d2327;
-	border-color: #1d2327;
+	background: var(--btbl-color-ink);
+	border-color: var(--btbl-color-ink);
 	color: #fff;
 }
 
@@ -138,8 +142,15 @@
 	cursor: not-allowed;
 }
 
-.btbl-chip:focus-visible {
-	outline: 2px solid #2271b1;
+/* Shared keyboard treatment for interactive controls whose focus ring sits outside by 2px. */
+.btbl-chip:focus-visible,
+.btbl-term-chip input:focus-visible + span,
+.btbl-layout-chip:focus-visible,
+.btbl-options-toggle:focus-visible,
+.btbl-chart-preview-trigger:focus-visible,
+.btbl-chart-modal__close:focus-visible,
+.btbl-chart-type-card:focus-visible {
+	outline: 2px solid var(--btbl-color-primary);
 	outline-offset: 2px;
 }
 
@@ -213,16 +224,9 @@
 }
 
 .btbl-term-chip input:checked + span {
-	background: #2271b1;
-	border-color: #2271b1;
+	background: var(--btbl-color-primary);
+	border-color: var(--btbl-color-primary);
 	color: #fff;
-}
-
-/* The real checkbox is visually hidden (opacity:0), so without this a keyboard user tabbing
-   through term chips gets no focus indication at all. Mirrors .btbl-chip's focus ring. */
-.btbl-term-chip input:focus-visible + span {
-	outline: 2px solid #2271b1;
-	outline-offset: 2px;
 }
 
 .btbl-flag-grid {
@@ -283,7 +287,7 @@
 }
 
 .btbl-layout-drop.is-dragover {
-	border-color: #2271b1;
+	border-color: var(--btbl-color-primary);
 	background: #eef5ff;
 }
 
@@ -297,7 +301,7 @@
 	background: var(--btbl-bg-muted);
 	cursor: grab;
 	white-space: nowrap;
-	color: #1d2327;
+	color: var(--btbl-color-ink);
 }
 
 .btbl-layout-chip.is-dragging {
@@ -306,11 +310,6 @@
 
 .btbl-layout-chip:active {
 	cursor: grabbing;
-}
-
-.btbl-layout-chip:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 2px;
 }
 
 /* Must follow .btbl-layout-chip:active (same specificity) so a disabled chip keeps
@@ -361,7 +360,7 @@
 .btbl-flag-text {
 	display: block;
 	font-weight: 600;
-	color: #1d2327;
+	color: var(--btbl-color-ink);
 }
 
 .btbl-page-length-row input[type="number"],
@@ -476,12 +475,12 @@
 	border-radius: var(--btbl-radius-sm);
 	padding: 2px 8px;
 	font-size: 12px;
-	color: #1d2327;
+	color: var(--btbl-color-ink);
 }
 
 .btbl-preview-page.is-current {
-	background: #2271b1;
-	border-color: #2271b1;
+	background: var(--btbl-color-primary);
+	border-color: var(--btbl-color-primary);
 	color: #fff;
 }
 
@@ -584,8 +583,10 @@
 	background: #e7f1fb;
 }
 
-.btbl-shortcode:focus-visible {
-	outline: 2px solid #2271b1;
+.btbl-shortcode:focus-visible,
+.btbl-sortable-list li:focus-visible,
+.wp-core-ui .button.btbl-icon-button:focus-visible {
+	outline: 2px solid var(--btbl-color-primary);
 	outline-offset: 1px;
 }
 
@@ -604,7 +605,7 @@
 	bottom: 100%;
 	margin-bottom: 4px;
 	transform: translate(-50%, 3px);
-	background: #1d2327;
+	background: var(--btbl-color-ink);
 	color: #fff;
 	font-size: 11px;
 	font-weight: 600;
@@ -670,7 +671,7 @@
 	text-decoration: none;
 	display: inline-flex;
 	align-items: center;
-	color: #2271b1;
+	color: var(--btbl-color-primary);
 	background: none;
 	border: 0;
 	padding: 0;
@@ -679,14 +680,13 @@
 	cursor: pointer;
 }
 
-.btbl-options-toggle:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 2px;
-}
-
 .btbl-options-toggle:hover,
-.btbl-options-toggle:focus {
-	color: #135e96;
+.btbl-options-toggle:focus,
+.btbl-chart-preview-trigger:hover,
+.btbl-chart-preview-trigger:focus,
+.btbl-id-edit-toggle:hover,
+.btbl-id-edit-toggle:focus-visible {
+	color: var(--btbl-color-primary-hover);
 }
 
 .btbl-options-toggle .dashicons {
@@ -776,26 +776,21 @@
 	transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-/* R34: make the drag affordance obvious before the cursor lands. */
+/* Make the drag affordance obvious before the cursor lands. */
 .btbl-sortable-list li:hover {
-	border-color: #2271b1;
+	border-color: var(--btbl-color-primary);
 }
 
 .btbl-sortable-list li:active {
 	cursor: grabbing;
 }
 
-.btbl-sortable-list li:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 1px;
-}
-
 .btbl-sortable-list li.is-drag-over {
-	border-color: #2271b1;
+	border-color: var(--btbl-color-primary);
 	background: #e7f3ff;
 }
 
-/* R3/R4: full-width inline field hints inside the column gear. */
+/* Full-width inline field hints inside the column gear. */
 .btbl-field-hint {
 	flex-basis: 100%;
 	margin: 2px 0 0;
@@ -819,24 +814,13 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	color: #2271b1;
+	color: var(--btbl-color-primary);
 	text-decoration: none;
 	line-height: 1;
 	padding: 4px;
 	min-width: 28px;
 	min-height: 28px;
 	border-radius: 3px;
-}
-
-.btbl-chart-preview-trigger:hover,
-.btbl-chart-preview-trigger:focus {
-	color: #135e96;
-}
-
-/* R24: restore a visible focus ring (was outline:none). */
-.btbl-chart-preview-trigger:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 2px;
 }
 
 .btbl-chart-modal {
@@ -898,11 +882,6 @@
 	border-radius: 3px;
 }
 
-.btbl-chart-modal__close:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 2px;
-}
-
 .btbl-chart-type-chooser {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -922,17 +901,12 @@
 	transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
-.btbl-chart-type-card:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 2px;
-}
-
 .btbl-chart-type-card:hover {
 	border-color: #b6beca;
 }
 
 .btbl-chart-type-card.is-active {
-	border-color: #2271b1;
+	border-color: var(--btbl-color-primary);
 	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
 	transform: translateY(-1px);
 }
@@ -972,7 +946,7 @@
 	color: #1f2933;
 }
 
-/* Manual data grid — QoL (R12 row actions, R26 stale state, R39 scroll/sticky) */
+/* Manual data grid row actions, stale state, scrolling and sticky controls. */
 .btbl-custom-grid {
 	max-height: 440px;
 	overflow: auto;
@@ -1045,7 +1019,7 @@
 	border-radius: 6px;
 	background: transparent;
 	box-shadow: none;
-	color: #2271b1;
+	color: var(--btbl-color-primary);
 	cursor: pointer;
 	transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
@@ -1053,12 +1027,8 @@
 .wp-core-ui .button.btbl-icon-button:focus {
 	background: #f0f0f1;
 	border-color: #c3c4c7;
-	color: #135e96;
+	color: var(--btbl-color-primary-hover);
 	box-shadow: none;
-}
-.wp-core-ui .button.btbl-icon-button:focus-visible {
-	outline: 2px solid #2271b1;
-	outline-offset: 1px;
 }
 .wp-core-ui .button.btbl-icon-button:active {
 	background: #e0e0e1;
@@ -1120,16 +1090,16 @@
 }
 .btbl-row-actions .button-link:hover,
 .btbl-row-actions .button-link:focus-visible {
-	color: #135e96;
+	color: var(--btbl-color-primary-hover);
 	background: #f0f0f1;
 }
 .btbl-row-actions .btbl-row-delete:hover,
 .btbl-row-actions .btbl-row-delete:focus-visible {
-	color: #d63638;
+	color: var(--btbl-color-danger);
 	background: #fcf0f1;
 }
 
-/* R22: sub-section headings inside the column gear. */
+/* Sub-section headings inside the column gear. */
 .btbl-gear-section-heading {
 	margin: 12px 0 4px;
 	font-weight: 600;
@@ -1144,18 +1114,18 @@
 	margin-top: 0;
 }
 
-/* R6: JSON validation feedback on the Value overrides field. */
+/* JSON validation feedback on the Value overrides field. */
 textarea.btbl-invalid {
-	border-color: #d63638;
-	box-shadow: 0 0 0 1px #d63638;
+	border-color: var(--btbl-color-danger);
+	box-shadow: 0 0 0 1px var(--btbl-color-danger);
 }
 .btbl-json-error {
-	color: #d63638;
+	color: var(--btbl-color-danger);
 	font-weight: 600;
 	margin: 4px 0 0;
 }
 
-/* R27: empty layout palette placeholder + clearer disabled chip. */
+/* Empty layout palette placeholder and disabled chip. */
 .btbl-palette-placeholder {
 	color: #646970;
 	font-size: 12px;
@@ -1197,13 +1167,9 @@ textarea.btbl-invalid {
 	gap: 2px;
 	padding: 0;
 	font-size: 12px;
-	color: #2271b1;
+	color: var(--btbl-color-primary);
 	text-decoration: none;
 	cursor: pointer;
-}
-.btbl-id-edit-toggle:hover,
-.btbl-id-edit-toggle:focus-visible {
-	color: #135e96;
 }
 /* stylelint-disable-next-line no-descending-specificity -- cannot match the same element (.button-link is never .button.btbl-icon-button) */
 .btbl-id-edit-toggle .dashicons {
@@ -1247,14 +1213,14 @@ textarea.btbl-invalid {
 	padding: 0;
 	border: none;
 	background: transparent;
-	color: #2271b1;
+	color: var(--btbl-color-primary);
 	border-radius: 4px;
 	cursor: pointer;
 }
 .btbl-help-toggle:hover,
 .btbl-help-toggle:focus-visible {
 	background: #f0f0f1;
-	color: #135e96;
+	color: var(--btbl-color-primary-hover);
 }
 /* stylelint-disable-next-line no-descending-specificity -- cannot match the same element (bare class, never .button.btbl-icon-button) */
 .btbl-help-toggle .dashicons {

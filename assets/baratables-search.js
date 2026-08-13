@@ -1,5 +1,21 @@
 (function($) {
 	var utils = window.BaraTablesUtils;
+	var scopedDispatcherRegistered = false;
+	var scopedHandlerProperty = '__btblScopedSearch';
+
+	function registerScopedHandler(tableNode, handler) {
+		if (!scopedDispatcherRegistered) {
+			$.fn.dataTable.ext.search.push(function(settings, data) {
+				var scopedHandler = settings.nTable && settings.nTable[scopedHandlerProperty];
+				return typeof scopedHandler === 'function' ? scopedHandler(data) : true;
+			});
+			scopedDispatcherRegistered = true;
+		}
+		tableNode[scopedHandlerProperty] = handler;
+		return function() {
+			delete tableNode[scopedHandlerProperty];
+		};
+	}
 
 	function create(options) {
 		var table = options.table;
@@ -11,7 +27,9 @@
 		var $dropdown = $();
 		var searchableColumns = [];
 		var searchableColumnIndices = [];
-		var scopedFilter = null;
+		var unregisterScopedFilter = null;
+		var initialDrawNeeded = false;
+		var normalizedTerm = '';
 		var searchState = {
 			term: options.presetTerm || table.search() || '',
 			columns: []
@@ -36,18 +54,16 @@
 				$searchInput.attr('placeholder', options.placeholder);
 			}
 			var $filterLabel = $filterWrapper.find('label');
-			if (!options.labelHtml && $filterLabel.length) {
+			var usesVisualLabel = options.labelHtml && options.labelHtml !== options.labelPlain;
+			if ($filterLabel.length && (!options.labelHtml || usesVisualLabel)) {
 				$filterLabel.contents().filter(function() {
 					return this.nodeType === 3;
 				}).remove();
+			}
+			if (!options.labelHtml && $filterLabel.length) {
 				$filterWrapper.addClass('btbl-search-label-empty');
 			}
-			if (options.labelHtml && options.labelHtml !== options.labelPlain) {
-				if ($filterLabel.length) {
-					$filterLabel.contents().filter(function() {
-						return this.nodeType === 3;
-					}).remove();
-				}
+			if (usesVisualLabel) {
 				var $visual = $('<span class="btbl-search-placeholder-visual" aria-hidden="true"></span>').html(options.labelHtml);
 				if ($filterLabel.length) {
 					$filterLabel.prepend($visual);
@@ -151,6 +167,7 @@
 				}
 				searchState.columns = selected;
 				searchState.term = $searchInput.val() || '';
+				normalizedTerm = searchState.term.trim().toLowerCase();
 				table.draw();
 				changed();
 			}
@@ -183,45 +200,34 @@
 				$(document).on('click', handleDocumentClick);
 			}
 
-			var searchDebounce;
-			$searchInput.on('input', function() {
-				searchState.term = $searchInput.val() || '';
-				clearTimeout(searchDebounce);
-				searchDebounce = setTimeout(function() {
-					table.search(searchState.term).draw();
-					changed();
-				}, 250);
-			});
-
 			table.on('search.dt', function(event, settings) {
 				if (settings.nTable === options.$table[0]) {
-					searchState.term = table.search() || '';
+					var term = table.search() || '';
+					if (term !== searchState.term) {
+						searchState.term = term;
+						normalizedTerm = term.trim().toLowerCase();
+						changed();
+					}
 				}
 			});
 
-			scopedFilter = function(settings, data) {
-				if (settings.nTable !== options.$table[0]) {
-					return true;
-				}
-				var term = searchState.term;
-				if (!term || !term.trim()) {
+			unregisterScopedFilter = registerScopedHandler(options.$table[0], function(data) {
+				if (!normalizedTerm || searchState.columns.length === searchableColumnIndices.length) {
 					return true;
 				}
 				var indices = searchState.columns.length ? searchState.columns : searchableColumnIndices;
 				for (var index = 0; index < indices.length; index++) {
 					var columnIndex = indices[index];
-					if (columnIndex < data.length && utils.normalizeSearchText(data[columnIndex]).indexOf(term.toLowerCase()) !== -1) {
+					if (columnIndex < data.length && utils.normalizeSearchText(data[columnIndex]).indexOf(normalizedTerm) !== -1) {
 						return true;
 					}
 				}
 				return false;
-			};
+			});
 
-			$.fn.dataTable.ext.search.push(scopedFilter);
 			table.on('destroy', function() {
-				var filterIndex = $.fn.dataTable.ext.search.indexOf(scopedFilter);
-				if (filterIndex !== -1) {
-					$.fn.dataTable.ext.search.splice(filterIndex, 1);
+				if (unregisterScopedFilter) {
+					unregisterScopedFilter();
 				}
 				if (enableColumnPicker) {
 					$(document).off('click', handleDocumentClick);
@@ -230,8 +236,11 @@
 
 			if (searchState.term) {
 				$searchInput.val(searchState.term);
-				table.search(searchState.term).draw();
-				changed();
+				normalizedTerm = searchState.term.trim().toLowerCase();
+				if (table.search() !== searchState.term) {
+					table.search(searchState.term);
+					initialDrawNeeded = true;
+				}
 			}
 		}
 
@@ -246,8 +255,8 @@
 			getColumns: function() {
 				return searchableColumns;
 			},
-			hasScopedFilter: function() {
-				return scopedFilter !== null;
+			needsInitialDraw: function() {
+				return initialDrawNeeded;
 			},
 			reset: function() {
 				if (!$searchInput.length) {
@@ -256,6 +265,7 @@
 				$searchInput.val('');
 				table.search('');
 				searchState.term = '';
+				normalizedTerm = '';
 				searchState.columns = allColumnIndices();
 				$dropdown.find('input[type="checkbox"]').prop('checked', true);
 			}

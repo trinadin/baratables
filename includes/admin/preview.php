@@ -12,7 +12,7 @@ class BaraTables_Admin_Preview_Renderer {
 		$this->table_presentation = new BaraTables_Table_Presentation($service);
 	}
 
-	public function render(array $definition, array $rows): void {
+	public function render(array $definition, array $rows, string $source_error = ''): void {
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
 		$allowed_inline = BaraTables_Service::allowed_inline_html();
 		$presentation = $this->table_presentation->build($definition, $rows, true);
@@ -24,7 +24,9 @@ class BaraTables_Admin_Preview_Renderer {
 		$layout_seen = [];
 
 		?>
-		<?php if (empty($definition['columns'])) : ?>
+		<?php if ($source_error !== '') : ?>
+			<div class="notice notice-error inline"><p><?php echo esc_html($source_error); ?></p></div>
+		<?php elseif (empty($definition['columns'])) : ?>
 			<p><?php esc_html_e('No columns selected yet for this table.', 'baratables'); ?></p>
 		<?php elseif (empty($preview_rows)) : ?>
 			<p><?php esc_html_e('No data available for this table yet.', 'baratables'); ?></p>

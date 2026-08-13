@@ -42,6 +42,14 @@
 		return columnsMeta;
 	}
 
+	function getRowValue(row, index) {
+		return index !== null && index !== undefined && index < row.length ? row[index] : null;
+	}
+
+	function getRowText(row, index, helpers) {
+		return helpers.extractText(getRowValue(row, index));
+	}
+
 	function buildSeriesData(context) {
 		var chartConfig = context.chartConfig;
 		var xSlug = chartConfig.x_axis;
@@ -70,13 +78,11 @@
 			dataMap[slug] = [];
 		});
 		getRows(chartConfig, context.tableInstance).forEach(function(row) {
-			var category = xIdx < row.length ? context.helpers.extractText(row[xIdx]) : '';
+			var category = getRowText(row, xIdx, context.helpers);
 			categories.push(category);
 			seriesSlugs.forEach(function(slug) {
 				var idx = context.helpers.slugIdx(context.slugToIndex, slug);
-				var val = idx !== null && idx !== undefined && idx < row.length
-					? context.helpers.parseNumber(row[idx])
-					: 0;
+				var val = context.helpers.parseNumber(getRowValue(row, idx));
 				dataMap[slug].push(val);
 			});
 		});
@@ -109,12 +115,12 @@
 	}
 
 	function toGanttItem(row, indexes, helpers, categories, categoryIndex, getGroupColor) {
-		var label = indexes.label < row.length ? helpers.extractText(row[indexes.label]) : '';
+		var label = getRowText(row, indexes.label, helpers);
 		if (!label) {
 			return null;
 		}
-		var startParsed = indexes.start < row.length ? parseGanttDate(row[indexes.start], helpers) : { time: null, hasYear: false };
-		var endParsed = indexes.end < row.length ? parseGanttDate(row[indexes.end], helpers) : { time: null, hasYear: false };
+		var startParsed = parseGanttDate(getRowValue(row, indexes.start), helpers);
+		var endParsed = parseGanttDate(getRowValue(row, indexes.end), helpers);
 		var start = startParsed.time;
 		var end = endParsed.time;
 		if (start === null || end === null) {
@@ -133,14 +139,11 @@
 			categories.push(label);
 		}
 
-		var group = indexes.group !== null && indexes.group < row.length ? helpers.extractText(row[indexes.group]) : '';
-		var progress = null;
-		if (indexes.progress !== null && indexes.progress < row.length) {
-			var progressText = helpers.extractText(row[indexes.progress]);
-			var parsedProgress = progressText !== '' ? helpers.parseOptionalNumber(progressText) : null;
-			if (parsedProgress !== null) {
-				progress = Math.min(100, Math.max(0, parsedProgress));
-			}
+		var group = getRowText(row, indexes.group, helpers);
+		var progressText = getRowText(row, indexes.progress, helpers);
+		var progress = progressText !== '' ? helpers.parseOptionalNumber(progressText) : null;
+		if (progress !== null) {
+			progress = Math.min(100, Math.max(0, progress));
 		}
 		var color = getGroupColor(group);
 		return {
@@ -243,15 +246,18 @@
 		};
 	}
 
-	function buildPieLikeOption(type, prepared, columnsMeta) {
-		var seriesSlug = prepared.seriesSlugs[0];
-		var pieData = prepared.categories.map(function(category, index) {
+	function buildCategoryValueData(prepared, seriesSlug) {
+		return prepared.categories.map(function(category, index) {
 			return { name: category, value: prepared.data[seriesSlug][index] };
 		});
+	}
+
+	function buildPieLikeOption(type, prepared, columnsMeta) {
+		var seriesSlug = prepared.seriesSlugs[0];
 		var series = {
 			type: type === 'funnel' ? 'funnel' : 'pie',
 			name: columnsMeta[seriesSlug] || seriesSlug,
-			data: pieData,
+			data: buildCategoryValueData(prepared, seriesSlug),
 			emphasis: { focus: 'self' }
 		};
 		if (type !== 'funnel') {
@@ -266,9 +272,6 @@
 
 	function buildTreemapOption(prepared, columnsMeta, escapeHtml) {
 		var seriesSlug = prepared.seriesSlugs[0];
-		var data = prepared.categories.map(function(category, index) {
-			return { name: category, value: prepared.data[seriesSlug][index] };
-		});
 		return {
 			tooltip: {
 				formatter: function(params) {
@@ -282,7 +285,7 @@
 				nodeClick: false,
 				breadcrumb: { show: false },
 				label: { show: true, formatter: '{b}' },
-				data: data
+				data: buildCategoryValueData(prepared, seriesSlug)
 			}]
 		};
 	}
@@ -330,9 +333,9 @@
 		var min = null;
 		var max = null;
 		getRows(chartConfig, context.tableInstance).forEach(function(row) {
-			var x = xIdx < row.length ? helpers.extractText(row[xIdx]) : '';
-			var y = yIdx < row.length ? helpers.extractText(row[yIdx]) : '';
-			var value = valueIdx < row.length ? helpers.parseOptionalNumber(row[valueIdx]) : null;
+			var x = getRowText(row, xIdx, helpers);
+			var y = getRowText(row, yIdx, helpers);
+			var value = helpers.parseOptionalNumber(getRowValue(row, valueIdx));
 			if (x === '' || y === '' || value === null) {
 				return;
 			}
@@ -381,6 +384,17 @@
 	}
 
 	function buildPointOption(type, prepared, columnsMeta, parseOptionalNumber) {
+		function buildPointData(buildPoint) {
+			var points = [];
+			prepared.categories.forEach(function(category, index) {
+				var xValue = parseOptionalNumber(category);
+				if (xValue !== null) {
+					points.push(buildPoint(xValue, index, category));
+				}
+			});
+			return points;
+		}
+
 		var option = {
 			tooltip: { trigger: 'item' },
 			legend: {},
@@ -390,17 +404,13 @@
 		if (type === 'bubble') {
 			var ySlug = prepared.seriesSlugs[0];
 			var sizeSlug = prepared.seriesSlugs[1] || '';
-			var bubbleData = [];
-			prepared.categories.forEach(function(category, index) {
-				var xValue = parseOptionalNumber(category);
-				if (xValue !== null) {
-					bubbleData.push([
-						xValue,
-						prepared.data[ySlug][index],
-						sizeSlug ? prepared.data[sizeSlug][index] : 0,
-						category
-					]);
-				}
+			var bubbleData = buildPointData(function(xValue, index, category) {
+				return [
+					xValue,
+					prepared.data[ySlug][index],
+					sizeSlug ? prepared.data[sizeSlug][index] : 0,
+					category
+				];
 			});
 			option.series = [{
 				type: 'scatter',
@@ -415,12 +425,8 @@
 		}
 
 		option.series = prepared.seriesSlugs.map(function(slug) {
-			var pointData = [];
-			prepared.categories.forEach(function(category, index) {
-				var xValue = parseOptionalNumber(category);
-				if (xValue !== null) {
-					pointData.push([xValue, prepared.data[slug][index], category]);
-				}
+			var pointData = buildPointData(function(xValue, index, category) {
+				return [xValue, prepared.data[slug][index], category];
 			});
 			return {
 				type: 'scatter',

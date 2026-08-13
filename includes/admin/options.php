@@ -14,6 +14,29 @@ if (!defined('ABSPATH')) {
 class BaraTables_Admin_Options {
 	public const PAGE_SLUG = 'baratables-options';
 	private const MAX_IMPORT_BYTES = 5242880;
+	private const IMPORT_FILE_TYPES = [
+		'json' => 'application/json',
+		'xml' => 'application/xml',
+		'html' => 'text/html',
+		'htm' => 'text/html',
+		'csv' => 'text/csv',
+		'txt' => 'text/plain',
+		'zip' => 'application/zip',
+	];
+	private const IMPORT_MIME_TYPES = [
+		'application/csv',
+		'application/json',
+		'application/vnd.ms-excel',
+		'application/xml',
+		'application/x-zip-compressed',
+		'application/zip',
+		'text/csv',
+		'text/html',
+		'text/plain',
+		'text/tab-separated-values',
+		'text/tsv',
+		'text/xml',
+	];
 	private BaraTables_Service $service;
 	private BaraTables_Entity_Persistence $persistence;
 	/** @var string[] Errors collected while handling the request, rendered by render_page(). */
@@ -215,7 +238,7 @@ class BaraTables_Admin_Options {
 			// in the table editor lost this page's guidance with no way to bring it back.
 			BaraTables_Help::render_toggle();
 			?>
-			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, CSV, or TXT. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
+			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, HTML, CSV, TXT, or ZIP. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
 			<?php foreach ($errors as $message) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php echo esc_html($message); ?></p></div>
 			<?php endforeach; ?>
@@ -228,8 +251,8 @@ class BaraTables_Admin_Options {
 				<div class="btbl-control-grid">
 						<div class="btbl-control">
 							<label class="btbl-small-heading" for="btbl_import_file"><?php esc_html_e('Upload a table export', 'baratables'); ?></label>
-							<input type="file" name="btbl_import_file" id="btbl_import_file" accept=".json,.xml,.csv,.txt,application/json,application/xml,text/csv,text/plain" />
-							<p class="description"><?php esc_html_e('Accepts .json, .xml, .csv, or .txt (max 5 MB).', 'baratables'); ?></p>
+							<input type="file" name="btbl_import_file" id="btbl_import_file" accept=".json,.xml,.html,.htm,.csv,.txt,.zip,application/json,application/xml,text/html,text/csv,text/plain,application/zip" />
+							<p class="description"><?php esc_html_e('Accepts .json, .xml, .html, .csv, .txt, or .zip (max 5 MB).', 'baratables'); ?></p>
 						</div>
 					<div class="btbl-control">
 						<label class="btbl-small-heading" for="btbl_import_json"><?php esc_html_e('Or paste the export', 'baratables'); ?></label>
@@ -272,7 +295,7 @@ class BaraTables_Admin_Options {
 							if (!empty($import_definition['columns'])) {
 								$preview_renderer = new BaraTables_Admin_Preview_Renderer($this->service);
 								echo '<div class="btbl-admin btbl-admin-embed">';
-								$preview_renderer->render($import_definition, $import_rows);
+								$preview_renderer->render($import_definition, $import_rows, $row_result->has_error() ? $row_result->error_message() : '');
 								echo '</div>';
 							}
 						}
@@ -312,27 +335,69 @@ class BaraTables_Admin_Options {
 		$name = isset($definition['name']) && $definition['name'] !== ''
 			? (string) $definition['name']
 			: __('Imported Table', 'baratables');
+		$slug_base = sanitize_title($name);
+		if ($slug_base === '') {
+			$slug_base = 'imported-table';
+		}
 		$post_id = wp_insert_post([
 			'post_title' => $name,
 			'post_type' => BaraTables_Repository::CPT,
-			'post_status' => 'publish',
+			// Keep the new post non-public until its definition and lookup metadata have both
+			// been written and verified. Every failure below removes this incomplete draft.
+			'post_status' => 'draft',
 		], true);
 		if (is_wp_error($post_id) || !$post_id) {
 			return ['error' => __('Failed to create the imported table.', 'baratables')];
 		}
 		$post = get_post((int) $post_id);
 		if (!$post) {
-			return ['error' => __('Failed to create the imported table.', 'baratables')];
+			return $this->failed_import_result((int) $post_id, __('Failed to create the imported table.', 'baratables'));
 		}
-		$table_id = (string) $post->post_name;
+		$table_id = $this->persistence->unique_slug($slug_base, (int) $post_id, $post);
 		if ($table_id === '') {
-			return ['error' => __('Failed to generate a table slug for the import.', 'baratables')];
+			return $this->failed_import_result((int) $post_id, __('Failed to generate a table slug for the import.', 'baratables'));
 		}
 		$definition['id'] = $table_id;
 
-		$this->persistence->persist((int) $post_id, $definition, $table_id);
+		$persist_error = $this->persistence->repair((int) $post_id, $post, $definition, $table_id);
+		if ($persist_error instanceof WP_Error) {
+			return $this->failed_import_result((int) $post_id, __('Failed to save the imported table.', 'baratables'));
+		}
+		$published = wp_update_post([
+			'ID' => (int) $post_id,
+			'post_status' => 'publish',
+		], true);
+		if (is_wp_error($published) || !$published) {
+			return $this->failed_import_result((int) $post_id, __('Failed to publish the imported table.', 'baratables'));
+		}
+		$published_slug = (string) get_post_field('post_name', (int) $post_id, 'raw');
+		if ($published_slug !== $table_id) {
+			return $this->failed_import_result((int) $post_id, __('WordPress changed the imported table ID while publishing it.', 'baratables'));
+		}
 
 		return ['id' => $table_id, 'post_id' => (int) $post_id];
+	}
+
+	/** @return array{error:string} */
+	private function failed_import_result(int $post_id, string $message): array {
+		$cleanup = BaraTables_Post_Cleanup::delete_or_quarantine($post_id);
+		if (!$cleanup) {
+			return ['error' => $message . ' ' . __('No incomplete table was created.', 'baratables')];
+		}
+		$data = $cleanup->get_error_data();
+		$quarantined = is_array($data) && !empty($data['quarantined']);
+		if ($quarantined) {
+			return ['error' => $message . ' ' . sprintf(
+				/* translators: %d is the WordPress post ID of an incomplete draft. */
+				__('An incomplete, non-public draft remains (post ID %d).', 'baratables'),
+				$post_id
+			)];
+		}
+		return ['error' => $message . ' ' . sprintf(
+			/* translators: %d is the WordPress post ID of an incomplete item. */
+			__('WordPress could not delete or quarantine the incomplete item (post ID %d).', 'baratables'),
+			$post_id
+		)];
 	}
 
 	/**
@@ -355,13 +420,13 @@ class BaraTables_Admin_Options {
 			if ($upload_error !== UPLOAD_ERR_OK || $tmp_file === '' || !is_uploaded_file($tmp_file)) {
 				return ['raw' => '', 'filename' => '', 'error' => __('Could not read the uploaded import file.', 'baratables')];
 			}
-			if (!$this->is_valid_import_upload($file_name)) {
-				return ['raw' => '', 'filename' => '', 'error' => __('Import uploads must be a .json, .xml, .csv, or .txt file.', 'baratables')];
-			}
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller; upload size is server-provided metadata.
 			$file_size = isset($_FILES['btbl_import_file']['size']) ? (int) $_FILES['btbl_import_file']['size'] : 0;
 			if ($file_size > self::MAX_IMPORT_BYTES) {
 				return ['raw' => '', 'filename' => '', 'error' => $this->get_import_size_error()];
+			}
+			if (!$this->is_valid_import_upload($tmp_file, $file_name)) {
+				return ['raw' => '', 'filename' => '', 'error' => __('Import uploads must be a valid .json, .xml, .html, .csv, .txt, or .zip file.', 'baratables')];
 			}
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reading an uploaded temp file; wp_remote_get() is for remote URLs.
 			$raw = (string) file_get_contents($tmp_file);
@@ -378,22 +443,76 @@ class BaraTables_Admin_Options {
 				return ['raw' => '', 'filename' => '', 'error' => $this->get_import_size_error()];
 			}
 		}
-		$raw = trim($raw);
+		// Use trimming only to recognize an all-whitespace submission. Leading/trailing spaces
+		// inside the first and last imported cells are data and must survive byte-for-byte.
+		if (trim($raw) === '') {
+			$raw = '';
+		}
 		return ['raw' => $raw, 'filename' => $filename, 'error' => ''];
 	}
 
-	private function is_valid_import_upload(string $file_name): bool {
-		if ($file_name === '') {
+	private function is_valid_import_upload(string $tmp_file, string $file_name): bool {
+		if ($tmp_file === '' || $file_name === '' || !is_readable($tmp_file)) {
 			return false;
 		}
-		$allowed = [
-			'json' => 'application/json',
-			'xml' => 'application/xml',
-			'csv' => 'text/csv',
-			'txt' => 'text/plain',
-		];
-		$file_type = wp_check_filetype($file_name, $allowed);
-		return isset($allowed[$file_type['ext'] ?? '']);
+		$file_type = wp_check_filetype($file_name, self::IMPORT_FILE_TYPES);
+		if (!isset(self::IMPORT_FILE_TYPES[$file_type['ext'] ?? ''])) {
+			return false;
+		}
+
+		$mime_type = self::detect_import_mime_type($tmp_file);
+		$extension = (string) ($file_type['ext'] ?? '');
+		if ($extension === 'zip') {
+			return in_array($mime_type, ['application/zip', 'application/x-zip-compressed'], true);
+		}
+		if ($mime_type === 'text/html') {
+			// WP Table Builder labels its HTML table fragment as XML, so .xml is valid here.
+			return in_array($extension, ['html', 'htm', 'xml'], true);
+		}
+		if (in_array($mime_type, ['application/zip', 'application/x-zip-compressed'], true)) {
+			return false;
+		}
+		return in_array($mime_type, self::IMPORT_MIME_TYPES, true);
+	}
+
+	/**
+	 * Detect the upload's content type instead of trusting its client-supplied name/type. The text
+	 * probe preserves imports on hosts without Fileinfo while still rejecting binary/control bytes.
+	 * UTF-16 BOMs are allowed because the importer converts those spreadsheet exports before parsing.
+	 */
+	private static function detect_import_mime_type(string $tmp_file): string {
+		$mime_type = '';
+		if (function_exists('finfo_open')) {
+			$finfo = finfo_open(FILEINFO_MIME_TYPE);
+			if ($finfo !== false) {
+				$detected = finfo_file($finfo, $tmp_file);
+				if (PHP_VERSION_ID < 80100) {
+					finfo_close($finfo);
+				}
+				$mime_type = is_string($detected) ? $detected : '';
+			}
+		} elseif (function_exists('mime_content_type')) {
+			$detected = mime_content_type($tmp_file);
+			$mime_type = is_string($detected) ? $detected : '';
+		}
+
+		$mime_type = strtolower(trim(strtok($mime_type, ';') ?: ''));
+		if ($mime_type !== '') {
+			return $mime_type;
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reading a small sample of an already verified local upload; no WordPress filesystem API applies.
+		$sample = file_get_contents($tmp_file, false, null, 0, 8192);
+		if (!is_string($sample) || $sample === '') {
+			return '';
+		}
+		if (strncmp($sample, "\xFF\xFE", 2) === 0 || strncmp($sample, "\xFE\xFF", 2) === 0) {
+			return 'text/plain';
+		}
+		if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', $sample)) {
+			return '';
+		}
+		return 'text/plain';
 	}
 
 	private function get_import_size_error(): string {

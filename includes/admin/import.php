@@ -18,6 +18,38 @@ if (!defined('ABSPATH')) {
  * Small shared helpers used across adapters.
  */
 class BaraTables_Import_Util {
+	/** PHP 7.4-compatible equivalent of array_is_list(). */
+	public static function is_list(array $value): bool {
+		$expected = 0;
+		foreach ($value as $key => $_item) {
+			if ($key !== $expected) {
+				return false;
+			}
+			$expected++;
+		}
+		return true;
+	}
+
+	/** Preserve nested export values as readable cell text instead of silently erasing them. */
+	public static function stringify_cell($value): string {
+		if (is_bool($value)) {
+			return $value ? 'true' : 'false';
+		}
+		if (is_scalar($value)) {
+			return (string) $value;
+		}
+		if (!is_array($value)) {
+			return '';
+		}
+		$parts = [];
+		foreach ($value as $item) {
+			$parts[] = self::stringify_cell($item);
+		}
+		return implode(', ', array_values(array_filter($parts, static function ($part) {
+			return $part !== '';
+		})));
+	}
+
 	public static function to_bool($value, bool $default = false): bool {
 		if (is_bool($value)) {
 			return $value;
@@ -80,18 +112,18 @@ class BaraTables_Import_Util {
  *     'rows'        => array[]     body rows, each a positional array of cell strings (pre-sanitize)
  *     'has_header'  => bool        false => synthesize labels, treat every row as body
  *     'settings'    => [ page_length:int|null, paging:bool|null, search:bool|null,
- *                        ordering:bool|null, sort_column_index:int|null, sort_direction:'asc'|'desc'|null ]
+ *                        ordering:bool|null, length_change:bool|null, info:bool|null,
+ *                        scroll_x:bool|null, scroll_y_enabled:bool|null, scroll_y:string|null,
+ *                        stripe:bool|null, hover:bool|null, sort_column_index:int|null,
+ *                        sort_direction:'asc'|'desc'|null ]
+ *     'column_meta' => array[]     positional BaraTables column-record fields
  *     'warnings'    => string[]
  *   ]
  *
  * The builder is the ONE place that turns it into a custom_data definition.
  */
 class BaraTables_Import_Builder {
-	// No MAX_COLS/MAX_ROWS of its own on purpose. A second, lower pair of ceilings lived here and
-	// silently threw away importable data: the manual grid accepts MAX_CUSTOM_COLUMNS columns and
-	// MAX_CUSTOM_ROWS rows, but the importer stopped at 50/500. 1.2.2 widened the gap by raising
-	// MAX_CUSTOM_CELLS 5,000 -> 25,000 and leaving these behind. The caps are now derived from the
-	// service constants at the point of use, so they cannot drift apart again.
+	// Derive import limits from the manual-grid service constants so the two paths cannot drift.
 
 	public static function blank_settings(): array {
 		return [
@@ -99,19 +131,27 @@ class BaraTables_Import_Builder {
 			'paging' => null,
 			'search' => null,
 			'ordering' => null,
+			'length_change' => null,
+			'info' => null,
+			'scroll_x' => null,
+			'scroll_y_enabled' => null,
+			'scroll_y' => null,
+			'stripe' => null,
+			'hover' => null,
 			'sort_column_index' => null,
 			'sort_direction' => null,
 		];
 	}
 
 	/** Create the one normalized-table contract shared by every manual-data adapter. */
-	public static function normalized(string $name, array $columns, array $rows, bool $has_header, array $settings = [], array $warnings = []): array {
+	public static function normalized(string $name, array $columns, array $rows, bool $has_header, array $settings = [], array $warnings = [], array $column_meta = []): array {
 		return [
 			'name' => $name,
 			'columns' => array_values($columns),
 			'rows' => array_values($rows),
 			'has_header' => $has_header,
 			'settings' => array_merge(self::blank_settings(), $settings),
+			'column_meta' => array_values($column_meta),
 			'warnings' => array_values($warnings),
 		];
 	}
@@ -140,6 +180,23 @@ class BaraTables_Import_Builder {
 				$table_options[$option_key] = (bool) $settings[$setting_key];
 			}
 		}
+		foreach (
+			[
+				'length_change' => 'lengthChange',
+				'info' => 'info',
+				'scroll_x' => 'scrollX',
+				'scroll_y_enabled' => 'scrollYEnabled',
+				'stripe' => 'stripe',
+				'hover' => 'hover',
+			] as $setting_key => $option_key
+		) {
+			if ($settings[$setting_key] !== null) {
+				$table_options[$option_key] = (bool) $settings[$setting_key];
+			}
+		}
+		if ($settings['scroll_y'] !== null && (int) $settings['scroll_y'] > 0) {
+			$table_options['scrollY'] = (int) $settings['scroll_y'];
+		}
 		return $table_options;
 	}
 
@@ -154,6 +211,7 @@ class BaraTables_Import_Builder {
 		$labels_in = isset($norm['columns']) && is_array($norm['columns']) ? array_values($norm['columns']) : [];
 		$rows_in = isset($norm['rows']) && is_array($norm['rows']) ? array_values($norm['rows']) : [];
 		$settings = array_merge(self::blank_settings(), isset($norm['settings']) && is_array($norm['settings']) ? $norm['settings'] : []);
+		$column_meta = isset($norm['column_meta']) && is_array($norm['column_meta']) ? array_values($norm['column_meta']) : [];
 
 		// Width = widest of the header and any row, so ragged rows are padded, not dropped.
 		$width = $has_header ? count($labels_in) : 0;
@@ -199,19 +257,26 @@ class BaraTables_Import_Builder {
 			$key = 'col_' . ($i + 1);
 			$slug = BaraTables_Service::build_slug('custom', $key);
 			$auto_label = trim(wp_strip_all_tags($label)) === '';
-			$columns[] = $service->normalize_column_record([
-				'slug' => $slug,
-				'label' => $label,
-				'filter_label' => $label,
-				'auto_label' => $auto_label,
-			]);
+			$record = isset($column_meta[$i]) && is_array($column_meta[$i]) ? $column_meta[$i] : [];
+			$record['slug'] = $slug;
+			$record['label'] = $label;
+			$record['auto_label'] = $auto_label;
+			if (!array_key_exists('filter_label', $record)) {
+				$record['filter_label'] = $label;
+			}
+			$columns[] = $service->normalize_column_record($record);
 		}
 
 		$table_options = self::apply_table_settings($service->get_default_table_options(), $settings);
 
 		// Default sort column (0-based), if the source declared one and ordering is on.
 		$sort_idx = $settings['sort_column_index'];
-		if ($sort_idx !== null && isset($columns[(int) $sort_idx]) && !empty($table_options['ordering'])) {
+		if (
+			$sort_idx !== null
+			&& isset($columns[(int) $sort_idx])
+			&& !empty($table_options['ordering'])
+			&& !empty($columns[(int) $sort_idx]['sortable'])
+		) {
 			$columns[(int) $sort_idx]['sort_enabled'] = true;
 			$columns[(int) $sort_idx]['sort_priority'] = 1;
 			$columns[(int) $sort_idx]['sort_direction'] = $settings['sort_direction'] === 'desc' ? 'desc' : 'asc';
@@ -252,7 +317,11 @@ class BaraTables_Import_Builder {
 				'rows' => $clean_rows,
 			],
 			'table_options' => $table_options,
-			'filter_order' => [],
+			'filter_order' => array_values(array_map(static function ($column) {
+				return (string) $column['slug'];
+			}, array_filter($columns, static function ($column) {
+				return isset($column['filter']) && $column['filter'] !== 'none';
+			}))),
 			'access_control' => [],
 			'value_overrides' => [],
 		];
@@ -290,13 +359,18 @@ class BaraTables_Import_TablePress {
 		$total_rows = count($data);
 		// Footer rows are the last $table_foot ORIGINAL rows.
 		$foot_start = $table_foot > 0 ? max(0, $total_rows - $table_foot) : $total_rows;
-		$dropped_col = false;
 		$dropped_row = false;
+		$preserved_footer = false;
+		$had_spans = false;
+		$had_formulas = false;
+		$had_shortcodes = false;
+		$column_meta = [];
+		foreach ($col_vis as $c => $visible) {
+			$column_meta[$c] = ['hidden' => (int) $visible === 0];
+		}
 
-		// Classify each row by its ORIGINAL index (header / footer / body) while applying row +
-		// column visibility. Splitting on the original index -- not on a position in the compacted,
-		// visibility-filtered grid -- is what keeps a hidden header row from promoting a body row,
-		// and a hidden header row from eating one off the front of the body.
+		// Classify rows by their original indexes before removing hidden rows. This prevents a hidden
+		// header from promoting a body row. Hidden columns remain in column_meta for BaraTables.
 		$header_rows = [];
 		$body = [];
 		foreach ($data as $r => $row) {
@@ -309,16 +383,16 @@ class BaraTables_Import_TablePress {
 			}
 			$out_row = [];
 			foreach (array_values($row) as $c => $cell) {
-				if (isset($col_vis[$c]) && (int) $col_vis[$c] === 0) {
-					$dropped_col = true;
-					continue;
-				}
+				self::scan_cell($cell, $had_spans, $had_formulas, $had_shortcodes);
 				$out_row[] = self::clean_cell($cell);
 			}
 			if ($has_header && $r < $table_head) {
 				$header_rows[] = $out_row;
 			} elseif ($r >= $foot_start) {
-				continue; // footer row -- not imported as data
+				// BaraTables has no footer-row semantic. Keeping the values as ordinary rows is
+				// safer than silently deleting data, and the warning below makes the change clear.
+				$body[] = $out_row;
+				$preserved_footer = true;
 			} else {
 				$body[] = $out_row;
 			}
@@ -332,23 +406,41 @@ class BaraTables_Import_TablePress {
 			}
 		}
 
-		if ($dropped_col) {
-			$warnings[] = __('Hidden columns from the source were skipped.', 'baratables');
-		}
 		if ($dropped_row) {
 			$warnings[] = __('Hidden rows from the source were skipped.', 'baratables');
 		}
+		if ($preserved_footer) {
+			$warnings[] = __('Footer rows were preserved as regular table rows.', 'baratables');
+		}
+		if ($had_spans) {
+			$warnings[] = __('Merged cells were flattened because BaraTables does not support row or column spans.', 'baratables');
+		}
+		if ($had_formulas) {
+			$warnings[] = __('Formula text was preserved, but BaraTables does not calculate spreadsheet formulas.', 'baratables');
+		}
+		if ($had_shortcodes) {
+			$warnings[] = __('Shortcode text was preserved, but shortcodes inside imported cells are not executed.', 'baratables');
+		}
 
-		return BaraTables_Import_Builder::normalized($name, $labels, $body, $has_header, self::map_settings($options), $warnings);
+		return BaraTables_Import_Builder::normalized($name, $labels, $body, $has_header, self::map_settings($options), $warnings, $column_meta);
 	}
 
 	private static function map_settings(array $options): array {
 		$settings = BaraTables_Import_Builder::blank_settings();
+		foreach (['alternating_row_colors' => 'stripe', 'row_hover' => 'hover'] as $source_key => $setting_key) {
+			if (array_key_exists($source_key, $options)) {
+				$settings[$setting_key] = BaraTables_Import_Util::to_bool($options[$source_key], false);
+			}
+		}
 		$use_dt = array_key_exists('use_datatables', $options) ? BaraTables_Import_Util::to_bool($options['use_datatables'], true) : true;
 		if (!$use_dt) {
 			$settings['paging'] = false;
 			$settings['search'] = false;
 			$settings['ordering'] = false;
+			$settings['length_change'] = false;
+			$settings['info'] = false;
+			$settings['scroll_x'] = false;
+			$settings['scroll_y_enabled'] = false;
 			return $settings;
 		}
 		if (array_key_exists('datatables_paginate', $options)) {
@@ -366,7 +458,44 @@ class BaraTables_Import_TablePress {
 		if (array_key_exists('datatables_sort', $options)) {
 			$settings['ordering'] = BaraTables_Import_Util::to_bool($options['datatables_sort'], true);
 		}
+		foreach (
+			[
+				'datatables_lengthchange' => 'length_change',
+				'datatables_info' => 'info',
+				'datatables_scrollx' => 'scroll_x',
+			] as $source_key => $setting_key
+		) {
+			if (array_key_exists($source_key, $options)) {
+				$settings[$setting_key] = BaraTables_Import_Util::to_bool($options[$source_key], false);
+			}
+		}
+		if (isset($options['datatables_scrolly']) && $options['datatables_scrolly'] !== false) {
+			$scroll_y = trim((string) $options['datatables_scrolly']);
+			if (preg_match('/^(\d+)(?:px)?$/i', $scroll_y, $matches)) {
+				$settings['scroll_y_enabled'] = true;
+				$settings['scroll_y'] = max(1, min(2000, (int) $matches[1]));
+			}
+		}
 		return $settings;
+	}
+
+	private static function scan_cell($cell, bool &$had_spans, bool &$had_formulas, bool &$had_shortcodes): void {
+		if (!is_scalar($cell)) {
+			return;
+		}
+		$value = (string) $cell;
+		foreach (self::SPAN_MARKERS as $marker) {
+			if (strpos($value, $marker) !== false) {
+				$had_spans = true;
+				break;
+			}
+		}
+		if (preg_match('/^\s*=/', $value)) {
+			$had_formulas = true;
+		}
+		if (preg_match('/\[[A-Za-z][A-Za-z0-9_-]*(?:\s|\]|\/)/', $value)) {
+			$had_shortcodes = true;
+		}
 	}
 
 	private static function clean_grid(array $rows): array {
@@ -385,10 +514,7 @@ class BaraTables_Import_TablePress {
 	}
 
 	private static function clean_cell($cell): string {
-		if (is_array($cell) || is_object($cell)) {
-			return '';
-		}
-		return str_replace(self::SPAN_MARKERS, '', (string) $cell);
+		return str_replace(self::SPAN_MARKERS, '', BaraTables_Import_Util::stringify_cell($cell));
 	}
 }
 
@@ -402,6 +528,7 @@ class BaraTables_Import_NinjaTables {
 		$columns = isset($decoded['columns']) && is_array($decoded['columns']) ? array_values($decoded['columns']) : [];
 		$labels = [];
 		$keys = [];
+		$column_meta = [];
 		foreach ($columns as $i => $col) {
 			if (!is_array($col)) {
 				continue;
@@ -410,6 +537,22 @@ class BaraTables_Import_NinjaTables {
 			$keys[] = $key;
 			$name = isset($col['name']) && $col['name'] !== '' ? (string) $col['name'] : $key;
 			$labels[] = $name;
+			$date_format = self::convert_ninja_date_format(isset($col['dateFormat']) ? (string) $col['dateFormat'] : '');
+			$show_time = BaraTables_Import_Util::to_bool($col['showTime'] ?? false, false);
+			if ($show_time) {
+				$time_format = self::convert_ninja_time_format(isset($col['timeFormat']) ? (string) $col['timeFormat'] : '');
+				if ($time_format !== '') {
+					$date_format = trim($date_format !== '' ? ($date_format . ' ' . $time_format) : $time_format);
+				}
+			}
+			$breakpoints = isset($col['breakpoints']) ? strtolower((string) $col['breakpoints']) : '';
+			$column_meta[] = [
+				'hidden' => preg_match('/\bhidden\b/', $breakpoints) === 1,
+				'sortable' => !BaraTables_Import_Util::to_bool($col['unsortable'] ?? false, false),
+				'searchable' => !BaraTables_Import_Util::to_bool($col['unsearchable'] ?? false, false),
+				'format_date' => (($col['data_type'] ?? '') === 'date') || $date_format !== '',
+				'date_format' => $date_format,
+			];
 		}
 
 		$rows = [];
@@ -431,17 +574,22 @@ class BaraTables_Import_NinjaTables {
 			$cells = [];
 			foreach ($keys as $key) {
 				$cell = $value[$key] ?? '';
-				$cells[] = is_scalar($cell) ? (string) $cell : '';
+				$cells[] = BaraTables_Import_Util::stringify_cell($cell);
 			}
 			$rows[] = $cells;
 		}
 
 		$settings_raw = isset($decoded['settings']) && is_array($decoded['settings']) ? $decoded['settings'] : [];
-		$settings = self::map_display_settings($settings_raw);
+		$settings = self::map_display_settings($settings_raw, $keys);
+		self::apply_manual_filters($column_meta, $keys, $decoded['metas'] ?? []);
 
 		$name = isset($decoded['post']['post_title']) ? (string) $decoded['post']['post_title'] : '';
+		$warnings = [];
+		if (!array_key_exists('data_provider', $decoded)) {
+			$warnings[] = __('The export did not identify its data source, so it was imported safely as a manual table.', 'baratables');
+		}
 
-		return BaraTables_Import_Builder::normalized($name, $labels, $rows, true, $settings);
+		return BaraTables_Import_Builder::normalized($name, $labels, $rows, true, $settings, $warnings, $column_meta);
 	}
 
 	/**
@@ -488,7 +636,7 @@ class BaraTables_Import_NinjaTables {
 		return ['definition' => $definition];
 	}
 
-	private static function map_display_settings(array $settings_raw): array {
+	private static function map_display_settings(array $settings_raw, array $column_keys = []): array {
 		$settings = BaraTables_Import_Builder::blank_settings();
 		if (isset($settings_raw['perPage']) && (int) $settings_raw['perPage'] > 0) {
 			$settings['page_length'] = (int) $settings_raw['perPage'];
@@ -502,7 +650,59 @@ class BaraTables_Import_NinjaTables {
 		if (array_key_exists('show_all', $settings_raw)) {
 			$settings['paging'] = !BaraTables_Import_Util::to_bool($settings_raw['show_all'], false);
 		}
+		$sorting_type = isset($settings_raw['sorting_type']) ? sanitize_key((string) $settings_raw['sorting_type']) : '';
+		$sorting_column = isset($settings_raw['sorting_column']) ? (string) $settings_raw['sorting_column'] : '';
+		if (($sorting_type === '' || $sorting_type === 'by_column') && $sorting_column !== '') {
+			$sort_index = array_search($sorting_column, $column_keys, true);
+			if ($sort_index !== false) {
+				$settings['sort_column_index'] = (int) $sort_index;
+				$settings['sort_direction'] = BaraTables_Import_Util::sort_dir($settings_raw['sorting_column_by'] ?? 'asc');
+			}
+		}
 		return $settings;
+	}
+
+	private static function apply_manual_filters(array &$column_meta, array $keys, $metas): void {
+		if (!is_array($metas) || empty($metas['_ninja_table_custom_filters']) || !is_array($metas['_ninja_table_custom_filters'])) {
+			return;
+		}
+		foreach ($metas['_ninja_table_custom_filters'] as $filter) {
+			if (!is_array($filter)) {
+				continue;
+			}
+			$target = isset($filter['dynamic_select_column']) ? (string) $filter['dynamic_select_column'] : '';
+			if ($target === '' && !empty($filter['columns']) && is_array($filter['columns'])) {
+				$first = reset($filter['columns']);
+				$target = is_scalar($first) ? (string) $first : '';
+			}
+			$index = array_search($target, $keys, true);
+			if ($index === false || !isset($column_meta[(int) $index])) {
+				continue;
+			}
+			$type = sanitize_key((string) ($filter['type'] ?? 'select'));
+			$type_map = [
+				'select' => 'dropdown',
+				'dropdown' => 'dropdown',
+				'multi-select' => 'dropdown_multi',
+				'multiselect' => 'dropdown_multi',
+				'checkbox' => 'checkbox',
+				'radio' => 'radio',
+			];
+			if (!isset($type_map[$type])) {
+				continue;
+			}
+			$column_meta[(int) $index]['filter'] = $type_map[$type];
+			if (!empty($filter['title'])) {
+				$column_meta[(int) $index]['filter_label'] = (string) $filter['title'];
+			}
+			if (!empty($filter['values']) && is_array($filter['values'])) {
+				$column_meta[(int) $index]['filter_values'] = array_values(array_filter(array_map(static function ($value) {
+					return BaraTables_Import_Util::stringify_cell($value);
+				}, $filter['values']), static function ($value) {
+					return $value !== '';
+				}));
+			}
+		}
 	}
 
 	/** @return array{columns:array,key_map:array} */
@@ -829,12 +1029,98 @@ class BaraTables_Import_NinjaTables {
 	}
 }
 
+/** Current Ninja Tables drag-and-drop builder JSON -> a data-only manual table. */
+class BaraTables_Import_NinjaBuilder {
+	public static function to_normalized(array $decoded): array {
+		$table_data = isset($decoded['table_data']) && is_array($decoded['table_data']) ? $decoded['table_data'] : [];
+		$headers = isset($table_data['headers']) && is_array($table_data['headers']) ? array_values($table_data['headers']) : [];
+		$source_rows = isset($table_data['data']) && is_array($table_data['data']) ? array_values($table_data['data']) : [];
+		$rows = [];
+		$had_layout = false;
+		foreach ($source_rows as $source_row) {
+			$row_cells = isset($source_row['rows']) && is_array($source_row['rows']) ? $source_row['rows'] : [];
+			$row = [];
+			foreach ($headers as $header) {
+				$cell = isset($row_cells[$header]) && is_array($row_cells[$header]) ? $row_cells[$header] : [];
+				$widgets = isset($cell['columns']) && is_array($cell['columns']) ? $cell['columns'] : [];
+				$values = [];
+				foreach ($widgets as $widget) {
+					$data = isset($widget['data']) && is_array($widget['data']) ? $widget['data'] : [];
+					if (array_key_exists('value', $data)) {
+						$value = BaraTables_Import_Util::stringify_cell($data['value']);
+						if ($value !== '') {
+							$values[] = $value;
+						}
+					}
+				}
+				$row[] = trim(implode(' ', $values));
+				$style = isset($cell['style']) && is_array($cell['style']) ? $cell['style'] : [];
+				if ((int) ($style['rowspan'] ?? 1) !== 1 || (int) ($style['colspan'] ?? 1) !== 1 || count($widgets) > 1) {
+					$had_layout = true;
+				}
+			}
+			$rows[] = $row;
+		}
+
+		$warnings = [__('The table content was imported without its drag-and-drop styling or interactive elements.', 'baratables')];
+		if ($had_layout) {
+			$warnings[] = __('Merged cells and multiple elements in one cell were flattened into a regular grid.', 'baratables');
+		}
+		$name = isset($decoded['table_name']) ? str_replace('-', ' ', (string) $decoded['table_name']) : '';
+		// The builder's "headers" are internal column ids (column_0, column_1, ...), not
+		// user-facing headings. Preserve every exported row and let BaraTables name the columns.
+		return BaraTables_Import_Builder::normalized($name, [], $rows, false, [], $warnings);
+	}
+}
+
+/** Associative JSON records, including the current Supsystic REST export envelope. */
+class BaraTables_Import_Records {
+	public static function to_normalized(array $records, string $name = '', array $declared_columns = []): array {
+		$keys = [];
+		$labels = [];
+		foreach ($declared_columns as $column) {
+			if (!is_scalar($column)) {
+				continue;
+			}
+			$key = (string) $column;
+			if ($key !== '' && !in_array($key, $keys, true)) {
+				$keys[] = $key;
+				$labels[] = $key;
+			}
+		}
+		foreach ($records as $record) {
+			if (!is_array($record)) {
+				continue;
+			}
+			foreach (array_keys($record) as $key) {
+				$key = (string) $key;
+				if (!in_array($key, $keys, true)) {
+					$keys[] = $key;
+					$labels[] = $key;
+				}
+			}
+		}
+		$rows = [];
+		foreach ($records as $record) {
+			if (!is_array($record)) {
+				continue;
+			}
+			$row = [];
+			foreach ($keys as $key) {
+				$row[] = BaraTables_Import_Util::stringify_cell($record[$key] ?? '');
+			}
+			$rows[] = $row;
+		}
+		return BaraTables_Import_Builder::normalized($name, $labels, $rows, true);
+	}
+}
+
 /**
  * Generic spreadsheet (CSV) export -> custom_data. Covers any plugin whose export is a plain
  * data file (the common case for the data-only exporters), plus hand-rolled CSVs.
  */
 class BaraTables_Import_Spreadsheet {
-	public static function to_normalized(string $raw, string $filename = ''): array {
+	public static function to_normalized(string $raw, string $filename = '', string $name_override = ''): array {
 		$raw = BaraTables_Import_Util::normalize_text($raw);
 		$delimiter = self::sniff_delimiter($raw);
 		$rows = self::parse_csv($raw, $delimiter);
@@ -850,32 +1136,53 @@ class BaraTables_Import_Spreadsheet {
 			}
 		}
 
-		$name = self::name_from_filename($filename);
+		$name = $name_override !== '' ? $name_override : self::name_from_filename($filename);
 		$labels = [];
 		$body = $rows;
 		if (!empty($rows)) {
 			$labels = array_map('strval', array_values($rows[0]));
 			$body = array_slice($rows, 1);
 		}
+		$warnings = [];
+		if (self::has_visualizer_type_row($labels, $body)) {
+			array_shift($body);
+			$warnings[] = __('The chart data-type row was recognized and removed from the imported table.', 'baratables');
+		}
 
-		return BaraTables_Import_Builder::normalized($name, $labels, $body, true);
+		return BaraTables_Import_Builder::normalized($name, $labels, $body, true, [], $warnings);
 	}
 
 	private static function sniff_delimiter(string $raw): string {
-		$line = strtok($raw, "\r\n");
-		if ($line === false) {
-			return ',';
+		$best = ',';
+		$best_score = -1;
+		foreach ([',', ';', "\t", '|'] as $priority => $delimiter) {
+			$sample = array_slice(self::parse_csv($raw, $delimiter, 12), 0, 12);
+			$widths = [];
+			foreach ($sample as $row) {
+				if ($row === ['']) {
+					continue;
+				}
+				$widths[] = count($row);
+			}
+			if (empty($widths)) {
+				continue;
+			}
+			$frequency = array_count_values($widths);
+			arsort($frequency);
+			$mode_width = (int) key($frequency);
+			$consistent_rows = (int) reset($frequency);
+			// Prefer a stable multi-column parse across logical CSV records. Candidate order
+			// breaks exact ties in favor of comma, without counting delimiters inside quotes.
+			$score = ($mode_width > 1 ? 100000 : 0) + ($consistent_rows * 1000) + ($mode_width * 10) - $priority;
+			if ($score > $best_score) {
+				$best_score = $score;
+				$best = $delimiter;
+			}
 		}
-		$candidates = [',' => 0, ';' => 0, "\t" => 0, '|' => 0];
-		foreach ($candidates as $delim => $_) {
-			$candidates[$delim] = substr_count($line, $delim);
-		}
-		arsort($candidates);
-		$best = key($candidates);
-		return $candidates[$best] > 0 ? $best : ',';
+		return $best;
 	}
 
-	private static function parse_csv(string $raw, string $delimiter): array {
+	private static function parse_csv(string $raw, string $delimiter, int $row_limit = 0): array {
 		$rows = [];
 		// php://temp is an in-memory stream, not a filesystem path -- WP_Filesystem cannot provide
 		// a stream handle, and fgetcsv() is needed to parse quoted fields (embedded delimiters and
@@ -893,22 +1200,208 @@ class BaraTables_Import_Spreadsheet {
 			if ($row === false) {
 				break;
 			}
-			if ($row === [null]) {
-				continue; // blank physical line
-			}
 			$rows[] = array_map(static function ($cell) {
 				return $cell === null ? '' : (string) $cell;
 			}, $row);
+			if ($row_limit > 0 && count($rows) >= $row_limit) {
+				break;
+			}
 		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing the in-memory stream.
 		fclose($handle);
 		return $rows;
 	}
 
+	private static function has_visualizer_type_row(array $labels, array $body): bool {
+		if (count($labels) < 2 || empty($body[0]) || !is_array($body[0]) || count($body[0]) !== count($labels)) {
+			return false;
+		}
+		$allowed = ['string', 'number', 'boolean', 'date', 'datetime', 'timeofday'];
+		$has_typed_column = false;
+		foreach ($body[0] as $type) {
+			$type = strtolower(trim((string) $type));
+			if (!in_array($type, $allowed, true)) {
+				return false;
+			}
+			if ($type !== 'string') {
+				$has_typed_column = true;
+			}
+		}
+		return $has_typed_column;
+	}
+
 	private static function name_from_filename(string $filename): string {
 		$base = $filename !== '' ? pathinfo($filename, PATHINFO_FILENAME) : '';
 		$base = trim(str_replace(['_', '-'], ' ', (string) $base));
 		return $base !== '' ? $base : __('Imported Table', 'baratables');
+	}
+}
+
+/** HTML table exports, including WP Table Builder XML and TablePress HTML. */
+class BaraTables_Import_HtmlTable {
+	public static function contains_table(string $raw): bool {
+		return preg_match('/<table\b[^>]*>[\s\S]*?<\/(?:table)\s*>/i', $raw) === 1;
+	}
+
+	/** @return array[] list of normalized tables */
+	public static function to_normalized_list(string $raw, string $filename = ''): array {
+		if (!class_exists('DOMDocument')) {
+			return [];
+		}
+		$previous = libxml_use_internal_errors(true);
+		$dom = new DOMDocument('1.0', 'UTF-8');
+		$loaded = $dom->loadHTML(
+			'<?xml encoding="UTF-8">' . $raw,
+			LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_HTML_NODEFDTD | LIBXML_HTML_NOIMPLIED
+		);
+		libxml_clear_errors();
+		libxml_use_internal_errors($previous);
+		if (!$loaded) {
+			return [];
+		}
+
+		$results = [];
+		foreach ($dom->getElementsByTagName('table') as $table) {
+			$parsed = self::parse_table($dom, $table, $filename);
+			if ($parsed !== null) {
+				$results[] = $parsed;
+			}
+		}
+		return $results;
+	}
+
+	private static function parse_table(DOMDocument $dom, DOMElement $table, string $filename): ?array {
+		$row_records = [];
+		$rowspans = [];
+		$had_spans = false;
+		foreach ($table->getElementsByTagName('tr') as $tr) {
+			if (self::nearest_table($tr) !== $table) {
+				continue; // a row from a table nested inside this cell
+			}
+			$cells = [];
+			foreach ($tr->childNodes as $child) {
+				if ($child instanceof DOMElement && in_array(strtolower($child->tagName), ['th', 'td'], true)) {
+					$cells[] = $child;
+				}
+			}
+			if (empty($cells) && empty($rowspans)) {
+				continue;
+			}
+
+			$row = [];
+			$column = 0;
+			$consume_span = static function () use (&$rowspans, &$row, &$column): void {
+				while (!empty($rowspans[$column])) {
+					$row[$column] = '';
+					$rowspans[$column]--;
+					if ($rowspans[$column] <= 0) {
+						unset($rowspans[$column]);
+					}
+					$column++;
+				}
+			};
+			$consume_span();
+			$has_heading_cell = false;
+			foreach ($cells as $cell) {
+				$consume_span();
+				$has_heading_cell = $has_heading_cell || strtolower($cell->tagName) === 'th';
+				$colspan = max(1, (int) $cell->getAttribute('colspan'));
+				$rowspan = max(1, (int) $cell->getAttribute('rowspan'));
+				$had_spans = $had_spans || $colspan > 1 || $rowspan > 1;
+				$row[$column] = self::inner_html($dom, $cell);
+				for ($offset = 0; $offset < $colspan; $offset++) {
+					if ($offset > 0) {
+						$row[$column + $offset] = '';
+					}
+					if ($rowspan > 1) {
+						$rowspans[$column + $offset] = $rowspan - 1;
+					}
+				}
+				$column += $colspan;
+			}
+			$consume_span();
+			if (!empty($row)) {
+				ksort($row);
+				$section = self::nearest_section($tr, $table);
+				$row_records[] = [
+					'cells' => array_values($row),
+					// A <th> in <tbody> is commonly a row heading, and <tfoot> often uses
+					// <th> for totals. Neither is a column-header row. Only infer a header
+					// from <th> when the source omitted an explicit table section.
+					'header' => $section === 'thead' || ($section === '' && $has_heading_cell),
+					'footer' => $section === 'tfoot',
+				];
+			}
+		}
+		if (empty($row_records)) {
+			return null;
+		}
+
+		$header_rows = [];
+		$body = [];
+		$had_footer = false;
+		foreach ($row_records as $record) {
+			if ($record['header']) {
+				$header_rows[] = $record['cells'];
+			} else {
+				$body[] = $record['cells'];
+			}
+			$had_footer = $had_footer || $record['footer'];
+		}
+		if (empty($header_rows)) {
+			$header_rows[] = array_shift($body);
+		}
+		$labels = array_shift($header_rows);
+		if (!empty($header_rows)) {
+			$body = array_merge($header_rows, $body);
+		}
+
+		$name = trim((string) $table->getAttribute('data-wptb-table-title'));
+		if ($name === '') {
+			$name = trim(str_replace(['_', '-'], ' ', (string) pathinfo($filename, PATHINFO_FILENAME)));
+		}
+		$warnings = [__('Table styling and layout were not imported.', 'baratables')];
+		if ($had_spans) {
+			$warnings[] = __('Merged cells were flattened; their values were kept in the first covered cell.', 'baratables');
+		}
+		if (!empty($header_rows)) {
+			$warnings[] = __('Additional header rows were preserved as regular table rows.', 'baratables');
+		}
+		if ($had_footer) {
+			$warnings[] = __('Footer rows were preserved as regular table rows.', 'baratables');
+		}
+		return BaraTables_Import_Builder::normalized($name, $labels, $body, true, [], $warnings);
+	}
+
+	private static function nearest_table(DOMNode $node): ?DOMElement {
+		$parent = $node->parentNode;
+		while ($parent instanceof DOMElement) {
+			if (strtolower($parent->tagName) === 'table') {
+				return $parent;
+			}
+			$parent = $parent->parentNode;
+		}
+		return null;
+	}
+
+	private static function nearest_section(DOMNode $node, DOMElement $table): string {
+		$parent = $node->parentNode;
+		while ($parent instanceof DOMElement && $parent !== $table) {
+			$tag = strtolower($parent->tagName);
+			if (in_array($tag, ['thead', 'tbody', 'tfoot'], true)) {
+				return $tag;
+			}
+			$parent = $parent->parentNode;
+		}
+		return '';
+	}
+
+	private static function inner_html(DOMDocument $dom, DOMElement $cell): string {
+		$html = '';
+		foreach ($cell->childNodes as $child) {
+			$html .= (string) $dom->saveHTML($child);
+		}
+		return trim($html);
 	}
 }
 
@@ -925,16 +1418,24 @@ class BaraTables_Import_LeagueTable {
 
 			$grid = [];
 			if (isset($table->data)) {
+				$fallback_index = 0;
 				foreach ($table->data->record as $record) {
 					$content = isset($record->content) ? (string) $record->content : '';
 					$cells = json_decode($content, true);
 					if (!is_array($cells)) {
 						$cells = [];
 					}
-					$grid[] = array_map(static function ($cell) {
-						return is_scalar($cell) ? (string) $cell : '';
+					$row_index = isset($record->row_index) ? max(0, (int) $record->row_index) : $fallback_index;
+					while (array_key_exists($row_index, $grid)) {
+						$row_index++;
+					}
+					$grid[$row_index] = array_map(static function ($cell) {
+						return BaraTables_Import_Util::stringify_cell($cell);
 					}, array_values($cells));
+					$fallback_index = $row_index + 1;
 				}
+				ksort($grid);
+				$grid = array_values($grid);
 			}
 
 			// Inline per-cell link/image decorations (custom_data has no per-cell metadata).
@@ -1004,7 +1505,7 @@ class BaraTables_Importer {
 	 * }
 	 */
 	public static function analyze(string $raw, string $filename, BaraTables_Service $service): array {
-		$detected = self::detect($raw);
+		$detected = self::detect($raw, $filename);
 		$format = $detected['format'];
 
 		$result = [
@@ -1025,7 +1526,20 @@ class BaraTables_Importer {
 			'tablepress_full' => static fn() => [BaraTables_Import_TablePress::to_normalized($detected['decoded'], false)],
 			'tablepress_simple' => static fn() => [BaraTables_Import_TablePress::to_normalized($detected['decoded'], true)],
 			'ninja_manual' => static fn() => [BaraTables_Import_NinjaTables::to_normalized($detected['decoded'])],
+			'ninja_builder' => static fn() => [BaraTables_Import_NinjaBuilder::to_normalized($detected['decoded'])],
+			'json_records' => static fn() => [BaraTables_Import_Records::to_normalized($detected['decoded'])],
+			'supsystic_json' => static fn() => [BaraTables_Import_Records::to_normalized(
+				isset($detected['decoded']['data']) && is_array($detected['decoded']['data']) ? $detected['decoded']['data'] : [],
+				isset($detected['decoded']['title']) ? (string) $detected['decoded']['title'] : '',
+				isset($detected['decoded']['columns']) && is_array($detected['decoded']['columns']) ? $detected['decoded']['columns'] : []
+			)],
+			'supsystic_csv' => static fn() => [BaraTables_Import_Spreadsheet::to_normalized(
+				(string) $detected['decoded']['csv'],
+				isset($detected['decoded']['filename']) ? (string) $detected['decoded']['filename'] : $filename,
+				isset($detected['decoded']['title']) ? (string) $detected['decoded']['title'] : ''
+			)],
 			'spreadsheet' => static fn() => [BaraTables_Import_Spreadsheet::to_normalized($raw, $filename)],
+			'html_table' => static fn() => BaraTables_Import_HtmlTable::to_normalized_list((string) $detected['decoded'], $filename),
 			'league_table' => static fn() => BaraTables_Import_LeagueTable::to_normalized_list($detected['decoded']),
 		];
 		if (isset($manual_adapters[$format])) {
@@ -1033,6 +1547,8 @@ class BaraTables_Importer {
 		}
 
 		switch ($format) {
+			case 'archive':
+				return self::analyze_archive($result, $raw, $service);
 
 			case 'ninja_wpposts':
 				$built = BaraTables_Import_NinjaTables::to_wpposts_definition($detected['decoded'], $service);
@@ -1090,6 +1606,117 @@ class BaraTables_Importer {
 		return $result;
 	}
 
+	/** Safely inspect a multi-table export ZIP without extracting paths onto the filesystem. */
+	private static function analyze_archive(array $result, string $raw, BaraTables_Service $service): array {
+		if (!class_exists('ZipArchive')) {
+			$result['message'] = __('ZIP imports are not available because this server does not have ZIP support.', 'baratables');
+			return $result;
+		}
+		if (!function_exists('wp_tempnam')) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		$temp_file = wp_tempnam('baratables-import.zip');
+		if (!is_string($temp_file) || $temp_file === '') {
+			$result['message'] = __('The ZIP file could not be opened safely.', 'baratables');
+			return $result;
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Temporary binary input for ZipArchive; WP_Filesystem cannot expose an archive handle.
+		$written = file_put_contents($temp_file, $raw);
+		if ($written !== strlen($raw)) {
+			wp_delete_file($temp_file);
+			$result['message'] = __('The ZIP file could not be opened safely.', 'baratables');
+			return $result;
+		}
+
+		$zip = new ZipArchive();
+		if ($zip->open($temp_file) !== true) {
+			wp_delete_file($temp_file);
+			$result['message'] = __('The ZIP file is invalid or damaged.', 'baratables');
+			return $result;
+		}
+		if ($zip->numFiles > 50) {
+			$zip->close();
+			wp_delete_file($temp_file);
+			$result['message'] = __('The ZIP file contains too many entries. Import a ZIP with at most 50 files.', 'baratables');
+			return $result;
+		}
+
+		$entry_names = [];
+		$total_size = 0;
+		$is_xlsx = false;
+		for ($i = 0; $i < $zip->numFiles; $i++) {
+			$stat = $zip->statIndex($i);
+			if (!is_array($stat) || !isset($stat['name'])) {
+				continue;
+			}
+			$name = str_replace('\\', '/', (string) $stat['name']);
+			if ($name === '[Content_Types].xml' || strpos($name, 'xl/') === 0) {
+				$is_xlsx = true;
+			}
+			if (substr($name, -1) === '/') {
+				continue;
+			}
+			$size = isset($stat['size']) ? (int) $stat['size'] : 0;
+			$total_size += max(0, $size);
+			if ($size > 5242880 || $total_size > 20971520) {
+				$zip->close();
+				wp_delete_file($temp_file);
+				$result['message'] = __('The ZIP expands beyond the safe import limit. Each file must be 5 MB or less and the archive total must be 20 MB or less.', 'baratables');
+				return $result;
+			}
+			$extension = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
+			if (in_array($extension, ['json', 'xml', 'html', 'htm', 'csv', 'txt', 'tsv'], true)) {
+				$entry_names[$i] = basename($name);
+			}
+		}
+		if ($is_xlsx) {
+			$zip->close();
+			wp_delete_file($temp_file);
+			$result['message'] = __('Spreadsheet files cannot be read directly. Export the table as CSV, then import that file.', 'baratables');
+			return $result;
+		}
+
+		$selected_warnings = [];
+		foreach ($entry_names as $index => $entry_name) {
+			$content = $zip->getFromIndex($index);
+			if (!is_string($content)) {
+				continue;
+			}
+			if (strlen($content) > 5242880) {
+				$zip->close();
+				wp_delete_file($temp_file);
+				$result['message'] = __('A file inside the ZIP exceeded the 5 MB import limit.', 'baratables');
+				return $result;
+			}
+			$entry_result = self::analyze($content, $entry_name, $service);
+			if (empty($entry_result['ok']) || empty($entry_result['definition'])) {
+				continue;
+			}
+			$result['usable_table_count'] += max(1, (int) ($entry_result['usable_table_count'] ?? 1));
+			if ($result['definition'] === null) {
+				self::select_definition($result, $entry_result['definition']);
+				$selected_warnings = isset($entry_result['warnings']) && is_array($entry_result['warnings']) ? $entry_result['warnings'] : [];
+			}
+		}
+		$zip->close();
+		wp_delete_file($temp_file);
+
+		if ($result['definition'] === null) {
+			$result['message'] = __('The ZIP file did not contain a supported table export.', 'baratables');
+			return $result;
+		}
+		$result['warnings'] = $selected_warnings;
+		if ($result['usable_table_count'] > 1) {
+			$result['warnings'][] = sprintf(
+				/* translators: %d is the number of tables found in the ZIP file. */
+				__('The ZIP contained %d tables. Only the first was imported.', 'baratables'),
+				$result['usable_table_count']
+			);
+		}
+		$result['ok'] = true;
+		return $result;
+	}
+
 	private static function select_definition(array &$result, array $definition): void {
 		$result['definition'] = $definition;
 		$result['preview'] = self::preview($definition);
@@ -1122,35 +1749,67 @@ class BaraTables_Importer {
 	}
 
 	private static function unknown_message(): string {
-		return __('This file is not a supported table export. Use JSON, XML, CSV, or TXT. A spreadsheet needs a header row followed by data rows.', 'baratables');
+		return __('This file is not a supported table export. Use JSON, XML, HTML, CSV, TXT, or ZIP. A spreadsheet needs a header row followed by data rows.', 'baratables');
 	}
 
 	/**
 	 * Sniff the raw upload and return ['format'=>id, 'decoded'=>mixed, 'reason'=>string].
 	 * Detection never throws; an unrecognized file returns format 'unknown'.
 	 */
-	public static function detect(string $raw): array {
+	public static function detect(string $raw, string $filename = ''): array {
 		$trimmed = ltrim(BaraTables_Import_Util::normalize_text($raw));
 		if ($trimmed === '') {
 			return ['format' => 'unknown', 'decoded' => null, 'reason' => ''];
 		}
+		$extension = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION));
 
-		// Binary spreadsheet/archive: "PK" (XLSX/ZIP zip magic) or the OLE2 header (legacy XLS).
-		// We don't unpack these -- read against the raw, not the normalized text, since the magic
-		// bytes are not valid UTF-8.
+		// Read binary signatures against the original bytes, before text normalization.
 		$raw_head = ltrim($raw);
-		if (
-			strncmp($raw_head, 'PK', 2) === 0
-			|| strncmp($raw_head, "\xD0\xCF\x11\xE0", 4) === 0
-		) {
+		if (strncmp($raw_head, "\xD0\xCF\x11\xE0", 4) === 0) {
 			return [
 				'format' => 'unsupported',
 				'decoded' => null,
-				'reason' => __('Spreadsheet and ZIP files cannot be read directly. Export a single sheet as CSV, then import that file.', 'baratables'),
+				'reason' => __('Legacy spreadsheet files cannot be read directly. Export the table as CSV, then import that file.', 'baratables'),
 			];
+		}
+		if (strncmp($raw_head, 'PK', 2) === 0) {
+			return ['format' => 'archive', 'decoded' => null, 'reason' => ''];
 		}
 
 		$first = $trimmed[0];
+		if ($extension === 'json') {
+			$decoded = json_decode($trimmed, true, 64);
+			if (!is_array($decoded)) {
+				return [
+					'format' => 'unsupported',
+					'decoded' => null,
+					'reason' => __('The file could not be parsed as valid JSON.', 'baratables'),
+				];
+			}
+			return self::detect_json($decoded);
+		}
+		if ($extension === 'xml') {
+			$xml_result = self::detect_xml($trimmed);
+			return $xml_result !== null
+				? $xml_result
+				: [
+					'format' => 'unsupported',
+					'decoded' => null,
+					'reason' => __('The file could not be parsed as valid XML.', 'baratables'),
+				];
+		}
+		if (in_array($extension, ['html', 'htm'], true)) {
+			return BaraTables_Import_HtmlTable::contains_table($trimmed)
+				? ['format' => 'html_table', 'decoded' => $trimmed, 'reason' => '']
+				: [
+					'format' => 'unsupported',
+					'decoded' => null,
+					'reason' => __('The HTML file did not contain a table.', 'baratables'),
+				];
+		}
+		if (in_array($extension, ['csv', 'txt', 'tsv'], true)) {
+			return ['format' => 'spreadsheet', 'decoded' => null, 'reason' => ''];
+		}
 
 		// XML container -- but only commit if it actually parses. A CSV whose first cell starts
 		// with '<' (e.g. an HTML cell) is not XML, so on a parse failure we fall through to the
@@ -1159,6 +1818,9 @@ class BaraTables_Importer {
 			$xml_result = self::detect_xml($trimmed);
 			if ($xml_result !== null) {
 				return $xml_result;
+			}
+			if (BaraTables_Import_HtmlTable::contains_table($trimmed)) {
+				return ['format' => 'html_table', 'decoded' => $trimmed, 'reason' => ''];
 			}
 		}
 
@@ -1178,23 +1840,52 @@ class BaraTables_Importer {
 	}
 
 	private static function detect_json(array $decoded): array {
-		$is_list = array_keys($decoded) === range(0, count($decoded) - 1);
+		$is_list = BaraTables_Import_Util::is_list($decoded);
 
-		// Bare top-level array of rows -> TablePress "simple" data-only JSON. Scan for the first
-		// array element rather than testing index 0, so a leading null (or scalar) doesn't veto an
-		// otherwise-importable grid; a list of only scalars is not a grid and stays unknown.
+		// A bare list can be either a positional TablePress grid or generic associative records.
+		// Do not blur the two: importing records as a grid loses every object key and heading.
 		if ($is_list) {
-			$has_array_row = false;
+			$has_row = false;
+			$all_positional = true;
+			$all_records = true;
 			foreach ($decoded as $element) {
-				if (is_array($element)) {
-					$has_array_row = true;
-					break;
+				if (!is_array($element)) {
+					continue;
 				}
+				$has_row = true;
+				$all_positional = $all_positional && BaraTables_Import_Util::is_list($element);
+				$all_records = $all_records && !BaraTables_Import_Util::is_list($element);
 			}
-			if ($has_array_row) {
+			if ($has_row && $all_positional) {
 				return ['format' => 'tablepress_simple', 'decoded' => $decoded, 'reason' => ''];
 			}
+			if ($has_row && $all_records) {
+				return ['format' => 'json_records', 'decoded' => $decoded, 'reason' => ''];
+			}
 			return ['format' => 'unknown', 'decoded' => null, 'reason' => ''];
+		}
+
+		// Current Data Tables Generator by Supsystic REST export envelopes.
+		if (!empty($decoded['success']) && isset($decoded['csv']) && is_string($decoded['csv'])) {
+			return ['format' => 'supsystic_csv', 'decoded' => $decoded, 'reason' => ''];
+		}
+		if (
+			!empty($decoded['success'])
+			&& isset($decoded['columns']) && is_array($decoded['columns'])
+			&& isset($decoded['data']) && is_array($decoded['data'])
+			&& (isset($decoded['table_id']) || isset($decoded['count']))
+		) {
+			return ['format' => 'supsystic_json', 'decoded' => $decoded, 'reason' => ''];
+		}
+
+		// Ninja drag-and-drop builder export. The headers are internal positional keys and the
+		// rows contain one or more builder elements per cell, all of which can be flattened safely.
+		if (
+			isset($decoded['table_data']['headers']) && is_array($decoded['table_data']['headers'])
+			&& isset($decoded['table_data']['data']) && is_array($decoded['table_data']['data'])
+			&& !isset($decoded['columns'])
+		) {
+			return ['format' => 'ninja_builder', 'decoded' => $decoded, 'reason' => ''];
 		}
 
 		// Ninja Tables classic export.
@@ -1203,35 +1894,19 @@ class BaraTables_Importer {
 			&& (isset($decoded['settings']) || isset($decoded['data_provider']) || $post_type === 'ninja-table');
 		if ($looks_ninja) {
 			$metas = isset($decoded['metas']) && is_array($decoded['metas']) ? $decoded['metas'] : [];
-			if (!empty($metas['_ninja_table_wpposts_ds_post_types'])) {
+			$provider = isset($decoded['data_provider']) ? strtolower(trim((string) $decoded['data_provider'])) : '';
+			if (!empty($metas['_ninja_table_wpposts_ds_post_types']) || in_array($provider, ['wp-posts', 'wpposts', 'wp_posts'], true)) {
 				return ['format' => 'ninja_wpposts', 'decoded' => $decoded, 'reason' => ''];
 			}
-			$provider = isset($decoded['data_provider']) ? (string) $decoded['data_provider'] : 'default';
-			// Rows that live in an external system (a form, a linked CSV, a connected sheet)
-			// aren't in the file, so there's nothing to import.
-			if (in_array($provider, ['fluent-form', 'csv', 'google-csv'], true)) {
-				return [
-					'format' => 'unsupported',
-					'decoded' => null,
-					'reason' => __('This table pulls its rows from an external source, so it has no stored rows to import. Export its data as CSV and import that file instead.', 'baratables'),
-				];
-			}
-			$has_rows = (!empty($decoded['original_rows']) && is_array($decoded['original_rows']))
-				|| (!empty($decoded['rows']) && is_array($decoded['rows']));
-			if ($has_rows) {
+			if ($provider === '' || $provider === 'default') {
 				return ['format' => 'ninja_manual', 'decoded' => $decoded, 'reason' => ''];
 			}
-			// Columns-only classic export with no stored rows: treat it as a WP-Posts query
-			// table (the original importer's behavior, preserved for backward compatibility).
-			return ['format' => 'ninja_wpposts', 'decoded' => $decoded, 'reason' => ''];
-		}
-
-		// Ninja drag-and-drop builder export (different schema, no resolvable grid).
-		if (isset($decoded['table_data']) && isset($decoded['table_html']) && !isset($decoded['columns'])) {
+			// Any other provider is external or plugin-backed. Its export has column configuration
+			// but not a portable row snapshot, so guessing a different live source is never safe.
 			return [
 				'format' => 'unsupported',
 				'decoded' => null,
-				'reason' => __('This is a layout export with no data grid, so its rows cannot be imported. Export the data as CSV and import that instead.', 'baratables'),
+				'reason' => __('This table pulls its rows from an external source, so it has no stored rows to import. Export its data as CSV and import that file instead.', 'baratables'),
 			];
 		}
 
@@ -1239,7 +1914,7 @@ class BaraTables_Importer {
 		if (isset($decoded['data']) && is_array($decoded['data']) && (isset($decoded['options']) || isset($decoded['visibility']))) {
 			$data = $decoded['data'];
 			$first = reset($data);
-			if (is_array($first)) {
+			if (is_array($first) && BaraTables_Import_Util::is_list($first)) {
 				return ['format' => 'tablepress_full', 'decoded' => $decoded, 'reason' => ''];
 			}
 		}
@@ -1280,6 +1955,13 @@ class BaraTables_Importer {
 				'decoded' => null,
 				'reason' => __('This is a WordPress content export (posts), not a table. Import it from Tools > Import, then build a table from a WordPress query.', 'baratables'),
 			];
+		}
+
+		// WP Table Builder calls its HTML <table> fragment an XML export. TablePress can also
+		// export a complete HTML document. Treat only actual table markup as a table format.
+		$table_nodes = $root === 'table' ? [$xml] : $xml->xpath('.//table');
+		if (is_array($table_nodes) && !empty($table_nodes) && BaraTables_Import_HtmlTable::contains_table($raw)) {
+			return ['format' => 'html_table', 'decoded' => $raw, 'reason' => ''];
 		}
 
 		return ['format' => 'unknown', 'decoded' => null, 'reason' => ''];

@@ -972,16 +972,16 @@ class BaraTables_Admin_Assets {
 		$is_chart_editor = $is_btbl_editor && $hook_post_type === BaraTables_Chart_Repository::CPT;
 		if ($is_chart_editor) {
 			wp_enqueue_style(
-				'baratables-select2',
-				$this->plugin_url . 'assets/vendor/select2/select2.min.css',
+				'baratables-tom-select',
+				$this->plugin_url . 'assets/vendor/tom-select/tom-select.default.min.css',
 				[],
-				'4.1.0-rc.0'
+				'2.6.2'
 			);
 			wp_enqueue_script(
-				'baratables-select2',
-				$this->plugin_url . 'assets/vendor/select2/select2.min.js',
-				['jquery'],
-				'4.1.0-rc.0',
+				'baratables-tom-select',
+				$this->plugin_url . 'assets/vendor/tom-select/tom-select.complete.min.js',
+				[],
+				'2.6.2',
 				true
 			);
 		}
@@ -995,7 +995,7 @@ class BaraTables_Admin_Assets {
 			['baratables-utils', 'assets/baratables-utils.js', [], $is_table_editor],
 			['baratables-admin-layout', 'assets/admin-layout.js', ['jquery', 'baratables-admin-core'], $is_table_editor],
 			['baratables-admin-grid', 'assets/admin-grid.js', ['jquery', 'baratables-utils'], $is_table_editor],
-			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core', 'baratables-select2'], $is_chart_editor],
+			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core', 'baratables-tom-select'], $is_chart_editor],
 			['baratables-admin', 'assets/admin.js', $admin_dependencies, $is_btbl_editor],
 		];
 		foreach ($scripts as [$handle, $relative, $dependencies, $enabled]) {

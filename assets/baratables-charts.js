@@ -29,6 +29,27 @@
 		return Array.isArray(chartConfig.rows) ? chartConfig.rows : [];
 	}
 
+	// ColReorder physically rewrites the row arrays from the reordered DOM, while the
+	// slug=>index map still describes the original column order. Translate per render so
+	// the chart keeps reading the columns it was configured against (same guard pattern
+	// as the search and filter controllers). Always derived from the base map, never from
+	// an already-transposed one. The plugin's own pages never combine a live table with a
+	// chart ([bara_table] renders no chart, [bara_chart] passes a null table instance);
+	// this guards the public BaraTablesCharts.init() path where an integration passes one.
+	function transposeSlugIndex(api, slugToIndex) {
+		if (!api || !api.colReorder || typeof api.colReorder.transpose !== 'function') {
+			return slugToIndex;
+		}
+		var out = {};
+		Object.keys(slugToIndex || {}).forEach(function(slug) {
+			var idx = slugToIndex[slug];
+			if (idx !== null && idx !== undefined) {
+				out[slug] = api.colReorder.transpose(idx, 'toCurrent');
+			}
+		});
+		return out;
+	}
+
 	function buildColumnsMeta(columns) {
 		var columnsMeta = {};
 		if (!Array.isArray(columns)) {
@@ -525,15 +546,19 @@
 			existingChart.dispose();
 		}
 		var chart = window.echarts.init(container);
+		var baseSlugToIndex = slugToIndex;
 		var context = {
 			chartConfig: chartConfig,
 			tableInstance: tableInstance,
-			slugToIndex: slugToIndex,
+			slugToIndex: baseSlugToIndex,
 			helpers: helpers,
 			columnsMeta: buildColumnsMeta(chartConfig.columns)
 		};
 
 		function render() {
+			if (tableInstance && tableInstance.rows) {
+				context.slugToIndex = transposeSlugIndex(tableInstance, baseSlugToIndex);
+			}
 			var option = buildChartOption(context);
 			if (option) {
 				chart.setOption(option, true);

@@ -78,7 +78,15 @@ trait BaraTables_Column_State_Trait {
 	}
 
 	public function filter_editor_column_records_by_slug_map(array $records, array $slug_map): array {
-		return empty($slug_map) ? $records : array_intersect_key($records, $slug_map);
+		if (empty($slug_map)) {
+			return $records;
+		}
+		// Meta columns discovered outside the fields sample are deliberately absent from the map;
+		// their records still carry the stored gear settings (custom heading, filter type, values)
+		// that the "not detected" option renders, so they survive this filter too.
+		return array_filter($records, static function ($record, $slug) use ($slug_map) {
+			return isset($slug_map[$slug]) || strpos((string) $slug, 'meta:') === 0;
+		}, ARRAY_FILTER_USE_BOTH);
 	}
 
 	public function apply_editor_column_record_defaults(array $records, array $selected_columns): array {
@@ -207,126 +215,6 @@ trait BaraTables_Column_State_Trait {
 			'date_formats',
 			'format_date_flags'
 		);
-	}
-
-	/**
-	 * Legacy parallel-map view retained for integrations written against the pre-record API.
-	 *
-	 * All normalization belongs to build_editor_column_records_from_definition(); this method is
-	 * now only a projection and can no longer drift from the editor's canonical state.
-	 *
-	 * @deprecated 1.2.5 Use build_editor_column_records_from_definition().
-	 */
-	public function build_column_state_from_definition(array $columns): array {
-		$state = [
-			'selected_filters' => [],
-			'selected_dropdown_multi' => [],
-			'selected_dropdown_search' => [],
-			'selected_filter_sort' => [],
-			'selected_filter_values' => [],
-			'selected_custom_labels' => [],
-			'selected_filter_labels' => [],
-			'selected_filter_type_priority' => [],
-			'selected_date_format' => [],
-			'selected_format_date' => [],
-			'selected_hide_titles' => [],
-			'selected_searchable' => [],
-			'selected_hidden_columns' => [],
-			'selected_sort_priority' => [],
-			'selected_sort_direction' => [],
-			'selected_sort_enabled' => [],
-			'selected_sortable' => [],
-			'selected_auto_labels' => [],
-		];
-
-		$raw_by_slug = [];
-		foreach ($columns as $column) {
-			if (is_array($column) && isset($column['key'])) {
-				$source = isset($column['source']) ? sanitize_key((string) $column['source']) : 'core';
-				$raw_by_slug[self::build_slug($source !== '' ? $source : 'core', (string) $column['key'])] = $column;
-			}
-		}
-		$records = $this->build_editor_column_records_from_definition($columns);
-		foreach ($records as $slug => $record) {
-			$raw_column = $raw_by_slug[$slug] ?? [];
-			foreach ([
-				'selected_filters' => 'filter',
-				'selected_filter_sort' => 'filter_sort',
-				'selected_searchable' => 'searchable',
-				'selected_sortable' => 'sortable',
-				'selected_auto_labels' => 'auto_label',
-			] as $state_key => $record_key) {
-				$state[$state_key][$slug] = $record[$record_key];
-			}
-			if ($record['filter'] === 'dropdown') {
-				$state['selected_dropdown_multi'][$slug] = $record['dropdown_multi'];
-				$state['selected_dropdown_search'][$slug] = $record['dropdown_search'];
-			}
-			foreach ([
-				'selected_filter_values' => 'filter_values',
-				'selected_custom_labels' => 'label',
-				'selected_filter_type_priority' => 'filter_type_priority',
-				'selected_date_format' => 'date_format',
-				'selected_sort_priority' => 'sort_priority',
-			] as $state_key => $record_key) {
-				if ($record[$record_key] !== '' && $record[$record_key] !== [] && $record[$record_key] !== 0) {
-					$state[$state_key][$slug] = $record[$record_key];
-				}
-			}
-			if (array_key_exists('filter_label', $raw_column)) {
-				$state['selected_filter_labels'][$slug] = (string) $raw_column['filter_label'];
-			}
-			foreach ([
-				'selected_format_date' => 'format_date',
-				'selected_hide_titles' => 'hide_title',
-				'selected_hidden_columns' => 'hidden',
-				'selected_sort_enabled' => 'sort_enabled',
-			] as $state_key => $record_key) {
-				if ($record[$record_key]) {
-					$state[$state_key][$slug] = true;
-				}
-			}
-			if (isset($raw_column['sort_direction'])) {
-				$state['selected_sort_direction'][$slug] = $record['sort_direction'];
-			}
-		}
-
-		return $state;
-	}
-
-	/** @deprecated 1.2.5 Filter canonical records with filter_editor_column_records_by_slug_map(). */
-	public function filter_column_state_by_slug_map(array $state, array $slug_map): array {
-		if (empty($slug_map)) {
-			return $state;
-		}
-		foreach ($state as $key => $values) {
-			if (is_array($values)) {
-				$state[$key] = array_intersect_key($values, $slug_map);
-			}
-		}
-		return $state;
-	}
-
-	/** @deprecated 1.2.5 Apply defaults with apply_editor_column_record_defaults(). */
-	public function apply_column_state_defaults(array $state, array $selected_columns): array {
-		$defaults = [
-			'selected_searchable' => true,
-			'selected_sortable' => true,
-			'selected_sort_direction' => 'asc',
-		];
-		foreach ($defaults as $key => $default) {
-			if (empty($state[$key])) {
-				foreach ($selected_columns as $slug) {
-					$state[$key][$slug] = $default;
-				}
-			}
-		}
-		return $state;
-	}
-
-	/** @deprecated 1.2.5 Use build_column_records_from_request(). */
-	public function build_column_state_from_request(array $raw, array $columns): array {
-		return $this->sanitize_column_request_maps($raw, $columns);
 	}
 
 	public function build_column_choices(array $display_columns, array $definition_columns): array {

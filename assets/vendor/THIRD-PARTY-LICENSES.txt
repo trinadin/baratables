@@ -38,20 +38,10 @@ Copyright (c) 2016 Eli Grey
 http://eligrey.com
 
 
-Select2
--------
-
-Select2 v4.1.0-rc.0 (admin editor pickers)
-
-License: MIT
-
-Copyright (c) 2012-2017 Kevin Brown, Igor Vaynberg, and Select2 contributors
-
-
 Tom Select
 ----------
 
-Tom Select v2.6.2 (front-end dropdown filters)
+Tom Select v2.6.2 (front-end dropdown filters and the chart editor table picker)
 
 License: Apache License 2.0 (full text below)
 

@@ -14,21 +14,21 @@
 	var ExternalLink = wp.components.ExternalLink;
 	var config = window.BaraTablesBlockConfig || {};
 
-		// Fetch the picker's table list once per editor session, straight from admin-ajax. The
-		// tables themselves are deliberately hidden from REST, so there is no REST collection to
-		// query; the nonce is injected server-side next to this script. check_ajax_referer()
-		// only reads _ajax_nonce or _wpnonce -- a "nonce" param dies as 403 and the picker
-		// shows "no tables" even when tables exist.
-		function useTables() {
-			var pair = useState(null);
-			var tables = pair[0];
-			var setTables = pair[1];
+	// Fetch the picker's table list once per editor session, straight from admin-ajax. The
+	// tables themselves are deliberately hidden from REST, so there is no REST collection to
+	// query; the nonce is injected server-side next to this script. check_ajax_referer()
+	// only reads _ajax_nonce or _wpnonce -- a "nonce" param dies as 403 and the picker
+	// shows "no tables" even when tables exist.
+	function useTables() {
+		var pair = useState(null);
+		var tables = pair[0];
+		var setTables = pair[1];
 
-			useEffect(function() {
-				if (tables !== null || !config.ajaxUrl || !config.nonce) {
-					return;
-				}
-				window.fetch(config.ajaxUrl + '?action=btbl_block_tables&_ajax_nonce=' + encodeURIComponent(config.nonce))
+		useEffect(function() {
+			if (tables !== null || !config.ajaxUrl || !config.nonce) {
+				return;
+			}
+			window.fetch(config.ajaxUrl + '?action=btbl_block_tables&_ajax_nonce=' + encodeURIComponent(config.nonce))
 				.then(function (response) { return response.json(); })
 				.then(function (json) {
 					setTables(json && json.success && json.data ? (json.data.results || []) : []);

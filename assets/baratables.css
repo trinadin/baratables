@@ -64,7 +64,6 @@
 	margin-right: 10px;
 }
 
-.btbl-table-wrapper .dataTables_filter,
 .btbl-table-wrapper .dt-search {
 	display: flex;
 	align-items: center;
@@ -72,7 +71,6 @@
 	gap: 8px;
 }
 
-.btbl-table-wrapper .dataTables_filter label,
 .btbl-table-wrapper .dt-search label {
 	display: flex;
 	align-items: center;

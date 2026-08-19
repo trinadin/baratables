@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 
 
 class BaraTables_Admin_Tab_General {
-	public function render(array $context, ?array $editing_defn): void {
+	public function render(array $context): void {
 		$source_type = $context['source_type'] ?? 'wp_query';
 		$source_error = $context['source_error'] ?? '';
 		$post_types = $context['post_types'] ?? [];
@@ -159,6 +159,10 @@ class BaraTables_Admin_Tab_General {
 						data-confirm-shrink-one="<?php echo esc_attr__('Reducing the grid will remove %d filled cell. Continue?', 'baratables'); ?>"
 						<?php // translators: %d is the number of filled cells that would be removed. ?>
 						data-confirm-shrink-many="<?php echo esc_attr__('Reducing the grid will remove %d filled cells. Continue?', 'baratables'); ?>"
+						<?php // translators: %d is the maximum number of rows the grid supports. ?>
+						data-at-row-cap="<?php echo esc_attr__('The grid is at its maximum of %d rows.', 'baratables'); ?>"
+						<?php // translators: 1: the row limit the pasted data was cut to, 2: the column limit. ?>
+						data-paste-capped="<?php echo esc_attr__('The pasted data was cut to the grid limits (%1$d rows, %2$d columns).', 'baratables'); ?>"
 					>
 						<table class="widefat fixed striped">
 							<thead>
@@ -470,17 +474,17 @@ class BaraTables_Admin_Tab_Columns {
 											?>
 										<?php endforeach; ?>
 									<?php endif; ?>
-									<?php if (!empty($missing_meta)) : ?>
-										<p class="description"><?php esc_html_e('Meta keys currently selected that are not detected for this post type:', 'baratables'); ?></p>
-										<?php foreach ($missing_meta as $meta_key) : ?>
-											<?php
-											$slug = 'meta:' . $meta_key;
-											$label = $this->format_meta_label($meta_key);
-											$source_names = $should_show_source_hint ? (array) ($meta_sources[$meta_key] ?? []) : [];
-											$this->render_field_column_option($slug, $label, $column_option_state, true, $source_names, false);
-											?>
-										<?php endforeach; ?>
-									<?php endif; ?>
+										<?php if (!empty($missing_meta)) : ?>
+											<p class="description"><?php esc_html_e('Meta keys currently selected that are not detected for this post type:', 'baratables'); ?></p>
+											<?php foreach ($missing_meta as $meta_key) : ?>
+												<?php
+												$slug = 'meta:' . $meta_key;
+												$label = $this->format_meta_label($meta_key);
+												$source_names = $should_show_source_hint ? (array) ($meta_sources[$meta_key] ?? []) : [];
+												$this->render_field_column_option($slug, $label, $column_option_state, true, $source_names);
+												?>
+											<?php endforeach; ?>
+										<?php endif; ?>
 								</div>
 							<?php endif; ?>
 						</div>
@@ -1351,7 +1355,7 @@ class BaraTables_Admin_Tab_Chart {
 			<?php endif; ?>
 			<div class="btbl-control">
 				<label class="btbl-small-heading" for="btbl_chart_table"><?php esc_html_e('Table', 'baratables'); ?></label>
-				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" data-search-placeholder="<?php echo esc_attr__('Search tables...', 'baratables'); ?>" data-searching-label="<?php echo esc_attr__('Searching...', 'baratables'); ?>" required>
+				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" data-no-results-label="<?php echo esc_attr__('No tables found.', 'baratables'); ?>" data-searching-label="<?php echo esc_attr__('Searching...', 'baratables'); ?>" required>
 					<option value=""><?php esc_html_e('Select table', 'baratables'); ?></option>
 					<?php foreach ($table_choices as $id => $label) : ?>
 						<option value="<?php echo esc_attr($id); ?>" <?php selected($selected_table, $id); ?>><?php echo esc_html($label); ?></option>

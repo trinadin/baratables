@@ -119,7 +119,6 @@ class BaraTables_Admin_Form_Context {
 		$csv_attachment_id = $source['csv_attachment_id'];
 		$csv_has_header = $source['csv_has_header'];
 		$csv_delimiter = $source['csv_delimiter'];
-		$columns_should_reset = $source['columns_should_reset'];
 		$inferred = [];
 		$source_error = '';
 		if (BaraTables_Source_Type::is_csv($source_type)) {
@@ -168,8 +167,6 @@ class BaraTables_Admin_Form_Context {
 			}
 		} elseif (BaraTables_Source_Type::is_external_db($source_type)) {
 			$source_columns = !empty($inferred) ? $inferred : ($editing_defn['columns'] ?? []);
-		} elseif ($columns_should_reset) {
-			$editing_defn['columns'] = [];
 		}
 
 		return compact('editing_defn', 'fields', 'taxonomies', 'should_show_source_hint', 'source_columns', 'source_error');
@@ -240,12 +237,27 @@ class BaraTables_Admin_Form_Context {
 		if ($columns_should_reset) {
 			$selected_columns = [];
 		} elseif (!empty($available_slug_map)) {
-			$selected_columns = array_values(array_intersect($selected_columns, array_keys($available_slug_map)));
-			$editing_defn['columns'] = array_values(array_filter($editing_defn['columns'], static function ($column) use ($available_slug_map) {
+			// Meta discovery samples only the newest ~50 posts of each type, so a selected meta
+			// column can legitimately be absent from the map. Keep it selected: the Columns tab
+			// lists it under "not detected" as a checked option, and because the save path
+			// rebuilds columns from the posted checkboxes alone, dropping it here would silently
+			// delete the column (heading, filter and all) on the next save.
+			$preserve_meta = BaraTables_Source_Type::uses_builder_fields($source_type);
+			if ($preserve_meta) {
+				$selected_columns = array_values(array_filter($selected_columns, static function ($slug) use ($available_slug_map) {
+					return isset($available_slug_map[$slug]) || strpos($slug, 'meta:') === 0;
+				}));
+			} else {
+				$selected_columns = array_values(array_intersect($selected_columns, array_keys($available_slug_map)));
+			}
+			$editing_defn['columns'] = array_values(array_filter($editing_defn['columns'], static function ($column) use ($available_slug_map, $preserve_meta) {
 				if (!is_array($column) || !isset($column['key'])) {
 					return false;
 				}
 				$source = sanitize_key((string) ($column['source'] ?? 'core')) ?: 'core';
+				if ($preserve_meta && $source === 'meta') {
+					return true;
+				}
 				return isset($available_slug_map[$source . ':' . $column['key']]);
 			}));
 		}
@@ -406,8 +418,10 @@ class BaraTables_Admin_Form_Context {
 			}, $values['filter_order']);
 		}
 		if (!empty($available_slug_map)) {
+			// Same meta-column exception as reconcile_available_columns(): keep the filter's
+			// place in the order while the column survives outside the detection sample.
 			$values['filter_order'] = array_values(array_filter($values['filter_order'], static function ($slug) use ($available_slug_map) {
-				return isset($available_slug_map[$slug]);
+				return isset($available_slug_map[$slug]) || strpos((string) $slug, 'meta:') === 0;
 			}));
 		}
 		if (empty($values['filter_order'])) {

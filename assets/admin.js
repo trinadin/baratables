@@ -268,8 +268,14 @@ jQuery(function($) {
 	}
 
 	// Legacy full-page reload -- used as a graceful fallback if the AJAX refresh fails.
-	function legacyPostTypeReload(typeParam) {
-		redirectWithQuery({type: typeParam || ''});
+	function legacyPostTypeReload(typeParam, source) {
+		var values = {type: typeParam || ''};
+		// Without the source param the reload falls back to the SAVED source, silently undoing
+		// the switch the user just made; the CSV and custom-query reloads already carry theirs.
+		if (source) {
+			values.btbl_source = source;
+		}
+		redirectWithQuery(values);
 	}
 
 	// Fetch the post-type-dependent fields via admin-ajax and swap them in place
@@ -290,7 +296,7 @@ jQuery(function($) {
 			data: {action: 'btbl_refresh_fields', type: typeParam, source: source},
 			validate: function(response) { return !!(response && response.success && response.data); },
 			success: applyFieldRefresh,
-			fallback: function() { legacyPostTypeReload(typeParam); }
+			fallback: function() { legacyPostTypeReload(typeParam, source); }
 		});
 	}
 
@@ -496,7 +502,8 @@ jQuery(function($) {
 	initChipPickers();
 	initTermPickers();
 
-	var mediaFrame;
+	var mediaFrames = {};
+	var mediaTarget = null;
 	$(document).on('click', '.btbl-media-select', function(e) {
 		e.preventDefault();
 		var targetSelector = $(this).data('target');
@@ -512,21 +519,29 @@ jQuery(function($) {
 			}
 			return;
 		}
-		if (mediaFrame) {
-			mediaFrame.off('select');
+		// One frame per title/button pair, reused across clicks: every wp.media() call attaches
+		// another modal to the DOM, so building one per click leaks them. The select handler
+		// reads mediaTarget at pick time, so a reused frame still writes to the invoking field.
+		var frameKey = frameTitle + '|' + frameButton;
+		var mediaFrame = mediaFrames[frameKey];
+		if (!mediaFrame) {
+			mediaFrame = wp.media({
+				title: frameTitle,
+				button: { text: frameButton },
+				library: { type: ['text/csv', 'text/plain', 'application/vnd.ms-excel'] },
+				multiple: false,
+			});
+			mediaFrame.on('select', function() {
+				var attachment = mediaFrame.state().get('selection').first().toJSON();
+				if (mediaTarget) {
+					mediaTarget.val(attachment.id);
+					mediaTarget.siblings('.btbl-media-clear').show();
+					triggerCsvPreviewRefresh();
+				}
+			});
+			mediaFrames[frameKey] = mediaFrame;
 		}
-		mediaFrame = wp.media({
-			title: frameTitle,
-			button: { text: frameButton },
-			library: { type: ['text/csv', 'text/plain', 'application/vnd.ms-excel'] },
-			multiple: false,
-		});
-		mediaFrame.on('select', function() {
-			var attachment = mediaFrame.state().get('selection').first().toJSON();
-			$target.val(attachment.id);
-			$(targetSelector).siblings('.btbl-media-clear').show();
-			triggerCsvPreviewRefresh();
-		});
+		mediaTarget = $target;
 		mediaFrame.open();
 	});
 

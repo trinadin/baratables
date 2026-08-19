@@ -56,7 +56,7 @@ class BaraTables {
 	}
 
 	public function maybe_register_frontend_assets(): void {
-		if ($this->main_query_has_shortcode()) {
+		if (BaraTables_Frontend::main_query_embeds_table()) {
 			$this->frontend()->register_frontend_assets();
 		}
 	}
@@ -67,22 +67,6 @@ class BaraTables {
 
 	public function render_chart_shortcode($atts): string {
 		return $this->frontend()->render_chart_shortcode($atts);
-	}
-
-	private function main_query_has_shortcode(): bool {
-		$has_embed = static function ($content): bool {
-			return BaraTables_Frontend::content_embeds_table((string) $content);
-		};
-		if (is_singular()) {
-			$post = get_queried_object();
-			return $post instanceof WP_Post && $has_embed($post->post_content);
-		}
-		foreach ((array) ($GLOBALS['wp_query']->posts ?? []) as $post) {
-			if ($post instanceof WP_Post && $has_embed($post->post_content)) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/**
@@ -96,23 +80,46 @@ class BaraTables {
 		if (!function_exists('register_block_type')) {
 			return;
 		}
-		wp_register_script(
-			'baratables-block-table',
-			$this->plugin_url . 'assets/block-table.js',
-			['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
-			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-table.js'),
-			false
-		);
-		wp_set_script_translations('baratables-block-table', 'baratables');
-		$config = ['ajaxUrl' => admin_url('admin-ajax.php')];
-		if (is_user_logged_in()) {
-			$config['nonce'] = wp_create_nonce('btbl_block_tables');
+		// The editor assets only ever print inside the block editor, an admin context; the front
+		// end renders through render_callback alone. Registering them on public requests paid two
+		// filemtime() probes, two script registrations, translation wiring, and a nonce for every
+		// logged-in visitor, for scripts that could not load there.
+		if (is_admin()) {
+			wp_register_script(
+				'baratables-block-table',
+				$this->plugin_url . 'assets/block-table.js',
+				['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
+				BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-table.js'),
+				false
+			);
+			wp_set_script_translations('baratables-block-table', 'baratables');
+			$config = ['ajaxUrl' => admin_url('admin-ajax.php')];
+			if (is_user_logged_in()) {
+				$config['nonce'] = wp_create_nonce('btbl_block_tables');
+			}
+			wp_add_inline_script(
+				'baratables-block-table',
+				'window.BaraTablesBlockConfig = ' . wp_json_encode($config) . ';',
+				'before'
+			);
+			wp_register_script(
+				'baratables-block-chart',
+				$this->plugin_url . 'assets/block-chart.js',
+				['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
+				BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-chart.js'),
+				false
+			);
+			wp_set_script_translations('baratables-block-chart', 'baratables');
+			$chart_config = ['ajaxUrl' => admin_url('admin-ajax.php')];
+			if (is_user_logged_in()) {
+				$chart_config['nonce'] = wp_create_nonce('btbl_block_charts');
+			}
+			wp_add_inline_script(
+				'baratables-block-chart',
+				'window.BaraTablesChartBlockConfig = ' . wp_json_encode($chart_config) . ';',
+				'before'
+			);
 		}
-		wp_add_inline_script(
-			'baratables-block-table',
-			'window.BaraTablesBlockConfig = ' . wp_json_encode($config) . ';',
-			'before'
-		);
 		register_block_type('baratables/table', [
 			'attributes' => [
 				'id' => ['type' => 'string', 'default' => ''],
@@ -121,23 +128,6 @@ class BaraTables {
 			'render_callback' => [$this, 'render_table_block'],
 		]);
 
-		wp_register_script(
-			'baratables-block-chart',
-			$this->plugin_url . 'assets/block-chart.js',
-			['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
-			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-chart.js'),
-			false
-		);
-		wp_set_script_translations('baratables-block-chart', 'baratables');
-		$chart_config = ['ajaxUrl' => admin_url('admin-ajax.php')];
-		if (is_user_logged_in()) {
-			$chart_config['nonce'] = wp_create_nonce('btbl_block_charts');
-		}
-		wp_add_inline_script(
-			'baratables-block-chart',
-			'window.BaraTablesChartBlockConfig = ' . wp_json_encode($chart_config) . ';',
-			'before'
-		);
 		register_block_type('baratables/chart', [
 			'attributes' => [
 				'id' => ['type' => 'string', 'default' => ''],
@@ -165,7 +155,7 @@ class BaraTables {
 	private function load_admin(): void {
 		$service = $this->service();
 		$admin = new BaraTables_Admin($service, $this->repo, $this->plugin_url, $this->plugin_path);
-		new BaraTables_Chart_Admin($this->chart_service(), $this->chart_repo, $service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD);
+		new BaraTables_Chart_Admin($this->chart_service(), $this->chart_repo, $service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD, $this->frontend());
 
 		// Run durable, idempotent data upgrades only in the admin. One autoloaded schema gate keeps
 		// subsequent admin requests query-free and remains unset after a failed write so it retries.

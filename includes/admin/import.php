@@ -123,7 +123,6 @@ class BaraTables_Import_Util {
  * The builder is the ONE place that turns it into a custom_data definition.
  */
 class BaraTables_Import_Builder {
-	// Derive import limits from the manual-grid service constants so the two paths cannot drift.
 
 	public static function blank_settings(): array {
 		return [
@@ -708,11 +707,21 @@ class BaraTables_Import_NinjaTables {
 				$column_meta[(int) $index]['filter_label'] = (string) $filter['title'];
 			}
 			if (!empty($filter['values']) && is_array($filter['values'])) {
-				$column_meta[(int) $index]['filter_values'] = array_values(array_filter(array_map(static function ($value) {
-					return BaraTables_Import_Util::stringify_cell($value);
-				}, $filter['values']), static function ($value) {
-					return $value !== '';
-				}));
+				$manual_values = [];
+				foreach ($filter['values'] as $value) {
+					$text = BaraTables_Import_Util::stringify_cell($value);
+					if ($text === '') {
+						continue;
+					}
+					// The render path (build_filter_definitions) only reads the
+					// label/value/search_terms shape -- the same shape the wp_query branch below
+					// saves. A flat string list is silently skipped there, and the dropdown
+					// falls back to the column's row values.
+					$manual_values[] = ['label' => $text, 'value' => $text, 'search_terms' => [$text]];
+				}
+				if (!empty($manual_values)) {
+					$column_meta[(int) $index]['filter_values'] = $manual_values;
+				}
 			}
 		}
 	}
@@ -1516,7 +1525,7 @@ class BaraTables_Importer {
 	 *   definitions:array[], previews:array[], warnings:string[], message:string
 	 * }
 	 */
-	public static function analyze(string $raw, string $filename, BaraTables_Service $service): array {
+	public static function analyze(string $raw, string $filename, BaraTables_Service $service, int $depth = 0): array {
 		$detected = self::detect($raw, $filename);
 		$format = $detected['format'];
 
@@ -1560,6 +1569,12 @@ class BaraTables_Importer {
 
 		switch ($format) {
 			case 'archive':
+				if ($depth > 0) {
+					// A ZIP entry that is itself a ZIP recurses through analyze() with no
+					// natural base case, so nesting deeper than the outer archive is rejected.
+					$result['message'] = __('Nested ZIP archives are not supported.', 'baratables');
+					return $result;
+				}
 				return self::analyze_archive($result, $raw, $service);
 
 			case 'ninja_wpposts':
@@ -1619,7 +1634,7 @@ class BaraTables_Importer {
 	}
 
 	/** Safely inspect a multi-table export ZIP without extracting paths onto the filesystem. */
-	private static function analyze_archive(array $result, string $raw, BaraTables_Service $service): array {
+	private static function analyze_archive(array $result, string $raw, BaraTables_Service $service, int $depth = 0): array {
 		if (!class_exists('ZipArchive')) {
 			$result['message'] = __('ZIP imports are not available because this server does not have ZIP support.', 'baratables');
 			return $result;
@@ -1700,7 +1715,7 @@ class BaraTables_Importer {
 				$result['message'] = __('A file inside the ZIP exceeded the 5 MB import limit.', 'baratables');
 				return $result;
 			}
-			$entry_result = self::analyze($content, $entry_name, $service);
+			$entry_result = self::analyze($content, $entry_name, $service, $depth + 1);
 			if (empty($entry_result['ok']) || empty($entry_result['definition'])) {
 				continue;
 			}

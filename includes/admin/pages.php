@@ -8,27 +8,14 @@ if (!defined('ABSPATH')) {
 class BaraTables_Admin_Pages {
 	private string $nonce_action;
 	private string $nonce_field;
-	private ?BaraTables_Admin_Preview_Renderer $legacy_preview_renderer = null;
 	private BaraTables_Admin_Tab_General $tab_general;
 	private BaraTables_Admin_Tab_Columns $tab_columns;
 	private BaraTables_Admin_Tab_Table $tab_table;
 	private BaraTables_Admin_Tab_Advanced $tab_advanced;
 
-	/**
-	 * @param BaraTables_Service|string $service_or_nonce_action The legacy service argument or nonce action.
-	 */
-	public function __construct($service_or_nonce_action, string $nonce_action_or_field, ?string $nonce_field = null) {
-		if ($service_or_nonce_action instanceof BaraTables_Service) {
-			// Compatibility for integrations that constructed this public class before preview
-			// rendering moved to its own lightweight object. The main admin path uses the new
-			// two-string form and therefore does not rebuild the old object graph.
-			$this->legacy_preview_renderer = new BaraTables_Admin_Preview_Renderer($service_or_nonce_action);
-			$this->nonce_action = $nonce_action_or_field;
-			$this->nonce_field = (string) $nonce_field;
-		} else {
-			$this->nonce_action = (string) $service_or_nonce_action;
-			$this->nonce_field = $nonce_action_or_field;
-		}
+	public function __construct(string $nonce_action, string $nonce_field) {
+		$this->nonce_action = $nonce_action;
+		$this->nonce_field = $nonce_field;
 		$this->tab_general = new BaraTables_Admin_Tab_General();
 		$this->tab_columns = new BaraTables_Admin_Tab_Columns();
 		$this->tab_table = new BaraTables_Admin_Tab_Table();
@@ -78,7 +65,7 @@ class BaraTables_Admin_Pages {
 				</h2>
 
 				<?php
-				$this->tab_general->render($context, $editing_defn);
+				$this->tab_general->render($context);
 				$this->tab_columns->render($context);
 				$this->tab_table->render($context);
 				$this->tab_advanced->render($context);
@@ -98,32 +85,16 @@ class BaraTables_Admin_Pages {
 	}
 
 	/** Render just the Columns & Filters panel (used by the no-reload field refresh). */
-	public function render_columns_panel(array $context, ?array $editing_defn): string {
+	public function render_columns_panel(array $context): string {
 		ob_start();
-		$this->tab_columns->render($context, $editing_defn);
+		$this->tab_columns->render($context);
 		return (string) ob_get_clean();
 	}
 
 	/** Render just the Source panel (used by the no-reload field refresh). */
-	public function render_source_panel(array $context, ?array $editing_defn): string {
+	public function render_source_panel(array $context): string {
 		ob_start();
-		$this->tab_general->render($context, $editing_defn);
+		$this->tab_general->render($context);
 		return (string) ob_get_clean();
-	}
-
-	/** @deprecated 1.2.5 Use BaraTables_Admin_Preview_Renderer::render(). */
-	public function render_preview_panel(array $definition, array $rows): void {
-		if (!$this->legacy_preview_renderer) {
-			throw new LogicException('Preview rendering requires the legacy service constructor argument.');
-		}
-		$this->legacy_preview_renderer->render($definition, $rows);
-	}
-
-	/** @deprecated 1.2.5 Use BaraTables_Admin_Preview_Renderer::sort(). */
-	public function apply_preview_sort(array $rows, array $definition): array {
-		if (!$this->legacy_preview_renderer) {
-			throw new LogicException('Preview sorting requires the legacy service constructor argument.');
-		}
-		return $this->legacy_preview_renderer->sort($rows, $definition);
 	}
 }

@@ -55,7 +55,7 @@ class BaraTables_Frontend {
 	 * existing late enqueue, exactly as before.
 	 */
 	private function enqueue_base_style_early(): void {
-		if (is_admin() || !$this->content_in_main_query_has_table()) {
+		if (is_admin() || !self::main_query_embeds_table()) {
 			return;
 		}
 		wp_enqueue_style('baratables');
@@ -75,28 +75,43 @@ class BaraTables_Frontend {
 		if (has_shortcode($content, 'bara_table') || has_shortcode($content, 'bara_chart')) {
 			return true;
 		}
-		return function_exists('has_block') && has_block('baratables/table', $content);
+		return function_exists('has_block') && (has_block('baratables/table', $content) || has_block('baratables/chart', $content));
 	}
 
-	private function content_in_main_query_has_table(): bool {
+	/**
+	 * Does the current main query embed a BaraTables table or chart?
+	 *
+	 * The one implementation of the scan shared by the wp_enqueue_scripts gate in BaraTables and
+	 * the early base-style enqueue above (they used to carry a copy each, so a table page walked
+	 * every main-query post twice with has_shortcode() regexes). Memoized: the answer depends only
+	 * on main-query post content, which is fixed for the remainder of the request.
+	 */
+	public static function main_query_embeds_table(): bool {
+		static $embeds = null;
+		if ($embeds !== null) {
+			return $embeds;
+		}
 		$has = static function ($content): bool {
 			return self::content_embeds_table((string) $content);
 		};
 
 		if (is_singular()) {
 			$queried = get_queried_object();
-			return $queried instanceof WP_Post && $has($queried->post_content);
+			$embeds = $queried instanceof WP_Post && $has($queried->post_content);
+			return $embeds;
 		}
 
 		$posts = $GLOBALS['wp_query']->posts ?? null;
+		$embeds = false;
 		if (is_array($posts)) {
 			foreach ($posts as $post) {
 				if ($post instanceof WP_Post && $has($post->post_content)) {
-					return true;
+					$embeds = true;
+					break;
 				}
 			}
 		}
-		return false;
+		return $embeds;
 	}
 
 	public function render_shortcode($atts): string {
@@ -126,7 +141,16 @@ class BaraTables_Frontend {
 		// See render_shortcode(): pre-6.5 core may pass a string for an attribute-less
 		// [bara_chart]; shortcode_atts() casts to array, so accept an untyped $atts.
 		$atts = shortcode_atts(['id' => ''], $atts, 'bara_chart');
-		$context = $this->chart_service->get_render_context($atts['id']);
+		return $this->render_chart_by_id($atts['id']);
+	}
+
+	/**
+	 * The chart render path shared by the shortcode and the admin preview metabox. Every
+	 * visitor-facing render keeps $require_publish true; only the editor's own preview of the
+	 * chart being edited passes false.
+	 */
+	public function render_chart_by_id(string $chart_id, bool $require_publish = true): string {
+		$context = $this->chart_service->get_render_context($chart_id, $require_publish);
 		if (!$context) {
 			return '<p>' . esc_html__('Chart not found.', 'baratables') . '</p>';
 		}
@@ -151,7 +175,7 @@ class BaraTables_Frontend {
 
 		$this->enqueue_frontend_assets(false, true);
 
-		$instance_base = (string) ($chart_definition['id'] ?? $definition['id'] ?? $atts['id'] ?? 'chart');
+		$instance_base = (string) ($chart_definition['id'] ?? $definition['id'] ?? $chart_id ?? 'chart');
 		$instance_id = $this->get_render_instance_id('chart-' . $instance_base);
 		// An accessible name for the chart container: without it a screen reader announces
 		// nothing at all, whether or not JavaScript renders the canvas.
@@ -588,9 +612,26 @@ class BaraTables_Frontend {
 			'mode' => $type_capabilities['mode'],
 			'rows' => $projection['rows'],
 			'row_slug_index' => $projection['slug_index'],
-			'columns' => $this->service->build_column_slug_label_list($definition['columns']),
+			'columns' => $this->sanitize_chart_columns_for_payload($this->service->build_column_slug_label_list($definition['columns'])),
 		]);
 		return $payload;
+	}
+
+	/**
+	 * Chart payload labels are held to the same inline allowlist as the <th> headings they sit
+	 * beside, so a label can never carry markup its own column heading would not be allowed
+	 * (the vendored ECharts v6 build escapes default tooltip text itself; this keeps the payload
+	 * independent of that library behavior).
+	 */
+	private function sanitize_chart_columns_for_payload(array $columns): array {
+		$allowed = BaraTables_Service::allowed_inline_html();
+		foreach ($columns as &$column) {
+			if (is_array($column) && isset($column['label'])) {
+				$column['label'] = wp_kses((string) $column['label'], $allowed);
+			}
+		}
+		unset($column);
+		return $columns;
 	}
 
 	private function enqueue_render_payload(array $payload): void {

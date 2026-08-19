@@ -22,11 +22,6 @@
 		return isNaN(parsed) ? null : parsed;
 	}
 
-	function normalizeSearchText(value) {
-		if (value === null || value === undefined) { return ''; }
-		return String(value).replace(/<[^>]*?>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-	}
-
 	function parseOptionalNumber(value) {
 		var text = extractText(value);
 		if (text === '') { return null; }
@@ -62,16 +57,32 @@
 		return label === '' && typeof fallback !== 'undefined' ? String(fallback) : label;
 	}
 
+	var entityDecoder = null;
+	function decodeEntities(text) {
+		// Headings carry HTML entities ('&nbsp;' for a hidden heading, '&amp;' in labels);
+		// plain text for accessible names and fallbacks must read the character, not the
+		// entity spelling. A textarea never executes its content, so nothing comes back in.
+		if (!entityDecoder) {
+			entityDecoder = document.createElement('textarea');
+		}
+		entityDecoder.innerHTML = text;
+		return entityDecoder.value;
+	}
+
 	function labelToPlainText(value, fallback) {
 		var html = resolveLabelHtml(value, typeof fallback !== 'undefined' ? fallback : '');
-		return html === '' ? '' : html.replace(/<[^>]*?>/g, ' ').replace(/\s+/g, ' ').trim();
+		if (html === '') {
+			return '';
+		}
+		// Strip tags BEFORE decoding: a literal '&lt;b&gt;' in a heading is the text "<b>", not
+		// a tag to remove, while a real <b> element must go.
+		return decodeEntities(html.replace(/<[^>]*?>/g, ' ')).replace(/\s+/g, ' ').trim();
 	}
 
 	window.BaraTablesUtils = {
 		extractText: extractText,
 		escapeHtml: escapeHtml,
 		parseDate: parseDate,
-		normalizeSearchText: normalizeSearchText,
 		parseNumber: parseNumber,
 		parseOptionalNumber: parseOptionalNumber,
 		slugIndex: slugIndex,

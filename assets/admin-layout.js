@@ -207,6 +207,10 @@ jQuery(function($) {
 			$(this).removeClass('is-dragging');
 			dragItem = null;
 			$builder.find('.btbl-layout-drop').removeClass('is-dragover');
+			// Hovering chips reorders the live DOM mid-drag, so a drag aborted with Esc or an
+			// outside release leaves the chips visually moved. Re-sync so the hidden inputs (and
+			// the next save) match what the admin sees; idempotent for completed drops.
+			syncLayoutState();
 		});
 		$builder.on('dragover', '.btbl-layout-drop', function(event) {
 			event.preventDefault();

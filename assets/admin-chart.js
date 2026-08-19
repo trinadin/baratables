@@ -7,63 +7,95 @@ jQuery(function($) {
 	var $chartTableSelect = $('#btbl_chart_table');
 	if ($chartTableSelect.length) {
 		var auth = adminCore.formAuth($chartTableSelect);
-		$chartTableSelect.select2({
-			width: '100%',
-			placeholder: $chartTableSelect.find('option[value=""]').first().text() || '',
-			ajax: {
-				url: window.ajaxurl,
-				type: 'POST',
-				dataType: 'json',
-				delay: 250,
-				data: function(params) {
-					return {
+		var chartTableElement = $chartTableSelect[0];
+
+		function tableChangeHasChoices() {
+			// Gantt picks live in their own five selects; leaving them out meant switching the
+			// table wiped a Gantt chart's column choices with no confirmation prompt.
+			return ($('#btbl_chart_x_axis').val() || '') !== '' ||
+				$('#btbl_chart_series input[type="checkbox"]:checked').length > 0 ||
+				['#btbl_chart_gantt_label', '#btbl_chart_gantt_start', '#btbl_chart_gantt_end', '#btbl_chart_gantt_group', '#btbl_chart_gantt_progress', '#btbl_chart_heatmap_x', '#btbl_chart_heatmap_y', '#btbl_chart_heatmap_value'].some(function(sel) {
+					return ($(sel).val() || '') !== '';
+				});
+		}
+
+		// Confirm before rebuilding the column pickers and clearing their current choices.
+		function handleTableChange(value, revert) {
+			var confirmMsg = $chartTableSelect.data('switch-confirm');
+			if (tableChangeHasChoices() && confirmMsg && !window.confirm(confirmMsg)) {
+				revert();
+				return;
+			}
+			$chartTableSelect.data('previous', value); // keep the revert target in sync after a switch
+			refreshChartFields(value);
+		}
+
+		var TomSelectCtor = window.TomSelect;
+		if (typeof TomSelectCtor === 'function' && !chartTableElement.tomselect) {
+			// Search-as-you-type across every table, on the same dependency-free picker the
+			// front-end dropdown filters use; Select2 is not shipped anywhere.
+			var tablePicker = new TomSelectCtor(chartTableElement, {
+				valueField: 'id',
+				labelField: 'text',
+				searchField: ['text'],
+				maxOptions: null,
+				placeholder: $chartTableSelect.find('option[value=""]').first().text() || '',
+				loadThrottle: 250,
+				preload: 'focus',
+				load: function(query, callback) {
+					var base = {
 						action: 'btbl_search_chart_tables',
 						_baratables_nonce: auth.nonce,
 						post_id: auth.postId,
-						search: params.term || '',
-						page: params.page || 1
+						search: query
 					};
-				},
-				processResults: function(response) {
-					var data = response && response.success && response.data ? response.data : {};
-					return {
-						results: Array.isArray(data.results) ? data.results : [],
-						pagination: {more: !!data.more}
+					var collected = [];
+					// The endpoint pages at 20 tables; pull follow-up pages (up to 100 choices)
+					// so one broad search still lists everything.
+					var fetchPage = function(page) {
+						$.post(window.ajaxurl, $.extend({}, base, {page: page})).then(function(response) {
+							var data = response && response.success && response.data ? response.data : {};
+							collected = collected.concat(Array.isArray(data.results) ? data.results : []);
+							if (data.more && page < 5) {
+								fetchPage(page + 1);
+							} else {
+								callback(collected);
+							}
+						}, function() {
+							callback(collected);
+						});
 					};
+					fetchPage(1);
 				},
-				cache: true
-			},
-			language: {
-				searching: function() { return $chartTableSelect.data('searching-label') || 'Searching...'; }
-			}
-		});
-		$chartTableSelect.data('previous', $chartTableSelect.val());
-		$chartTableSelect.on('focus', function() {
-			$(this).data('previous', $(this).val());
-		});
-		$chartTableSelect.on('select2:opening', function() {
-			$(this).data('previous', $(this).val());
-		});
-		$chartTableSelect.on('select2:open', function() {
-			$('.select2-container--open .select2-search__field').last()
-				.attr('placeholder', $chartTableSelect.data('search-placeholder') || '');
-		});
-		$chartTableSelect.on('change', function() {
-			// Confirm before rebuilding the column pickers and clearing their current choices.
-			var hasChoices = ($('#btbl_chart_x_axis').val() || '') !== '' ||
-				$('#btbl_chart_series input[type="checkbox"]:checked').length > 0 ||
-				['#btbl_chart_heatmap_x', '#btbl_chart_heatmap_y', '#btbl_chart_heatmap_value'].some(function(sel) {
-					return ($(sel).val() || '') !== '';
+				render: {
+					no_results: function(data, escape) {
+						return '<div class="no-results">' + escape($chartTableSelect.data('no-results-label') || 'No tables found.') + '</div>';
+					},
+					loading: function(data, escape) {
+						return '<div class="loading">' + escape($chartTableSelect.data('searching-label') || 'Searching...') + '</div>';
+					}
+				}
+			});
+
+			tablePicker.on('focus', function() {
+				$chartTableSelect.data('previous', tablePicker.getValue() || '');
+			});
+			tablePicker.on('change', function(value) {
+				handleTableChange(value || '', function() {
+					// Silent: restore the value at open time without re-running this handler.
+					tablePicker.setValue($chartTableSelect.data('previous') || '', true);
 				});
-			var confirmMsg = $(this).data('switch-confirm');
-			if (hasChoices && confirmMsg && !window.confirm(confirmMsg)) {
-				$(this).val($(this).data('previous') || '').trigger('change.select2');
-				return;
-			}
-			var selected = $(this).val() || '';
-			$(this).data('previous', selected); // keep the revert target in sync after a switch
-			refreshChartFields(selected);
-		});
+			});
+		} else {
+			// No enhanced picker (its script failed to load): the plain select keeps the flow working.
+			$chartTableSelect.on('change', function() {
+				var previous = $chartTableSelect.data('previous') || '';
+				handleTableChange($(this).val() || '', function() {
+					$chartTableSelect.val(previous);
+				});
+			});
+		}
+		$chartTableSelect.data('previous', $chartTableSelect.val() || '');
 	}
 
 	// Switching a chart's source table rebuilds its column pickers in place via

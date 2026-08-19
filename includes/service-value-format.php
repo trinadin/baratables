@@ -39,7 +39,10 @@ trait BaraTables_Value_Format_Trait {
 		// Deliberately NOT wp_kses_post()'d here. Escaping happens at output, where it is
 		// authoritative for all five sources: the front-end <td> (frontend.php) and the admin
 		// preview (pages.php) both wp_kses_post() every cell, and the chart payload's values pass
-		// through btblExtractText()/btblParseNumber() in baratables.js before reaching ECharts.
+		// through btblExtractText()/btblParseNumber() (which strips complete tags) before reaching
+		// ECharts, whose vendored v6 build HTML-escapes default tooltip text (verified against the
+		// shipped file) while the custom gantt/treemap/heatmap formatters escape via
+		// helpers.escapeHtml -- so a fragment without a closing '>' cannot execute there either.
 		// A pass here could not be authoritative anyway -- the compiled override pass runs after
 		// value resolution and can reintroduce markup. The CSV, external-DB and manual paths never
 		// kses'd at row-build time either, so this keeps all five consistent.
@@ -348,7 +351,13 @@ trait BaraTables_Value_Format_Trait {
 		$text = preg_replace_callback($pattern, function ($matches) use ($post) {
 			$source = strtolower($matches[1]);
 			$raw_key = trim($matches[2]);
-			$key = sanitize_key($raw_key);
+			if ($source === 'core') {
+				$key = sanitize_key($raw_key);
+			} else {
+				// Meta keys are case-sensitive free-form strings (Price_USD, product.price);
+				// sanitize_key() lowercases and strips them into a permanently empty lookup.
+				$key = sanitize_text_field($raw_key);
+			}
 			if ($key === '') {
 				return '';
 			}

@@ -69,13 +69,6 @@ class BaraTables_Admin_Action_Handler {
 	}
 
 	/**
-	 * Sanitize a raw JSON textarea string for safe storage in postmeta.
-	 * Preserves JSON syntax and string contents (including angle brackets and
-	 * HTML-like values used by value_overrides search/replace rules); only
-	 * strips null bytes and ensures valid UTF-8. The parsed JSON used for
-	 * actual queries is sanitized separately downstream.
-	 */
-	/**
 	 * Single-character CSV delimiter. sanitize_text_field() strips tabs (and wp_strip_all_tags()
 	 * trims them away), so a tab pasted into the one-character field silently became a comma and
 	 * TSV content parsed as a single column. Drop leading spaces/newlines, then keep one byte;
@@ -89,6 +82,13 @@ class BaraTables_Admin_Action_Handler {
 		return $value === '' ? '' : $value[0];
 	}
 
+	/**
+	 * Sanitize a raw JSON textarea string for safe storage in postmeta.
+	 * Preserves JSON syntax and string contents (including angle brackets and
+	 * HTML-like values used by value_overrides search/replace rules); only
+	 * strips null bytes and ensures valid UTF-8. The parsed JSON used for
+	 * actual queries is sanitized separately downstream.
+	 */
 	public static function sanitize_json_textarea($value): string {
 		if (!is_scalar($value)) {
 			return '';

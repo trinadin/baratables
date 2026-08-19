@@ -873,7 +873,7 @@ class BaraTables_Service {
 			// Meta keys are case-sensitive free-form strings (e.g. "Price_USD", "product.price").
 			// sanitize_key() would lowercase and strip them into a key that matches no stored meta,
 			// producing a permanently empty column. Only strip control chars/tags; the source:key
-			// slug is re-split colon-safe in normalize_column().
+			// slug is re-split colon-safe in normalize_column_record_values().
 			$meta_key = sanitize_text_field($meta_key);
 			if ($meta_key === '') {
 				continue;
@@ -913,33 +913,6 @@ class BaraTables_Service {
 	}
 
 	/**
-	 * Compatibility adapter for the pre-record column API.
-	 *
-	 * @deprecated 1.2.5 Build records with build_column_records_from_request(), then call
-	 *             build_columns_from_records().
-	 */
-	public function build_columns(array $columns, array $filter_types, array $filter_sorts = [], array $filter_type_priority = [], array $custom_labels = [], array $filter_labels = [], array $hide_titles = [], array $hidden_columns = [], array $searchable = [], array $sort_priority = [], array $sort_direction = [], array $sort_enabled = [], array $sortable = [], array $filter_values = [], array $format_date_flags = [], array $date_formats = []): array {
-		$records = $this->build_column_records_from_maps($columns, compact(
-			'filter_types',
-			'filter_sorts',
-			'filter_type_priority',
-			'custom_labels',
-			'filter_labels',
-			'hide_titles',
-			'hidden_columns',
-			'searchable',
-			'sort_priority',
-			'sort_direction',
-			'sort_enabled',
-			'sortable',
-			'filter_values',
-			'format_date_flags',
-			'date_formats'
-		));
-		return $this->build_columns_from_records($columns, $records);
-	}
-
-	/**
 	 * Build stored column definitions from canonical per-column records.
 	 */
 	public function build_columns_from_records(array $columns, array $records): array {
@@ -958,28 +931,6 @@ class BaraTables_Service {
 	 */
 	public function normalize_column_record(array $record): array {
 		return $this->normalize_column_record_values($record);
-	}
-
-	/** @deprecated 1.2.5 Pass a single record to normalize_column_record(). */
-	public function normalize_column(string $raw, string $filter_type = 'none', string $filter_sort = 'asc', string $custom_label = '', ?string $filter_label = null, bool $hide_title = false, bool $hidden = false, bool $searchable = true, int $sort_priority = 0, string $sort_direction = 'asc', bool $sort_enabled = false, bool $sortable = true, array $filter_values = [], array $filter_type_priority = [], bool $format_date = false, string $date_format = ''): array {
-		return $this->normalize_column_record([
-			'slug' => $raw,
-			'filter' => $filter_type,
-			'filter_sort' => $filter_sort,
-			'custom_label' => $custom_label,
-			'filter_label' => $filter_label,
-			'hide_title' => $hide_title,
-			'hidden' => $hidden,
-			'searchable' => $searchable,
-			'sort_priority' => $sort_priority,
-			'sort_direction' => $sort_direction,
-			'sort_enabled' => $sort_enabled,
-			'sortable' => $sortable,
-			'filter_values' => $filter_values,
-			'filter_type_priority' => $filter_type_priority,
-			'format_date' => $format_date,
-			'date_format' => $date_format,
-		]);
 	}
 
 	private function normalize_column_record_values(array $record): array {
@@ -1709,18 +1660,6 @@ class BaraTables_Service {
 	}
 
 	private function build_wp_source_query_args(array $definition, int $row_limit, array $access_policy): ?array {
-		$post_types_raw = isset($definition['post_types']) && is_array($definition['post_types']) && !empty($definition['post_types'])
-			? array_values(array_filter($definition['post_types']))
-			: [$definition['post_type'] ?? 'post'];
-		$post_types = $this->query_sanitizer()->sanitize_public_post_types($post_types_raw, true);
-		$query_args = [
-			'post_type'      => $post_types,
-			'posts_per_page' => $row_limit,
-			'no_found_rows'  => true,
-			'post_status'    => BaraTables_Query_Sanitizer::post_status_for_types($post_types),
-			'ignore_sticky_posts' => true,
-		];
-
 		if ($definition['source_type'] === BaraTables_Source_Type::CUSTOM_QUERY) {
 			if (empty($definition['custom_query']) || !is_array($definition['custom_query'])) {
 				return null;
@@ -1734,6 +1673,18 @@ class BaraTables_Service {
 					? min((int) $query_args['posts_per_page'], $row_limit)
 					: $row_limit;
 			}
+		} else {
+			$post_types_raw = isset($definition['post_types']) && is_array($definition['post_types']) && !empty($definition['post_types'])
+				? array_values(array_filter($definition['post_types']))
+				: [$definition['post_type'] ?? 'post'];
+			$post_types = $this->query_sanitizer()->sanitize_public_post_types($post_types_raw, true);
+			$query_args = [
+				'post_type'      => $post_types,
+				'posts_per_page' => $row_limit,
+				'no_found_rows'  => true,
+				'post_status'    => BaraTables_Query_Sanitizer::post_status_for_types($post_types),
+				'ignore_sticky_posts' => true,
+			];
 		}
 
 		if (!empty($access_policy['post_meta_key'])) {

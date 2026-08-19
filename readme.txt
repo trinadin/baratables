@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,16 +12,14 @@ Create searchable, sortable WordPress tables and charts from CSV files, manual r
 
 == Description ==
 
-BaraTables builds interactive tables and charts from your site data. Use manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publish with a shortcode or a block.
+BaraTables builds interactive tables and charts from manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publishes them with a shortcode or a block.
 
 Import a JSON, XML, HTML, CSV, TXT, or ZIP export from another table plugin or spreadsheet to rebuild a table.
 
-Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, column visibility controls, and custom control layouts. Charts draw from any BaraTables table and embed with their own shortcode.
+Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, and column visibility controls. Charts draw from any BaraTables table and embed with their own shortcode.
 
 **Features:**
 
-* Build tables from WordPress content, CSV files, manual data, or external MySQL/MariaDB databases
-* Embed with a shortcode or a block in the block editor
 * Add search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, including filtering by category or tag
 * Export table data to CSV, Excel, or PDF, copy it, or print it
 * Reorder columns and control column visibility
@@ -31,7 +29,6 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 * Remember table state between visits, and control scrolling, column sizing, and row limits
 * Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts with ECharts
 * Light frontend styles that are easy to override with CSS
-* Import an existing table from another plugin or a spreadsheet (JSON, XML, HTML, CSV, TXT, or ZIP)
 
 == Installation ==
 
@@ -48,19 +45,19 @@ CSV files, manual data entry, WordPress content, and external MySQL/MariaDB data
 
 = Which table plugin exports can I import? =
 
-For TablePress, use a single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports are supported; export an externally connected table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and data-only CSV from wpDataTables and Tablesome also import, as do HTML tables. A ZIP with multiple tables imports the first supported table and reports how many were found.
+Use a TablePress single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports work; export an externally connected Ninja table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and wpDataTables or Tablesome data-only CSV also import, as do HTML tables. A ZIP imports the first supported table and reports how many were found.
 
-Imports rebuild the table data and compatible display settings. Plugin-specific styling, formulas, shortcodes, charts, and external data connections are not carried over. Export XLS or XLSX files as CSV first.
+Imports rebuild the table data and compatible display settings, not plugin-specific styling, formulas, shortcodes, charts, or external data connections. Export XLS or XLSX files as CSV first.
 
-An upload or pasted import can be up to 5 MB. ZIP files can contain up to 50 entries, with each entry up to 5 MB and up to 20 MB total when expanded.
+Uploads and pasted imports can be up to 5 MB. A ZIP can hold 50 entries of up to 5 MB each, and up to 20 MB expanded.
 
 = How many rows can a table load? =
 
-Each table loads up to 1,000 rows by default. The Options tab lets you choose a limit from 1 to 10,000 rows, applying to tables and charts on every data source.
+Each table loads up to 1,000 rows by default. The Options tab sets a limit from 1 to 10,000 rows for tables and charts on every data source.
 
 = Can I link to a filtered view of a table? =
 
-Yes. Filtering or searching updates the page address as you go, so you can copy and share that exact view. You can also build the link yourself with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
+Yes. Filtering or searching updates the page address, so you can share that exact view. You can also build the link yourself with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
 
 = How do I add a chart? =
 
@@ -72,11 +69,11 @@ Yes. The Options tab provides controls for striping, hover, borders, compact mod
 
 = Can I style BaraTables with custom CSS? =
 
-Yes. BaraTables ships minimal frontend styles so your theme stays in control. Adjust colors, spacing, typography, and buttons with your theme stylesheet, the Site Editor, or custom CSS.
+Yes. BaraTables ships minimal frontend styles so your theme stays in control; adjust colors, spacing, typography, and buttons with your theme, the Site Editor, or custom CSS.
 
 = Where can I see examples? =
 
-Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance, or use the Live Preview button on the WordPress.org plugin page for a temporary interactive demo.
+Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance, or use Live Preview on the WordPress.org page for an interactive demo.
 
 == Screenshots ==
 
@@ -88,32 +85,49 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 == Changelog ==
 
+= 1.3.1 =
+Fixes:
+
+* Dragging a column no longer leaves a group search on the wrong columns.
+* Merge tags like {{meta:Price_USD}} now resolve mixed-case keys.
+* A chart-only page no longer flashes unstyled content.
+* Switching data sources no longer keeps old columns selected.
+* A meta column missing from recent posts is no longer dropped on save.
+* A remembered search is now visible and clearable.
+* Custom Query date filters now apply as written.
+* Ninja Tables custom filter values now import as dropdown options.
+* The chart preview shows draft charts instead of Chart not found.
+
+Developer:
+
+* Removed the PHP adapters deprecated in 1.2.5; use the column-record API instead.
+
 = 1.3.0 =
 New:
 
-* New block editor blocks: add any table or chart from the BaraTables block picker instead of pasting a shortcode.
+* New block editor blocks: add any table or chart from the block picker instead of pasting a shortcode.
 * Wide tables can collapse into stacked, expandable rows on small screens.
 * Export any table to PDF with a new Export PDF button.
-* Tables match your theme automatically: colors follow your theme's palette, with an optional custom accent color per table.
+* Tables match your theme automatically: colors follow its palette, with an optional custom accent color per table.
 
 Improvements:
 
-* Table pages no longer load jQuery, and dropdown filters use a lighter picker, so pages with tables load faster.
+* Table pages no longer load jQuery, and dropdown filters use a lighter picker, so they load faster.
 * The table engine is now DataTables 3; pages with export buttons load fewer files.
-* Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column can no longer make the page unresponsive.
-* The editor's Options tab is reorganized with clearer wording, and every field shows its default until you change it.
+* Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column cannot make the page unresponsive.
+* The editor's Options tab is reorganized, and every field shows its default until you change it.
 * Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable fallback when JavaScript is off.
-* Publishing a table for the first time shows the shortcode and block to embed it with.
+* Publishing a table for the first time shows its shortcode and block.
 
 Fixes:
 
 * Day-first dates such as 25/12/2026 now format correctly with "Format as date".
 * Chart values written with a decimal comma (1.234,56) plot at the correct magnitude.
 * Tab-delimited files import as separate columns instead of one long column.
-* An invalid external database edit no longer silently keeps the previous connection, and clearing every field now removes the connection.
+* An invalid external database edit no longer silently keeps the previous connection, and clearing every field removes it.
 * Search limited to chosen columns follows columns you move by dragging.
-* The settings gear no longer appears on a switched-off control, such as Fixed scroll height, when its inner option is still checked.
-* In the layout builder, drop zones sit where their labels say instead of spreading across one row.
+* The settings gear no longer appears on a switched-off control when its inner option is still checked.
+* Layout builder drop zones sit where their labels say.
 
 = 1.2.5 =
 New:
@@ -124,19 +138,19 @@ New:
 Improvements:
 
 * Chart-only pages load faster and large-table searches stay more responsive.
-* The chart editor searches table choices as you type, keeping it fast on sites with many tables.
+* The chart editor searches table choices as you type, so it stays fast with many tables.
 
 Fixes:
 
 * Empty or incomplete Ninja Tables exports no longer become a live table of WordPress posts.
 * Quoted commas and multiline headings no longer break semicolon-delimited imports.
-* Hidden columns, footer values, intentional blank rows, and nested cell values are preserved instead of discarded.
+* Hidden columns, footer values, intentional blank rows, and nested cell values are preserved.
 * A failed import no longer leaves an incomplete published table behind.
 * The plugin activates normally on PHP 7.4 through PHP 8.1.
-* A failed table or chart save keeps its previous data, ID, and linked charts together.
-* Duplicating the same table or chart more than once gives every copy its own ID.
-* Missing CSV files and external database failures show a clear error instead of looking like an empty table.
-* If an interactive table or chart script fails to load, the loading screen clears and shows the available table or an error.
+* A failed table or chart save keeps its data, ID, and linked charts.
+* Duplicating a table or chart more than once gives every copy its own ID.
+* Missing CSV files and external database failures show a clear error instead of an empty table.
+* If an interactive table or chart script fails to load, the loading screen clears to show the table or an error.
 * Renaming a Table ID no longer removes backslashes from linked chart names.
 * Manual column headings saved by early versions follow the site language after a direct upgrade.
 
@@ -151,10 +165,10 @@ Security:
 = 1.2.3 =
 Improvements:
 
-* Fixed scroll height is now a Table controls option, with its height and collapse settings inside. Existing scroll heights carry over.
-* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading, and the result summary. This includes tables you have already saved, and keeps any wording you typed yourself.
+* Fixed scroll height is now a Table controls option, with its height and collapse settings inside. Existing heights carry over.
+* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading, and the result summary. Saved tables are included, and wording you typed yourself is kept.
 * Tables load without a flash of unstyled content.
-* Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space to open the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the table layout.
+* Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space to open the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the layout.
 * Pages with a table and its chart, or the same table twice, load faster on large tables.
 * The "Clear filters" and "Edit Table" buttons are styled consistently on any theme.
 
@@ -168,7 +182,7 @@ Fixes:
 * Hiding a column's heading keeps the custom heading you typed.
 * Sticky posts are excluded, so a table stays within its row limit.
 * Column filters follow their column when a visitor reorders columns.
-* Date columns sort by date, including columns with empty cells.
+* Date columns sort by date, even with empty cells.
 * The Column visibility button reveals columns hidden in the table setup.
 * Custom meta keys with capital letters or dots (such as Price_USD) match your data.
 * Media tables list your attachments.
@@ -181,9 +195,9 @@ New:
 Fixes:
 
 * Filtering by category or tag.
-* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly, and those columns show their title, name, or contents.
-* Manual data grids hold up to 25,000 cells, and the editor tells you when your server's form-field limit is too low for a grid that size.
-* Two tables on the same page each keep their own filters in the shareable link.
+* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly; the columns show their title, name, or contents.
+* Manual data grids hold up to 25,000 cells, and the editor warns when your server's form-field limit is too low for a grid that size.
+* Two tables on the same page keep their own filters in the shareable link.
 * An import that fails to save can be retried without uploading the file again.
 * Importing a large table keeps more of its rows and columns.
 * Ninja Tables exports apply their saved search, sorting, and pagination settings.
@@ -195,18 +209,18 @@ Fixes:
 * Date columns show the time of day, and timestamps use your site's timezone.
 * Blank lines in a CSV file are skipped.
 * Custom WP Query tables load up to the row limit you set.
-* On CSV and external database tables, row-level access control shows every row a visitor may see, even when the table has more rows than the limit.
+* On CSV and external database tables, row-level access control shows every row a visitor may see, even beyond the row limit.
 * Shareable filter links work for a value of 0.
 * Unnamed columns from a headerless CSV follow the site language.
 * The editor preview uses the same export button labels as the published table.
-* Creating a table from an import opens that table's editor.
+* Creating a table from an import opens its editor.
 
 Improvements:
 
-* A table loads only the export, column-reorder, and dropdown-filter libraries it uses, cutting about 265KB from a typical page.
+* A table loads only the export, column-reorder, and dropdown-filter libraries it uses, cutting about 265KB per page.
 * Large tables sort, page, and filter faster.
-* The term picker lists the first 200 terms of a taxonomy, plus any you have already selected.
-* The "Strict matching" filter option has been removed. Filters match whole values exactly.
+* The term picker lists the first 200 terms of a taxonomy, plus any already selected.
+* The "Strict matching" filter option is removed; filters match whole values exactly.
 * A column order set by dragging applies to the current visit only.
 
 Security:
@@ -241,20 +255,20 @@ Security:
 = 1.1.0 =
 New:
 
-* Import a table from another table plugin or a spreadsheet: upload a JSON or XML table export, or a CSV file, and BaraTables creates a matching table for you.
-* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after it is created. Linked charts update automatically, and a notice reminds you to update any [bara_table] / [bara_chart] shortcodes already placed in your content.
-* Reorder manual-data rows directly in the editor with up and down controls.
-* Manual-table column headers are now translation-ready and follow the site language.
+* Import a table from another table plugin or a spreadsheet: upload a JSON, XML, or CSV export and BaraTables creates a matching table.
+* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes already placed in your content.
+* Reorder manual-data rows in the editor with up and down controls.
+* Manual-table column headers are translation-ready and follow the site language.
 
 Improvements:
 
-* Wide manual-data tables now scroll horizontally while keeping the row number and row controls in view.
+* Wide manual-data tables scroll horizontally while keeping the row number and controls in view.
 * Paste tabular data straight from a spreadsheet into the manual-data grid.
-* Smoother admin experience: one-click copy for shortcodes and IDs, a Show/Hide help text preference, and fewer page reloads while configuring a source.
+* Smoother admin: one-click copy for shortcodes and IDs, a Show/Hide help text preference, and fewer page reloads while configuring a source.
 
 Fixes:
 
-* Numeric columns sort numerically (e.g. 3.15, 3.2, 3.9 in numeric order).
+* Numeric columns sort numerically (e.g. 3.15, 3.2, 3.9).
 * Far-future dates display correctly.
 
 Security:
@@ -269,6 +283,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.3.1 =
+Fixes search after column reordering, remembered searches, and meta columns dropped on save. Developers: PHP methods deprecated in 1.2.5 are removed.
 
 = 1.3.0 =
 New table and chart blocks, responsive stacking on small screens, PDF export, theme-matched colors with a custom accent, and faster table pages without jQuery. Fixes day-first dates, decimal-comma chart values, and silent external database edits.
@@ -302,43 +319,15 @@ Initial release.
 
 == Third-Party Libraries ==
 
-This plugin bundles the following libraries and admin thumbnail assets:
+This plugin bundles these libraries and admin thumbnail images, all under GPL-compatible licenses. Full license notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt; each link is that library's source.
 
-* [DataTables](https://datatables.net/) v3.0.2 - MIT License
-* DataTables Buttons v4.0.2 - MIT License
-* DataTables ColReorder v3.0.1 - MIT License
-* DataTables Responsive v4.0.2 - MIT License
-* [Select2](https://select2.org/) v4.1.0-rc.0 - MIT License (admin editor pickers)
-* [Tom Select](https://tom-select.js.org/) v2.6.2 - Apache License 2.0 (front-end dropdown filters)
-* [JSZip](https://stuk.github.io/jszip/) v3.10.1 - MIT License
-* [pdfmake](http://pdfmake.org/) v0.2.23 - MIT License (bundles the Roboto font family - Apache License 2.0)
-* [ECharts](https://echarts.apache.org/) v6.1.0 - Apache License 2.0
-* FileSaver.js - MIT License (bundled inside DataTables Buttons)
-* pako - MIT License (bundled inside JSZip)
-
-Source code and uncompressed distribution files for the bundled compressed assets are available here:
-
-* DataTables v3.0.2 source: https://github.com/DataTables/DataTablesSrc/tree/3.0.2
-* DataTables v3.0.2 distribution files: https://cdn.datatables.net/3.0.2/
-* DataTables Buttons v4.0.2 source: https://github.com/DataTables/Buttons/tree/4.0.2
-* DataTables Buttons v4.0.2 distribution files: https://cdn.datatables.net/buttons/4.0.2/
-* DataTables ColReorder v3.0.1 source: https://github.com/DataTables/ColReorder/tree/3.0.1
-* DataTables ColReorder v3.0.1 distribution files: https://cdn.datatables.net/colreorder/3.0.1/
-* DataTables Responsive v4.0.2 source: https://github.com/DataTables/Responsive/tree/4.0.2
-* DataTables Responsive v4.0.2 distribution files: https://cdn.datatables.net/responsive/4.0.2/
-* Select2 v4.1.0-rc.0 source: https://github.com/select2/select2/tree/4.1.0-rc.0
-* Select2 v4.1.0-rc.0 uncompressed JavaScript: https://raw.githubusercontent.com/select2/select2/4.1.0-rc.0/dist/js/select2.js
-* Select2 v4.1.0-rc.0 uncompressed CSS: https://raw.githubusercontent.com/select2/select2/4.1.0-rc.0/dist/css/select2.css
-* Tom Select v2.6.2 source: https://github.com/orchidjs/tom-select/tree/v2.6.2
-* Tom Select v2.6.2 distribution files: https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/
-* JSZip v3.10.1 source: https://github.com/Stuk/jszip/tree/v3.10.1
-* JSZip v3.10.1 uncompressed JavaScript: https://raw.githubusercontent.com/Stuk/jszip/v3.10.1/dist/jszip.js
-* pdfmake v0.2.23 source: https://github.com/bpampuch/pdfmake/tree/0.2.23
-* pdfmake v0.2.23 distribution files: https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.23/
-* FileSaver.js v1.3.3 source: https://github.com/eligrey/FileSaver.js/tree/1.3.3
-* pako source: https://github.com/nodeca/pako
-* ECharts v6.1.0 source: https://github.com/apache/echarts/tree/6.1.0
-* ECharts v6.1.0 uncompressed JavaScript: https://raw.githubusercontent.com/apache/echarts/6.1.0/dist/echarts.js
-* BaraTables ECharts bundle entry and build command: https://github.com/trinadin/baratables/blob/main/tools/echarts-entry.js
-* Apache ECharts example thumbnail source files: https://echarts.apache.org/examples/data/thumb/
-* Apache ECharts examples source: https://github.com/apache/echarts-examples
+* DataTables v3.0.2 - MIT License - https://github.com/DataTables/DataTablesSrc/tree/3.0.2
+* DataTables Buttons v4.0.2 - MIT License - https://github.com/DataTables/Buttons/tree/4.0.2 (bundles FileSaver.js - MIT License - https://github.com/eligrey/FileSaver.js/tree/1.3.3)
+* DataTables ColReorder v3.0.1 - MIT License - https://github.com/DataTables/ColReorder/tree/3.0.1
+* DataTables Responsive v4.0.2 - MIT License - https://github.com/DataTables/Responsive/tree/4.0.2
+* Tom Select v2.6.2 - Apache License 2.0 - https://github.com/orchidjs/tom-select/tree/v2.6.2
+* JSZip v3.10.1 - MIT License - https://github.com/Stuk/jszip/tree/v3.10.1 (bundles pako - MIT License - https://github.com/nodeca/pako)
+* pdfmake v0.2.23 - MIT License - https://github.com/bpampuch/pdfmake/tree/0.2.23 (bundles the Roboto fonts - Apache License 2.0)
+* ECharts v6.1.0 - Apache License 2.0 - https://github.com/apache/echarts/tree/6.1.0
+* Chart-type gallery thumbnails from the Apache ECharts examples, Apache License 2.0 - https://github.com/apache/echarts-examples
+* BaraTables' custom ECharts bundle entry and build command - https://github.com/trinadin/baratables/blob/main/tools/echarts-entry.js

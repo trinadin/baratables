@@ -17,7 +17,7 @@ Thumbs.db
 node_modules/
 
 # ANCHORED ON PURPOSE. A bare "vendor/" is unanchored and git matches it at ANY depth, which
-# silently swallowed assets/vendor/ -- the bundled DataTables, ECharts, JSZip and Select2 files
+# silently swallowed assets/vendor/ -- the bundled DataTables, ECharts and JSZip files
 # the plugin enqueues at runtime. Every published GitHub tag through v1.2.1 is missing them and
 # is not an installable plugin as a result. This plugin has no build step and no dependency
 # manifest, so those files cannot be regenerated: they MUST stay tracked. The leading slash

@@ -66,6 +66,8 @@ jQuery(function($) {
 	};
 	var gridConfirmShrinkOne = $customGrid.data('confirm-shrink-one') || 'Reducing the grid will remove %d filled cell. Continue?';
 	var gridConfirmShrinkMany = $customGrid.data('confirm-shrink-many') || 'Reducing the grid will remove %d filled cells. Continue?';
+	var gridAtRowCap = $customGrid.data('at-row-cap') || 'The grid is at its maximum of %d rows.';
+	var gridPasteCapped = $customGrid.data('paste-capped') || '';
 
 	// Read the current header labels from the DOM so resizes preserve them
 	// instead of resetting to the generic "Column N" placeholders.
@@ -248,6 +250,15 @@ jQuery(function($) {
 					rows.splice(idx, 1);
 				}
 			} else {
+				// Insert and duplicate grow the grid; renderRows() clamps to caps.rows /
+				// rowsForCells silently, which would drop the last existing row without warning.
+				var caps = getGridCaps();
+				var cols = getRenderedCounts(caps).cols;
+				var maxRows = Math.min(caps.rows, Math.max(1, Math.floor(caps.cells / cols)));
+				if (rows.length >= maxRows) {
+					window.alert(gridAtRowCap.replace('%d', maxRows));
+					return;
+				}
 				var inserted = $button.hasClass('btbl-row-duplicate') ? (rows[idx] || []).slice() : [];
 				rows.splice(idx + 1, 0, inserted);
 			}
@@ -283,6 +294,11 @@ jQuery(function($) {
 			var newCols = Math.min(caps.cols, Math.max(rendered.cols, maxCol + 1));
 			var rowsForCells = Math.max(1, Math.floor(caps.cells / newCols));
 			var newRows = Math.min(caps.rows, rowsForCells, Math.max(rendered.rows, values.length));
+			// The clamps above can silently drop pasted rows/columns; say so, like the row-cap
+			// guard on insert/duplicate, or the admin may not notice until data is missing.
+			if ((values.length > newRows || maxCol + 1 > newCols) && gridPasteCapped) {
+				window.alert(gridPasteCapped.replace('%1$d', String(newRows)).replace('%2$d', String(newCols)));
+			}
 			renderCustomGrid(readCustomGridHeaders().slice(0, newCols), values, { cols: newCols, rows: newRows });
 		});
 		rebuildCustomGrid(false);

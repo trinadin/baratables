@@ -116,20 +116,26 @@ class BaraTables_Admin {
 		}
 		$preview = BaraTables_Admin_Form_Context::sanitize_preview_values($raw);
 		$preview += ['type' => 'post', 'source' => 'wp_query'];
-		// CSV preview params let build() infer columns from the uploaded file. build()'s CSV column
-		// reset is gated on a non-POST request (the legacy reload arrived as GET), so mark the
-		// preview as GET only when those params are present -- matching the old reload semantics.
+		// build() gates its column reset on a non-POST request, because the legacy full-page
+		// reload arrived as GET: a source switch, an emptied custom query, or changed CSV inputs
+		// reset the column selection there. The old AJAX handler faked that by overwriting
+		// $_SERVER['REQUEST_METHOD']; evaluating the same reset-worthy conditions here keeps the
+		// no-reload refresh identical to the reload without touching superglobals, while an
+		// unchanged refresh keeps its columns.
+		$original_source = BaraTables_Source_Type::normalize($existing['source_type'] ?? BaraTables_Source_Type::WP_QUERY);
+		$requested_source = BaraTables_Source_Type::normalize($preview['source'], $original_source);
+		$query_emptied = $requested_source === BaraTables_Source_Type::CUSTOM_QUERY
+			&& isset($preview['custom_query'])
+			&& empty($this->service->sanitize_custom_query_json($preview['custom_query']));
 		$has_csv_params = isset($raw['csv_id']) || isset($raw['csv_delim']) || isset($raw['csv_header']);
-		$preview['request_method'] = $has_csv_params ? 'GET' : 'POST';
+		$preview['request_method'] = ($requested_source !== $original_source || $query_emptied || $has_csv_params) ? 'GET' : 'POST';
 
 		$context_builder = new BaraTables_Admin_Form_Context($this->service);
 		$context = $context_builder->build($existing, $preview);
 
-		$editing_defn = !empty($existing) ? $existing : null;
-
 		wp_send_json_success([
-			'columns' => $this->pages->render_columns_panel($context, $editing_defn),
-			'source'  => $this->pages->render_source_panel($context, $editing_defn),
+			'columns' => $this->pages->render_columns_panel($context),
+			'source'  => $this->pages->render_source_panel($context),
 		]);
 	}
 
@@ -424,11 +430,13 @@ class BaraTables_Chart_Admin {
 	private string $nonce_action;
 	private string $nonce_field;
 	private BaraTables_Entity_Persistence $persistence;
+	private ?BaraTables_Frontend $frontend;
 
-	public function __construct(BaraTables_Chart_Service $chart_service, BaraTables_Chart_Repository $chart_repo, BaraTables_Service $table_service, string $nonce_action, string $nonce_field) {
+	public function __construct(BaraTables_Chart_Service $chart_service, BaraTables_Chart_Repository $chart_repo, BaraTables_Service $table_service, string $nonce_action, string $nonce_field, ?BaraTables_Frontend $frontend = null) {
 		$this->chart_service = $chart_service;
 		$this->chart_repo = $chart_repo;
 		$this->table_service = $table_service;
+		$this->frontend = $frontend;
 		$this->tab_chart = new BaraTables_Admin_Tab_Chart();
 		$this->nonce_action = $nonce_action;
 		$this->nonce_field = $nonce_field;
@@ -476,10 +484,15 @@ class BaraTables_Chart_Admin {
 			echo '<p>' . esc_html__('Save the chart to see a preview.', 'baratables') . '</p>';
 			return;
 		}
-		// Reuse the exact front-end renderer (it registers + enqueues ECharts on demand),
-		// so the admin preview can never diverge from what visitors see.
-		$output = do_shortcode('[bara_chart id="' . esc_attr($chart_id) . '"]');
-		echo '<div class="btbl-admin btbl-admin-embed btbl-chart-preview-embed">' . $output . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Shortcode output is escaped by the renderer.
+		// Reuse the exact front-end renderer (it registers + enqueues ECharts on demand), so the
+		// admin preview can never diverge from what visitors see -- except that drafts render
+		// here: the publish gate belongs to the visitor-facing shortcode, not to the editor's
+		// own preview, so Save Draft no longer shows "Chart not found." for the chart being
+		// edited. Without a renderer wired in, fall back to the published-only shortcode.
+		$output = $this->frontend
+			? $this->frontend->render_chart_by_id($chart_id, false)
+			: do_shortcode('[bara_chart id="' . esc_attr($chart_id) . '"]');
+		echo '<div class="btbl-admin btbl-admin-embed btbl-chart-preview-embed">' . $output . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Renderer output is escaped at every sink.
 	}
 
 	public function render_chart_metabox(WP_Post $post): void {

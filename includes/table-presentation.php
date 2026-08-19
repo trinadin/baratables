@@ -21,7 +21,14 @@ final class BaraTables_Table_Presentation {
 		$slug_to_index = $this->service->map_column_slug_to_index($definition);
 		$default_sort = $this->service->get_default_sort_order($definition);
 		$sorted_columns = $include_preview ? $this->build_sorted_columns($default_sort, $slug_to_index, $options_raw) : [];
-		$column_state = $this->build_column_models($columns, $definition, $sorted_columns);
+		// Header arrows mirror DataTables, which marks the ordered column whenever sorting is on
+		// and a default sort exists -- independent of the "Highlight sorted column" toggle that
+		// only backgrounds the cells. Without the split, turning the highlight off also removed
+		// the preview's arrows while the live table kept them.
+		$arrow_columns = $include_preview
+			? $this->build_sorted_columns($default_sort, $slug_to_index, ['orderColumn' => true, 'ordering' => !empty($options_raw['ordering'])])
+			: [];
+		$column_state = $this->build_column_models($columns, $definition, $arrow_columns);
 
 		$presentation = [
 			'options' => $options,

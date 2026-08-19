@@ -379,9 +379,33 @@ final class BaraTables_Query_Sanitizer {
 				$out[$int_key] = absint($clause[$int_key]);
 			}
 		}
+		// WP_Date_Query's documented column key. Dropping it silently retargeted the clause to
+		// post_date, so "after" filtered the published date while the admin wrote post_modified.
+		if (isset($clause['column'])) {
+			$column = sanitize_key((string) $clause['column']);
+			if (in_array($column, ['post_date', 'post_date_gmt', 'post_modified', 'post_modified_gmt'], true)) {
+				$out['column'] = $column;
+			}
+		}
 		foreach (['before', 'after'] as $date_key) {
-			if (isset($clause[$date_key]) && is_scalar($clause[$date_key])) {
+			if (!isset($clause[$date_key])) {
+				continue;
+			}
+			if (is_scalar($clause[$date_key])) {
 				$out[$date_key] = sanitize_text_field((string) $clause[$date_key]);
+			} elseif (is_array($clause[$date_key])) {
+				// Array form (['year' => 2020, 'month' => 3]). Skipping it emptied the clause and
+				// the nested-query fallback reinterpreted the inner keys as standalone conditions,
+				// turning "before March 2020" into "in March 2020".
+				$bounds = [];
+				foreach (['year', 'month', 'day', 'hour', 'minute', 'second'] as $bound_key) {
+					if (isset($clause[$date_key][$bound_key])) {
+						$bounds[$bound_key] = absint($clause[$date_key][$bound_key]);
+					}
+				}
+				if ($bounds) {
+					$out[$date_key] = $bounds;
+				}
 			}
 		}
 		if (isset($clause['inclusive'])) {

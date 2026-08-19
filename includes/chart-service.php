@@ -112,12 +112,17 @@ class BaraTables_Chart_Service {
 		];
 	}
 
-	public function get_render_context(string $chart_id): ?array {
+	/**
+	 * $require_publish is the visitor-facing contract (published chart on a published table).
+	 * The chart editor's preview metabox passes false so the draft being edited -- and a draft
+	 * source table -- render there instead of the public "Chart not found." message.
+	 */
+	public function get_render_context(string $chart_id, bool $require_publish = true): ?array {
 		$chart = $this->find_chart($chart_id);
-		if (!$chart || ($chart['status'] ?? '') !== 'publish') {
+		if (!$chart || ($require_publish && ($chart['status'] ?? '') !== 'publish')) {
 			return null;
 		}
-		$table = $this->table_service->find_definition($chart['table_id'] ?? '', true);
+		$table = $this->table_service->find_definition($chart['table_id'] ?? '', $require_publish);
 		if (!$table) {
 			return null;
 		}

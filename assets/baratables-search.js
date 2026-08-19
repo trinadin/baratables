@@ -49,8 +49,9 @@
 		var searchColumnsEl = null;
 		var toggleEl = null;
 		// What this controller last wrote to DataTables: null indexes = the global search,
-		// an array = the column group. Tracked so retargeting clears exactly the previous
-		// entry, whatever a drag has done to positions since.
+		// an array = the column group in ORIGINAL data indexes (stable across drags). Tracked
+		// so retargeting clears exactly the previous entry, whatever a drag has done to
+		// positions since; the transpose to current positions happens at clear time.
 		var applied = { indexes: null, term: '' };
 		var lastKnownGlobalTerm = '';
 		// Set while this controller is (re)writing searches itself: the search.dt listener must
@@ -77,11 +78,15 @@
 			writingInternally = true;
 			try {
 				if (applied.indexes === null) {
-					if (applied.term !== '') {
-						api.search('');
-					}
+					// Unconditional: a saved-state restore or an external writer can set the
+					// global term outside this controller's knowledge, and skipping the clear is
+					// exactly how "Clear filters" came to leave an invisible search filtering
+					// the table.
+					api.search('');
 				} else if (applied.indexes.length) {
-					api.columns(applied.indexes).search('');
+					api.columns(applied.indexes.map(function(index) {
+						return transposeIndex(api, index);
+					})).search('');
 				}
 			} finally {
 				writingInternally = false;
@@ -106,7 +111,7 @@
 			if (term !== '') {
 				if (subset) {
 					api.columns(subset).search(term);
-					applied = { indexes: subset, term: term };
+					applied = { indexes: indexes.slice(), term: term };
 				} else {
 					api.search(term);
 					applied = { indexes: null, term: term };
@@ -142,7 +147,10 @@
 				}
 				var headerHtml = (this.header() ? (this.header().innerHTML || this.title() || '') : '').trim();
 				var defaultLabel = 'Column ' + (index + 1);
-				if (!headerHtml) {
+				// A hidden heading serializes as a literal '&nbsp;', which decodes to plain
+				// whitespace: fall back to "Column N" so the picker shows a caption instead of a
+				// blank entry whose accessible name is spelled "ampersand-n-b-s-p".
+				if (!utils.labelToPlainText(headerHtml, '')) {
 					headerHtml = defaultLabel;
 				}
 				var headerText = utils.labelToPlainText(headerHtml, defaultLabel) || defaultLabel;
@@ -202,6 +210,12 @@
 			inputEl.id = uid;
 			inputEl.autocomplete = 'off';
 			inputEl.setAttribute('aria-controls', settings.tableId || '');
+			if (usesVisualLabel && options.labelPlain) {
+				// The visible label is an HTML span hidden from assistive tech, so without this
+				// the input's accessible name would fall back to the placeholder, which is empty
+				// unless the admin set one.
+				inputEl.setAttribute('aria-label', options.labelPlain);
+			}
 			if (options.placeholder) {
 				inputEl.placeholder = options.placeholder;
 			}
@@ -356,6 +370,18 @@
 				return;
 			}
 			lastKnownGlobalTerm = api.search() || '';
+			if (lastKnownGlobalTerm !== '' && lastKnownGlobalTerm !== searchState.term) {
+				// A saved table state restores the global search during construction, after this
+				// controller was built. Adopt it so the box shows why rows are missing and the
+				// reset path knows it has something to clear; the input follows the term that is
+				// actually filtering, whether it came from the URL preset or the saved state.
+				searchState.term = lastKnownGlobalTerm;
+				applied = { indexes: null, term: lastKnownGlobalTerm };
+				if (inputEl && inputEl.value !== lastKnownGlobalTerm) {
+					inputEl.value = lastKnownGlobalTerm;
+					syncFilledState();
+				}
+			}
 			api.on('search.dt', function(event, settings) {
 				if (settings !== settingsObj && settingsObj) {
 					settingsObj = settings;
@@ -405,17 +431,16 @@
 			getColumns: function() {
 				return searchableColumns;
 			},
-			needsInitialDraw: function() {
-				// Presets are applied during construction; nothing extra to draw here.
-				return false;
-			},
 			attach: attach,
 			reset: function() {
-				if (!inputEl) {
-					return;
+				// Clear even when no search control was built: a remembered state can restore a
+				// global term on a table whose search box has since been removed, leaving "Clear
+				// filters" unable to bring the hidden rows back (and publishing the term into the
+				// shareable URL). The control-specific touches are what stay conditional.
+				if (inputEl) {
+					inputEl.value = '';
+					syncFilledState();
 				}
-				inputEl.value = '';
-				syncFilledState();
 				searchState.term = '';
 				searchState.columns = allColumnIndices();
 				if (dropdownEl) {

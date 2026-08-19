@@ -512,6 +512,13 @@
 		}
 		var tableConfig = buildDataTableConfiguration(resolvedOptions, config, slugToIndex, languageResult, searchFeatureItem);
 		btblRegisterDateType();
+		if (typeof DataTableLib.isDataTable === 'function' && DataTableLib.isDataTable(tableEl)) {
+			// A page builder or AJAX swap can re-run the bootstrap while the previous table is
+			// still live. DataTables refuses to reinitialise (a modal alert at the visitor, by
+			// default) and its half-built return would fall into the catch below, destroying a
+			// table that was working. Tear down first; the chart bootstrap supports re-runs too.
+			new DataTableLib.Api(tableEl).destroy();
+		}
 		var table = new DataTableLib(tableEl, tableConfig);
 		if (searchController) {
 			searchController.attach(table);

@@ -1,6 +1,20 @@
 .btbl-table-wrapper {
 	overflow-x: auto;
 	position: relative;
+	/* Theming cascade: a table's explicit Accent color sets --btbl-accent inline on this
+	   wrapper; otherwise it inherits the theme's global palette primary, falling back to the
+	   WordPress admin blue. DataTables 3's control color hooks ride the same accent. */
+	--btbl-accent: var(--wp--preset--color--primary, #2271b1);
+	--btbl-border: #d0d7de;
+	--btbl-muted: #6c757d;
+	--btbl-surface: #fff;
+	--dt-control_color: var(--btbl-accent);
+}
+
+/* The sorted column carries a subtle accent tint instead of DataTables' neutral gray. */
+.btbl-table-wrapper table.dataTable > thead th.dt-ordering-asc,
+.btbl-table-wrapper table.dataTable > thead th.dt-ordering-desc {
+	background: color-mix(in srgb, var(--btbl-accent) 7%, transparent);
 }
 
 .btbl-table {
@@ -23,32 +37,26 @@
 	gap: 6px;
 }
 
-.btbl-filter .select2-container {
-	width: 100% !important;
+.btbl-filter .ts-wrapper {
+	width: 100%;
 }
 
-.select2-container .select2-dropdown {
-	z-index: 9999;
-}
-
-.btbl-filter .select2-container .select2-selection--single {
-	border: 1px solid #d0d7de;
+.btbl-filter .ts-control {
+	border: 1px solid var(--btbl-border);
 	border-radius: 4px;
-	display: flex;
-	align-items: center;
 }
 
-.btbl-filter .select2-container .select2-selection--single .select2-selection__rendered {
-	padding-right: 26px;
-	max-width: 100%;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	line-height: 1.4;
+.btbl-filter .ts-wrapper.focus .ts-control {
+	border-color: var(--btbl-accent);
+	box-shadow: 0 0 0 1px var(--btbl-accent);
 }
 
-.btbl-filter .select2-container .select2-selection--single .select2-selection__arrow {
-	height: 100%;
+.btbl-filter .ts-dropdown {
+	border-color: var(--btbl-border);
+	border-radius: 4px;
+	box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+	margin-top: 4px;
+	z-index: 9999;
 }
 
 .btbl-filter-options label {
@@ -76,7 +84,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	color: #6c757d;
+	color: var(--btbl-muted);
 	font-size: 13px;
 	pointer-events: none;
 }
@@ -101,8 +109,8 @@
 .btbl-search-columns-toggle,
 .btbl-reset-button,
 .btbl-edit-link {
-	border: 1px solid #d0d7de;
-	background: #fff;
+	border: 1px solid var(--btbl-border);
+	background: var(--btbl-surface);
 	border-radius: 4px;
 	padding: 5px 10px;
 	font-size: 13px;
@@ -116,7 +124,7 @@
 .btbl-search-columns-toggle:focus,
 .btbl-reset-button:focus,
 .btbl-edit-link:focus {
-	outline: 2px solid #2271b1;
+	outline: 2px solid var(--btbl-accent);
 	outline-offset: 1px;
 }
 
@@ -125,9 +133,9 @@
 	right: 0;
 	top: calc(100% + 5px);
 	padding: 10px 10px 10px 12px;
-	border: 1px solid #d0d7de;
+	border: 1px solid var(--btbl-border);
 	border-radius: 6px;
-	background: #fff;
+	background: var(--btbl-surface);
 	box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
 	display: none;
 	z-index: 20;

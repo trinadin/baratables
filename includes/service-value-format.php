@@ -238,7 +238,10 @@ trait BaraTables_Value_Format_Trait {
 
 		$timestamp = strtotime((string) $value);
 		if ($timestamp === false) {
-			return (string) $value;
+			$timestamp = $this->parse_day_first_timestamp((string) $value);
+			if ($timestamp === null) {
+				return (string) $value;
+			}
 		}
 
 		// Deliberately date_i18n(), not wp_date(): WordPress sets PHP's default timezone to UTC,
@@ -246,6 +249,23 @@ trait BaraTables_Value_Format_Trait {
 		// as if it were UTC. date_i18n()'s legacy handling converts it straight back to the same
 		// wall clock, which is exactly right here. wp_date() would shift it by the site offset.
 		return date_i18n($format, $timestamp);
+	}
+
+	/**
+	 * Day-first dates (25/12/2026, 31-01-2026, 07.06.2026) fail strtotime(), which only
+	 * understands US m/d/Y, so "Format as date" silently did nothing for UK/EU values. WordPress
+	 * sets PHP's timezone to UTC, so the wall clock is rebuilt with gmmktime() exactly as
+	 * strtotime() would have read it; date_i18n() then renders the same local time. Ambiguous
+	 * values (03/04/2026) never reach here: strtotime() already parsed them US-first.
+	 */
+	private function parse_day_first_timestamp(string $value): ?int {
+		if (!preg_match('/^(\d{1,2})([.\/-])(\d{1,2})\2(\d{4})$/', $value, $matches)) {
+			return null;
+		}
+		$day = (int) $matches[1];
+		$month = (int) $matches[3];
+		$year = (int) $matches[4];
+		return checkdate($month, $day, $year) ? gmmktime(0, 0, 0, $month, $day, $year) : null;
 	}
 
 	/**

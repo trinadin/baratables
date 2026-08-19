@@ -24,6 +24,7 @@ class BaraTables {
 		// front-end request has no reason to construct the admin layer at all.
 		add_action('init', [$this->repo, 'register_cpt']);
 		add_action('init', [$this->chart_repo, 'register_cpt']);
+		add_action('init', [$this, 'register_blocks'], 20);
 		add_action('wp_enqueue_scripts', [$this, 'maybe_register_frontend_assets']);
 		add_shortcode('bara_table', [$this, 'render_table_shortcode']);
 		add_shortcode('bara_chart', [$this, 'render_chart_shortcode']);
@@ -69,20 +70,95 @@ class BaraTables {
 	}
 
 	private function main_query_has_shortcode(): bool {
-		$has_shortcode = static function ($content): bool {
-			$content = (string) $content;
-			return $content !== '' && (has_shortcode($content, 'bara_table') || has_shortcode($content, 'bara_chart'));
+		$has_embed = static function ($content): bool {
+			return BaraTables_Frontend::content_embeds_table((string) $content);
 		};
 		if (is_singular()) {
 			$post = get_queried_object();
-			return $post instanceof WP_Post && $has_shortcode($post->post_content);
+			return $post instanceof WP_Post && $has_embed($post->post_content);
 		}
 		foreach ((array) ($GLOBALS['wp_query']->posts ?? []) as $post) {
-			if ($post instanceof WP_Post && $has_shortcode($post->post_content)) {
+			if ($post instanceof WP_Post && $has_embed($post->post_content)) {
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Register the dynamic table and chart blocks. Both render through their shortcode
+	 * pipelines ([bara_table]/[bara_chart]), so a block and its shortcode can never diverge
+	 * in output. The editor scripts are plain wp.element scripts (no build step) with pickers
+	 * fed by the btbl_block_tables/btbl_block_charts AJAX endpoints; the front end needs none
+	 * of them.
+	 */
+	public function register_blocks(): void {
+		if (!function_exists('register_block_type')) {
+			return;
+		}
+		wp_register_script(
+			'baratables-block-table',
+			$this->plugin_url . 'assets/block-table.js',
+			['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
+			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-table.js'),
+			false
+		);
+		wp_set_script_translations('baratables-block-table', 'baratables');
+		$config = ['ajaxUrl' => admin_url('admin-ajax.php')];
+		if (is_user_logged_in()) {
+			$config['nonce'] = wp_create_nonce('btbl_block_tables');
+		}
+		wp_add_inline_script(
+			'baratables-block-table',
+			'window.BaraTablesBlockConfig = ' . wp_json_encode($config) . ';',
+			'before'
+		);
+		register_block_type('baratables/table', [
+			'attributes' => [
+				'id' => ['type' => 'string', 'default' => ''],
+			],
+			'editor_script' => 'baratables-block-table',
+			'render_callback' => [$this, 'render_table_block'],
+		]);
+
+		wp_register_script(
+			'baratables-block-chart',
+			$this->plugin_url . 'assets/block-chart.js',
+			['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
+			BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-chart.js'),
+			false
+		);
+		wp_set_script_translations('baratables-block-chart', 'baratables');
+		$chart_config = ['ajaxUrl' => admin_url('admin-ajax.php')];
+		if (is_user_logged_in()) {
+			$chart_config['nonce'] = wp_create_nonce('btbl_block_charts');
+		}
+		wp_add_inline_script(
+			'baratables-block-chart',
+			'window.BaraTablesChartBlockConfig = ' . wp_json_encode($chart_config) . ';',
+			'before'
+		);
+		register_block_type('baratables/chart', [
+			'attributes' => [
+				'id' => ['type' => 'string', 'default' => ''],
+			],
+			'editor_script' => 'baratables-block-chart',
+			'render_callback' => [$this, 'render_chart_block'],
+		]);
+	}
+
+	public function render_table_block(array $attributes): string {
+		$id = isset($attributes['id']) ? sanitize_title((string) $attributes['id']) : '';
+		// An unconfigured block (fresh insert, no table picked) renders nothing rather than a
+		// visitor-facing "Table not found." paragraph.
+		return $id === '' ? '' : do_shortcode('[bara_table id="' . esc_attr($id) . '"]');
+	}
+
+	public function render_chart_block(array $attributes): string {
+		$id = isset($attributes['id']) ? sanitize_title((string) $attributes['id']) : '';
+		// Same contract as the table block: an unconfigured block renders nothing rather than a
+		// visitor-facing "Chart not found." paragraph.
+		return $id === '' ? '' : do_shortcode('[bara_chart id="' . esc_attr($id) . '"]');
 	}
 
 	/** Wire the admin half only for wp-admin, AJAX and WP-CLI requests. */

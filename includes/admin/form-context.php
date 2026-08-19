@@ -273,7 +273,7 @@ class BaraTables_Admin_Form_Context {
 			'custom_query' => [BaraTables_Admin_Action_Handler::class, 'sanitize_json_textarea'],
 			'csv_id' => 'absint',
 			'csv_header' => 'absint',
-			'csv_delim' => 'sanitize_text_field',
+			'csv_delim' => [BaraTables_Admin_Action_Handler::class, 'sanitize_csv_delimiter'],
 			'tab' => 'sanitize_key',
 		];
 		$out = [];

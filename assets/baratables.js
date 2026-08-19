@@ -1,4 +1,4 @@
-(function($) {
+(function() {
 	var utils = window.BaraTablesUtils;
 
 	function findWrapper(tableId) {
@@ -28,10 +28,10 @@
 		}
 	}
 
-	if (!$ || !utils) {
+	if (!utils) {
 		var revealUninitializedTables = function() {
 			document.querySelectorAll('.btbl-table-wrapper:not(.is-chart-only)').forEach(function(wrapper) {
-				revealFailure(wrapper, 'jQuery or BaraTables utilities unavailable.');
+				revealFailure(wrapper, 'BaraTables utilities unavailable.');
 			});
 		};
 		if (document.readyState === 'loading') {
@@ -50,6 +50,22 @@
 	var compactValues = utils.compactValues;
 	var resolveLabelHtml = utils.resolveLabelHtml;
 	var labelToPlainText = utils.labelToPlainText;
+	// Read lazily: this module does not declare DataTables as a script dependency (chart-only
+	// pages never load it), so its global may not exist when this file evaluates.
+	function dataTablesLib() {
+		return window.DataTable;
+	}
+
+	// API methods such as column().header() return raw elements, but defensive unwrapping
+	// keeps the code correct if a build ever hands back a collection instead.
+	function asNodeList(value) {
+		if (!value) { return []; }
+		if (value.nodeType) { return [value]; }
+		if (typeof value.get === 'function') { value = value.get(); }
+		if (Array.isArray(value)) { return value; }
+		if (typeof value.length === 'number') { return Array.prototype.slice.call(value); }
+		return [value];
+	}
 
 	// Registered lazily, NOT at parse time.
 	//
@@ -57,16 +73,18 @@
 	// present. Making this file depend on DataTables would also load it on chart-only pages.
 	var btblDateTypeRegistered = false;
 	function btblRegisterDateType() {
-		if (btblDateTypeRegistered || !$.fn.dataTable || !$.fn.dataTable.ext) {
+		var ext = dataTablesLib() && dataTablesLib().ext;
+		if (btblDateTypeRegistered || !ext || !ext.type) {
 			return;
 		}
 		btblDateTypeRegistered = true;
-		$.fn.dataTable.ext.type.detect.unshift(function(d) {
+		ext.type.detect.unshift(function(d) {
 			var text = btblExtractText(d);
-			// An empty cell must not veto the column's date type. DataTables 2 lets a single
-			// non-matching (null) detection downgrade the whole column, so one blank row in an
-			// otherwise-date column would drop it to string (alphabetical) sorting. Treat blank
-			// as neutral; btbl-date-pre already maps empty/unparseable to 0 for ordering.
+			// An empty cell must not veto the column's date type. DataTables lets a single
+			// non-matching (null) detection downgrade the whole column (a detector is abandoned
+			// on its first null in both 2.x and 3.x), so one blank row in an otherwise-date
+			// column would drop it to string (alphabetical) sorting. Treat blank as neutral;
+			// btbl-date-pre already maps empty/unparseable to 0 for ordering.
 			if (!text) {
 				return 'btbl-date';
 			}
@@ -84,19 +102,20 @@
 			var parsed = btblParseDate(d);
 			return parsed !== null ? 'btbl-date' : null;
 		});
-		$.fn.dataTable.ext.type.order['btbl-date-pre'] = function(d) {
+		ext.type.order['btbl-date-pre'] = function(d) {
 			var parsed = btblParseDate(d);
 			return parsed !== null ? parsed : 0;
 		};
 	}
 
-	// Column filters apply a RegExp via column().search(regex). DataTables cannot serialize a
-	// RegExp: JSON.stringify turns it into {}, which restores as the literal "[object Object]"
-	// and hides every row. Column filters and column order are always re-derived from the
-	// plugin's own controls, so strip them from the persisted state and keep only sort, paging,
-	// length, and global search. Run on both save and load; the load pass also repairs any
-	// poisoned entry written by an older plugin version, so returning visitors recover on their
-	// next page view without touching localStorage.
+	// Column filters apply a RegExp via column().search(regex), and the scoped search box owns
+	// a native column-group search; DataTables cannot serialize the RegExp (JSON.stringify turns
+	// it into {}, restoring as "[object Object]" and hiding every row), and both filter kinds
+	// are always re-derived from the plugin's own controls or the URL. Strip them from the
+	// persisted state and keep only sort, paging, length, and the plain global search. Run on
+	// both save and load; the load pass also repairs any poisoned entry written by an older
+	// plugin version, so returning visitors recover on their next page view without touching
+	// localStorage.
 	function sanitizeSavedTableState(data) {
 		if (!data || typeof data !== 'object') {
 			return;
@@ -104,16 +123,20 @@
 		if (Array.isArray(data.columns)) {
 			data.columns.forEach(function(col) {
 				if (col && typeof col === 'object') {
-					col.search = { search: '', regex: false, smart: true, caseInsensitive: true };
+					// DataTables 3's canonical empty search (SearchOptions defaults).
+					col.search = { search: '', regex: false, smart: true, caseInsensitive: true, exact: false, return: false };
 				}
 			});
 		}
-		// ColReorder 2.x persists under the lower-case key -- its stateSaveParams writes
-		// `r.colReorder` and its loader reads `t.colReorder`. The capitalised key is what
-		// ColReorder 1.x used, so delete both: one is the live contract, the other repairs state
-		// left behind by an older bundle. Getting this wrong is silent -- the delete simply misses,
-		// the order restores, and the filters (which address columns by their ORIGINAL index via
-		// data-column/slugToIndex) then point at whatever column moved into that slot.
+		// Native column-group searches persist under searchGroups; the URL owns the term.
+		delete data.searchGroups;
+		// ColReorder 2.x and 3.x persist under the lower-case key -- their stateSaveParams
+		// writes `r.colReorder` and state restore reads it back from the loaded state. The
+		// capitalised key is what ColReorder 1.x used, so delete both: one is the live contract,
+		// the other repairs state left behind by an older bundle. Getting this wrong is silent
+		// -- the delete simply misses, the order restores, and the filters (which address
+		// columns by their ORIGINAL index via data-column/slugToIndex) then point at whatever
+		// column moved into that slot.
 		delete data.colReorder;
 		delete data.ColReorder;
 	}
@@ -141,17 +164,21 @@
 		}
 	}
 	function resolveTableOptions(tableOptions) {
-		var resolved = $.extend(true, {}, tableOptions || {});
+		var source = tableOptions || {};
+		var resolved = {};
+		Object.keys(source).forEach(function(key) {
+			resolved[key] = source[key];
+		});
 		['layoutTopStart', 'layoutTopEnd', 'layoutBottomStart', 'layoutBottomEnd'].forEach(function(key) {
-			if (Object.prototype.hasOwnProperty.call(tableOptions || {}, key)) {
-				resolved[key] = Array.isArray(tableOptions[key]) ? tableOptions[key].slice() : [];
+			if (Object.prototype.hasOwnProperty.call(source, key)) {
+				resolved[key] = Array.isArray(source[key]) ? source[key].slice() : [];
 			}
 		});
 		return resolved;
 	}
 
-	function applyTableStyleClasses($table, $wrapper, config, options) {
-		$table.removeClass('display');
+	function applyTableStyleClasses(tableEl, wrapper, config, options) {
+		tableEl.classList.remove('display');
 		var styleClasses = Array.isArray(config.tableClasses) ? config.tableClasses : [
 			options.stripe !== false ? 'stripe' : '',
 			options.rowBorder !== false ? 'row-border' : '',
@@ -161,77 +188,68 @@
 			options.compact === true ? 'compact' : ''
 		].filter(Boolean);
 		['stripe', 'row-border', 'cell-border', 'hover', 'order-column', 'compact'].forEach(function(className) {
-			$table.toggleClass(className, styleClasses.indexOf(className) !== -1);
+			tableEl.classList.toggle(className, styleClasses.indexOf(className) !== -1);
 		});
 		var isCompact = Object.prototype.hasOwnProperty.call(config, 'compact') ? config.compact === true : options.compact === true;
-		if ($wrapper && $wrapper.length) {
-			$wrapper.toggleClass('is-compact', isCompact);
+		if (wrapper) {
+			wrapper.classList.toggle('is-compact', isCompact);
 		}
 	}
 
-	function buildLayoutConfiguration(options, buttonList) {
-		var supportsLayout = $.fn.dataTable && $.fn.dataTable.versionCheck && $.fn.dataTable.versionCheck('2.0.0');
+	function buildLayoutConfiguration(options, buttonList, searchFeatureItem) {
+		// The vendored DataTables 3 bundle always supports the layout option, so controls are
+		// placed through it; there is no legacy dom string to maintain alongside.
 		var pagingConfig = {
 			numbers: options.pagingNumbers !== false,
 			firstLast: options.pagingFirstLast !== false,
 			previousNext: options.pagingPreviousNext !== false
 		};
-		if (supportsLayout) {
-			var layoutZones = {
-				topStart: Array.isArray(options.layoutTopStart) ? options.layoutTopStart : [],
-				topEnd: Array.isArray(options.layoutTopEnd) ? options.layoutTopEnd : [],
-				bottomStart: Array.isArray(options.layoutBottomStart) ? options.layoutBottomStart : [],
-				bottomEnd: Array.isArray(options.layoutBottomEnd) ? options.layoutBottomEnd : []
-			};
-			var layoutSeen = {};
-			var buildLayoutZone = function(items) {
-				var zoneItems = [];
-				(items || []).forEach(function(item) {
-					if (!item || layoutSeen[item]) {
-						return;
-					}
-					var normalized = null;
-					if (item === 'search' && options.searchBox !== false) {
-						normalized = 'search';
-					} else if (item === 'pagelength' && options.lengthChange !== false) {
-						normalized = 'pageLength';
-					} else if (item === 'buttons' && buttonList.length) {
-						normalized = 'buttons';
-					} else if (item === 'info' && options.info !== false) {
-						normalized = 'info';
-					} else if (item === 'paging' && options.paging !== false) {
-						normalized = { paging: pagingConfig };
-					}
-					if (!normalized) {
-						return;
-					}
-					layoutSeen[item] = true;
-					zoneItems.push(normalized);
-				});
-				if (!zoneItems.length) {
-					return null;
+		var layoutZones = {
+			topStart: Array.isArray(options.layoutTopStart) ? options.layoutTopStart : [],
+			topEnd: Array.isArray(options.layoutTopEnd) ? options.layoutTopEnd : [],
+			bottomStart: Array.isArray(options.layoutBottomStart) ? options.layoutBottomStart : [],
+			bottomEnd: Array.isArray(options.layoutBottomEnd) ? options.layoutBottomEnd : []
+		};
+		var layoutSeen = {};
+		var buildLayoutZone = function(items) {
+			var zoneItems = [];
+			(items || []).forEach(function(item) {
+				if (!item || layoutSeen[item]) {
+					return;
 				}
-				return zoneItems.length === 1 ? zoneItems[0] : zoneItems;
-			};
-			return {
-				supportsLayout: true,
-				value: {
-					topStart: buildLayoutZone(layoutZones.topStart),
-					topEnd: buildLayoutZone(layoutZones.topEnd),
-					bottomStart: buildLayoutZone(layoutZones.bottomStart),
-					bottomEnd: buildLayoutZone(layoutZones.bottomEnd)
+				var normalized = null;
+				if (item === 'search' && options.searchBox !== false) {
+					// BaraTables' own search control: same placement as the stock feature, but
+					// scoped column-group searches and the column picker ride natively. Falls
+					// back to DataTables' stock search when the module or its feature
+					// registration is unavailable.
+					normalized = searchFeatureItem || 'search';
+				} else if (item === 'pagelength' && options.lengthChange !== false) {
+					normalized = 'pageLength';
+				} else if (item === 'buttons' && buttonList.length) {
+					normalized = 'buttons';
+				} else if (item === 'info' && options.info !== false) {
+					normalized = 'info';
+				} else if (item === 'paging' && options.paging !== false) {
+					normalized = { paging: pagingConfig };
 				}
-			};
-		}
-
-		var domParts = [];
-		if (options.lengthChange !== false) { domParts.push('l'); }
-		if (buttonList.length) { domParts.push('B'); }
-		if (options.searchBox !== false) { domParts.push('f'); }
-		domParts.push('r', 't');
-		if (options.info !== false) { domParts.push('i'); }
-		if (options.paging !== false) { domParts.push('p'); }
-		return { supportsLayout: false, value: domParts.join('') };
+				if (!normalized) {
+					return;
+				}
+				layoutSeen[item] = true;
+				zoneItems.push(normalized);
+			});
+			if (!zoneItems.length) {
+				return null;
+			}
+			return zoneItems.length === 1 ? zoneItems[0] : zoneItems;
+		};
+		return {
+			topStart: buildLayoutZone(layoutZones.topStart),
+			topEnd: buildLayoutZone(layoutZones.topEnd),
+			bottomStart: buildLayoutZone(layoutZones.bottomStart),
+			bottomEnd: buildLayoutZone(layoutZones.bottomEnd)
+		};
 	}
 
 	function makeColumnClass(slug, idx) {
@@ -266,15 +284,27 @@
 
 	function buildButtonDefinitions(options, buttonList) {
 		var definitions = [];
+		var utilityDefinitions = [];
 		var seen = {};
 		var registry = {
-			copy:       { extend: 'copyHtml5',  defaultText: 'Copy',             optionKey: 'buttonTextCopy' },
-			csv:        { extend: 'csvHtml5',   defaultText: 'Export CSV',       optionKey: 'buttonTextCsv' },
-			excel:      { extend: 'excelHtml5', defaultText: 'Export Excel',     optionKey: 'buttonTextExcel' },
-			print:      { extend: 'print',      defaultText: 'Print',            optionKey: 'buttonTextPrint' },
+			copy:       { extend: 'copyHtml5',  defaultText: 'Copy',              optionKey: 'buttonTextCopy' },
+			csv:        { extend: 'csvHtml5',   defaultText: 'Export CSV',        optionKey: 'buttonTextCsv' },
+			excel:      { extend: 'excelHtml5', defaultText: 'Export Excel',      optionKey: 'buttonTextExcel' },
+			pdf:        { extend: 'pdfHtml5',   defaultText: 'Export PDF',        optionKey: 'buttonTextPdf' },
+			print:      { extend: 'print',      defaultText: 'Print',             optionKey: 'buttonTextPrint' },
 			colvis:     { extend: 'colvis',     defaultText: 'Column visibility', optionKey: 'buttonTextColvis' },
-			pagelength: { extend: 'pageLength', defaultText: 'Page length',      optionKey: 'buttonTextPagelength' }
+			pagelength: { extend: 'pageLength', defaultText: 'Page length',       optionKey: 'buttonTextPagelength' }
 		};
+		var keys = buttonList.map(function(button) {
+			return typeof button === 'string' ? button.toLowerCase() : '';
+		}).filter(Boolean);
+		// With three or more toolbar controls (an export button alongside both utility
+		// controls), the row gets crowded, so the column-visibility and page-length controls
+		// fold into one native "Table options" dropdown. Buttons' collections nest, so both
+		// keep their own submenus; below that threshold every control stays top level.
+		var utilityKeys = ['colvis', 'pagelength'];
+		var groupUtilities = utilityKeys.every(function(key) { return keys.indexOf(key) !== -1; })
+			&& keys.some(function(key) { return key !== 'colvis' && key !== 'pagelength'; });
 		buttonList.forEach(function(button) {
 			var key = typeof button === 'string' ? button.toLowerCase() : '';
 			if (!key || !registry[key] || seen[key]) { return; }
@@ -282,8 +312,17 @@
 			var definition = { extend: registry[key].extend };
 			var buttonText = resolveLabelHtml(options[registry[key].optionKey] || '', registry[key].defaultText);
 			if (buttonText !== '') { definition.text = buttonText; }
-			definitions.push(definition);
+			(utilityKeys.indexOf(key) !== -1 ? utilityDefinitions : definitions).push(definition);
 		});
+		if (groupUtilities && utilityDefinitions.length === utilityKeys.length) {
+			definitions.push({
+				extend: 'collection',
+				text: 'Table options',
+				buttons: utilityDefinitions
+			});
+		} else {
+			definitions = definitions.concat(utilityDefinitions);
+		}
 		return definitions;
 	}
 
@@ -340,9 +379,9 @@
 		};
 	}
 
-	function buildDataTableConfiguration(options, config, slugToIndex, languageResult) {
+	function buildDataTableConfiguration(options, config, slugToIndex, languageResult, searchFeatureItem) {
 		var buttonList = Array.isArray(options.buttons) ? options.buttons : [];
-		var layout = buildLayoutConfiguration(options, buttonList);
+		var layout = buildLayoutConfiguration(options, buttonList, searchFeatureItem);
 		var pageLength = parseInt(options.pageLength, 10);
 		if (!pageLength || pageLength < 1) { pageLength = 25; }
 		var scrollY = parseInt(options.scrollY, 10);
@@ -358,7 +397,9 @@
 			stateSaveParams: function(settings, data) { sanitizeSavedTableState(data); },
 			stateLoadParams: function(settings, data) { sanitizeSavedTableState(data); },
 			autoWidth: options.autoWidth !== false,
-			scrollX: options.scrollX === true,
+			// The Responsive extension does not support horizontal scrolling; when responsive
+			// stacking is on it takes over and scrollX is never sent to DataTables.
+			scrollX: options.scrollX === true && options.responsive !== true,
 			info: options.info !== false,
 			lengthChange: options.lengthChange !== false,
 			buttons: buildButtonDefinitions(options, buttonList),
@@ -372,7 +413,12 @@
 			tableConfig.scrollY = scrollY + 'px';
 			tableConfig.scrollCollapse = options.scrollCollapse !== false;
 		}
-		if (layout.supportsLayout) { tableConfig.layout = layout.value; } else { tableConfig.dom = layout.value; }
+		// Only present when the option is on: DataTables core ignores the key entirely when
+		// the Responsive extension is not loaded, so pages without it are unaffected.
+		if (options.responsive === true) {
+			tableConfig.responsive = true;
+		}
+		tableConfig.layout = layout;
 		return tableConfig;
 	}
 
@@ -384,13 +430,14 @@
 		var presetSearch = config.presetSearch || {};
 		var presetSearchTerm = typeof presetSearch.term === 'string' ? presetSearch.term : '';
 		var presetSearchColumns = Array.isArray(presetSearch.columns) ? presetSearch.columns : [];
-		var $table = $('#btbl-table-' + tableId);
-		var $wrapper = $table.closest('.btbl-table-wrapper');
-		if (!$wrapper.length) {
-			$wrapper = $('#btbl-chart-' + tableId).closest('.btbl-table-wrapper');
+		var tableEl = document.getElementById('btbl-table-' + tableId);
+		var wrapper = tableEl ? tableEl.closest('.btbl-table-wrapper') : null;
+		if (!wrapper) {
+			var chartEl = document.getElementById('btbl-chart-' + tableId);
+			wrapper = chartEl ? chartEl.closest('.btbl-table-wrapper') : null;
 		}
-		if (!$wrapper.length) {
-			$wrapper = $('.btbl-table-wrapper[data-table-id="' + tableId + '"]');
+		if (!wrapper) {
+			wrapper = document.querySelector('.btbl-table-wrapper[data-table-id="' + tableId + '"]');
 		}
 		var slugToIndex = config.slugToIndex || {};
 		// The btbl_search value this instance last wrote, or null when it does not own the param.
@@ -401,12 +448,13 @@
 		// to clear. See syncStateToUrl().
 		var ownedSearchTerm = presetSearchTerm !== '' ? presetSearchTerm : null;
 		function markReady() {
-			if ($wrapper.length) {
-				$wrapper.removeClass('is-loading');
+			if (wrapper) {
+				wrapper.classList.remove('is-loading');
 			}
 		}
 
-		if (!$table.length || !$table.DataTable) {
+		var DataTableLib = dataTablesLib();
+		if (!tableEl || typeof DataTableLib !== 'function') {
 			if (window.console && console.warn) {
 				console.warn('[BaraTables] DataTables unavailable for table ' + tableId);
 			}
@@ -415,9 +463,9 @@
 		}
 
 		// PHP supplies the complete resolved option set; the compiler below only translates it
-		// into DataTables' version-specific configuration and presentation classes.
+		// into DataTables' configuration and presentation classes.
 		var resolvedOptions = resolveTableOptions(config.tableOptions || {});
-		applyTableStyleClasses($table, $wrapper, config, resolvedOptions);
+		applyTableStyleClasses(tableEl, wrapper, config, resolvedOptions);
 		var languageResult = buildLanguageConfiguration(resolvedOptions);
 		var searchTextHtml = languageResult.searchTextHtml;
 		var searchTextPlain = languageResult.searchTextPlain;
@@ -428,30 +476,6 @@
 				indexToSlug[slugToIndex[slug]] = slug;
 			}
 		});
-		var tableConfig = buildDataTableConfiguration(resolvedOptions, config, slugToIndex, languageResult);
-		btblRegisterDateType();
-		var table = $table.DataTable(tableConfig);
-
-		// Admin-hidden columns carry an inline style="display:none" so they stay hidden during the
-		// pre-init render (before columnDefs {visible:false} takes over). Once DataTables owns
-		// visibility, that inline style is stale AND breaks the Column-visibility button: showing
-		// the column re-attaches the original cell nodes verbatim, so they stay display:none. Clear
-		// it from the header + (possibly detached) cell nodes so colvis can actually reveal them.
-		if (Array.isArray(config.hiddenColumns)) {
-			config.hiddenColumns.forEach(function(colIdx) {
-				var column = table.column(colIdx);
-				if (!column) {
-					return;
-				}
-				$(column.header()).css('display', '');
-				$(column.nodes()).css('display', '');
-			});
-		}
-
-		var stripeEnabled = resolvedOptions.stripe !== false;
-		$table
-			.toggleClass('btbl-has-stripes', stripeEnabled)
-			.toggleClass('btbl-no-stripes', !stripeEnabled);
 
 		var nonSearchableSet = {};
 		if (Array.isArray(config.nonSearchable)) {
@@ -460,9 +484,11 @@
 			});
 		}
 
+		// Created before init so its layout item can take the stock search feature's place in
+		// the toolbar; the table constructor calls back into it while building the layout.
+		// A missing controller module is an init failure (the server table is revealed), not a
+		// silently degraded table -- callers depend on that contract.
 		var searchController = window.BaraTablesSearch.create({
-			table: table,
-			$table: $table,
 			tableId: tableId,
 			resolvedOptions: resolvedOptions,
 			slugToIndex: slugToIndex,
@@ -476,16 +502,59 @@
 				syncStateToUrl(null, state);
 			}
 		});
-		var $searchInput = searchController.input;
-		var searchState = searchController.getState();
-		var searchableColumns = searchController.getColumns();
+
+		var searchFeatureItem = null;
+		if (searchController && window.BaraTablesSearch.registerFeature && window.BaraTablesSearch.registerFeature()) {
+			// Layout items map a feature name to its options: the controller itself is the
+			// registered feature's opts, so each table's instance is bound to its own
+			// controller.
+			searchFeatureItem = { btblSearch: searchController };
+		}
+		var tableConfig = buildDataTableConfiguration(resolvedOptions, config, slugToIndex, languageResult, searchFeatureItem);
+		btblRegisterDateType();
+		var table = new DataTableLib(tableEl, tableConfig);
+		if (searchController) {
+			searchController.attach(table);
+		}
+		var searchInput = searchController ? searchController.inputEl() : null;
+		var searchState = searchController ? searchController.getState() : { term: '', columns: [] };
+		var searchableColumns = searchController ? searchController.getColumns() : [];
+
+		// Admin-hidden columns carry an inline style="display:none" so they stay hidden during the
+		// pre-init render (before columnDefs {visible:false} takes over). Once DataTables owns
+		// visibility, that inline style is stale AND breaks the Column-visibility button: showing
+		// the column re-attaches the original cell nodes verbatim, so they stay display:none. Clear
+		// it from the header + (possibly detached) cell nodes so colvis can actually reveal them.
+		if (Array.isArray(config.hiddenColumns)) {
+			config.hiddenColumns.forEach(function(colIdx) {
+				var column = table.column(colIdx);
+				if (!column) {
+					return;
+				}
+				asNodeList(column.header()).forEach(function(node) {
+					node.style.display = '';
+				});
+				asNodeList(column.nodes()).forEach(function(node) {
+					node.style.display = '';
+				});
+			});
+		}
+
+		var stripeEnabled = resolvedOptions.stripe !== false;
+		tableEl.classList.toggle('btbl-has-stripes', stripeEnabled);
+		tableEl.classList.toggle('btbl-no-stripes', !stripeEnabled);
+
 		var presetFilters = config.presetFilters || {};
 		var filterController = null;
-		var $emptyState = $wrapper.find('.btbl-empty-state');
+		var emptyState = wrapper ? wrapper.querySelector('.btbl-empty-state') : null;
 
 		function toggleEmptyState() {
 			var hasRows = table.rows({ search: 'applied' }).data().length > 0;
-			$emptyState.toggle(!hasRows);
+			if (emptyState) {
+				// The stylesheet defaults this element to display:none, so the visible state
+				// must be explicit rather than clearing the inline value.
+				emptyState.style.display = hasRows ? 'none' : 'block';
+			}
 		}
 
 		table.on('draw', toggleEmptyState);
@@ -493,7 +562,7 @@
 			if (filterController) {
 				return filterController.readActive();
 			}
-			return window.BaraTablesFilters.readActive($wrapper);
+			return window.BaraTablesFilters.readActive(wrapper);
 		}
 
 		function updateFilterStateClass(activeFilters, activeSearchState) {
@@ -508,20 +577,22 @@
 				return val !== null && val !== undefined && val !== '' && val !== '__all';
 			});
 			var term = activeSearchState && activeSearchState.term ? activeSearchState.term : '';
-			if (!term && $searchInput && $searchInput.length) {
-				term = $searchInput.val() || '';
+			if (!term && searchInput) {
+				term = searchInput.value || '';
 			} else if (searchState && searchState.term) {
 				term = searchState.term;
 			} else {
 				term = table.search() || '';
 			}
 			var hasSearch = term && term.trim();
-			$wrapper.toggleClass('is-filtered', hasFilters || !!hasSearch);
+			if (wrapper) {
+				wrapper.classList.toggle('is-filtered', !!(hasFilters || hasSearch));
+			}
 		}
 
 		function syncStateToUrl(activeFilters, activeSearchState) {
 			var filters = activeFilters || getActiveFilters();
-			var currentSearch = activeSearchState || searchController.getState();
+			var currentSearch = activeSearchState || (searchController ? searchController.getState() : searchState);
 			var url = new URL(window.location.href);
 			// Only clear the params this table owns. Deleting every btbl_filter[...] key meant
 			// a second table could wipe the first one's filters out of the shareable URL.
@@ -576,21 +647,28 @@
 		}
 
 		filterController = window.BaraTablesFilters.create({
-			$wrapper: $wrapper,
+			wrapper: wrapper,
 			table: table,
 			presets: presetFilters,
 			onChange: syncStateToUrl
 		});
 
-		$wrapper.find('.btbl-reset-button').on('click', function() {
-			table.columns().search('');
-			searchController.reset();
-			filterController.reset();
-			table.draw();
-			syncStateToUrl();
-		});
+		var resetButton = wrapper ? wrapper.querySelector('.btbl-reset-button') : null;
+		if (resetButton) {
+			resetButton.addEventListener('click', function() {
+				table.columns().search('');
+				if (searchController) {
+					searchController.reset();
+				}
+				if (filterController) {
+					filterController.reset();
+				}
+				table.draw();
+				syncStateToUrl();
+			});
+		}
 
-		var needsInitialDraw = searchController.needsInitialDraw() || filterController.needsInitialDraw();
+		var needsInitialDraw = filterController ? filterController.needsInitialDraw() : false;
 		if (needsInitialDraw) {
 			table.draw(false);
 			syncStateToUrl();
@@ -619,8 +697,9 @@
 			var tableId = config && config.tableId ? config.tableId : '';
 			var tableElement = tableId ? document.getElementById('btbl-table-' + tableId) : null;
 			try {
-				if (tableElement && $.fn.dataTable && $.fn.dataTable.isDataTable(tableElement)) {
-					$(tableElement).DataTable().destroy();
+				var lib = dataTablesLib();
+				if (lib && lib.isDataTable && lib.isDataTable(tableElement)) {
+					new lib.Api(tableElement).destroy();
 				}
 			} catch (destroyError) {
 				// The recovery path still reveals the server-rendered wrapper below.
@@ -636,7 +715,11 @@
 				initInstance(queue.shift());
 			}
 		}
-		$(drain);
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', drain, {once: true});
+		} else {
+			drain();
+		}
 		window.BaraTablesFrontendQueue = {
 			push: function(cfg) {
 				initInstance(cfg);
@@ -649,4 +732,4 @@
 	window.BaraTablesFrontend = {
 		init: initInstance
 	};
-	})(window.jQuery);
+})();

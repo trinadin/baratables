@@ -454,6 +454,46 @@ abstract class BaraTables_Abstract_CPT_Repository extends BaraTables_Base_Reposi
 		return $this->sanitize_array_meta_value($value);
 	}
 
+	/**
+	 * @param string[] $statuses Restrict results to these statuses; empty (default) searches all
+	 *                           live statuses. The block pickers pass ['publish'] for non-admins.
+	 * @return array{results:array<int,array{id:string,text:string}>,more:bool}
+	 */
+	public function search_definition_choices(string $search, int $page = 1, int $per_page = 20, array $statuses = []): array {
+		$page = max(1, $page);
+		$per_page = min(50, max(1, $per_page));
+		$args = [
+			'post_type' => $this->get_cpt(),
+			'post_status' => $statuses === [] ? $this->get_statuses(false) : $statuses,
+			'posts_per_page' => $per_page,
+			'paged' => $page,
+			'orderby' => 'title',
+			'order' => 'ASC',
+			'update_post_meta_cache' => false,
+			'update_post_term_cache' => false,
+			// Keep incomplete posts out without loading any serialized definitions. This bounded,
+			// paginated query replaces the previous unbounded all-table hydration path.
+			'meta_query' => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Existence filter avoids per-result definition reads.
+				['key' => $this->get_meta_key(), 'compare' => 'EXISTS'],
+			],
+		];
+		if ($search !== '') {
+			$args['s'] = $search;
+		}
+		$query = new WP_Query($args);
+		$results = [];
+		foreach ($query->posts as $post) {
+			if (!$post instanceof WP_Post || $post->post_name === '') {
+				continue;
+			}
+			$results[] = [
+				'id' => (string) $post->post_name,
+				'text' => $post->post_title !== '' ? (string) $post->post_title : (string) $post->post_name,
+			];
+		}
+		return ['results' => $results, 'more' => $page < (int) $query->max_num_pages];
+	}
+
 	protected function map_post_to_item(int $post_id, bool $include_trash = false): ?array {
 		$post = get_post($post_id);
 		if (!$post || $post->post_type !== $this->get_cpt()) {
@@ -565,42 +605,6 @@ class BaraTables_Repository extends BaraTables_Abstract_CPT_Repository {
 			return null;
 		}
 		return $this->map_post_to_item((int) $query->posts[0]->ID);
-	}
-
-	/** @return array{results:array<int,array{id:string,text:string}>,more:bool} */
-	public function search_definition_choices(string $search, int $page = 1, int $per_page = 20): array {
-		$page = max(1, $page);
-		$per_page = min(50, max(1, $per_page));
-		$args = [
-			'post_type' => static::CPT,
-			'post_status' => $this->get_statuses(false),
-			'posts_per_page' => $per_page,
-			'paged' => $page,
-			'orderby' => 'title',
-			'order' => 'ASC',
-			'update_post_meta_cache' => false,
-			'update_post_term_cache' => false,
-			// Keep incomplete posts out without loading any serialized definitions. This bounded,
-			// paginated query replaces the previous unbounded all-table hydration path.
-			'meta_query' => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Existence filter avoids per-result definition reads.
-				['key' => static::META_KEY, 'compare' => 'EXISTS'],
-			],
-		];
-		if ($search !== '') {
-			$args['s'] = $search;
-		}
-		$query = new WP_Query($args);
-		$results = [];
-		foreach ($query->posts as $post) {
-			if (!$post instanceof WP_Post || $post->post_name === '') {
-				continue;
-			}
-			$results[] = [
-				'id' => (string) $post->post_name,
-				'text' => $post->post_title !== '' ? (string) $post->post_title : (string) $post->post_name,
-			];
-		}
-		return ['results' => $results, 'more' => $page < (int) $query->max_num_pages];
 	}
 
 	/** @return array<string,array{definition:array,post_id:int}> */

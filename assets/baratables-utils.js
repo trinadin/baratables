@@ -30,6 +30,13 @@
 	function parseOptionalNumber(value) {
 		var text = extractText(value);
 		if (text === '') { return null; }
+		// European decimal-comma values ("1.234,56", "980,50", "12,34") lose the comma to the strip
+		// below and shift magnitude (1.23456 instead of 1234.56); normalize those shapes to
+		// dot-decimal first. "1,234" (US thousands: exactly three digits after the comma) is
+		// deliberately left to the strip path below, which already reads it correctly.
+		if (/^-?\d{1,3}(?:\.\d{3})+,\d+$/.test(text) || /^-?\d+,\d{1,2}$/.test(text)) {
+			text = text.replace(/\./g, '').replace(',', '.');
+		}
 		var number = parseFloat(text.replace(/[^0-9.+\-eE]/g, ''));
 		return isNaN(number) ? null : number;
 	}

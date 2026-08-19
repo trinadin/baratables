@@ -49,7 +49,7 @@ class BaraTables_Frontend {
 	 * (up to rowLimit rows) painting completely unstyled first, and the .is-loading mask that is
 	 * supposed to hide it until DataTables initializes is itself defined in that late CSS.
 	 *
-	 * Only the base file moves; the DataTables/Select2 vendor CSS stays on-demand so pages
+	 * Only the base file moves; the DataTables/Tom Select vendor CSS stays on-demand so pages
 	 * without those features keep their current payload. This is best-effort by design: shortcodes
 	 * coming from widgets, blocks or templates are not detected here and simply fall back to the
 	 * existing late enqueue, exactly as before.
@@ -61,11 +61,26 @@ class BaraTables_Frontend {
 		wp_enqueue_style('baratables');
 	}
 
+	/**
+	 * Does this content embed a BaraTables table or chart, by shortcode OR block? Both the
+	 * wp_enqueue_scripts gate in BaraTables and the early base-style enqueue below must answer
+	 * this identically, so the rule lives in one place. A block render_callback runs during
+	 * the_content, far too late to register assets, so block markup must be detected ahead of
+	 * rendering exactly like the shortcode is.
+	 */
+	public static function content_embeds_table(string $content): bool {
+		if ($content === '') {
+			return false;
+		}
+		if (has_shortcode($content, 'bara_table') || has_shortcode($content, 'bara_chart')) {
+			return true;
+		}
+		return function_exists('has_block') && has_block('baratables/table', $content);
+	}
+
 	private function content_in_main_query_has_table(): bool {
 		$has = static function ($content): bool {
-			$content = (string) $content;
-			return $content !== ''
-				&& (has_shortcode($content, 'bara_table') || has_shortcode($content, 'bara_chart'));
+			return self::content_embeds_table((string) $content);
 		};
 
 		if (is_singular()) {
@@ -138,10 +153,26 @@ class BaraTables_Frontend {
 
 		$instance_base = (string) ($chart_definition['id'] ?? $definition['id'] ?? $atts['id'] ?? 'chart');
 		$instance_id = $this->get_render_instance_id('chart-' . $instance_base);
+		// An accessible name for the chart container: without it a screen reader announces
+		// nothing at all, whether or not JavaScript renders the canvas.
+		$chart_name = isset($chart_definition['name']) ? trim((string) $chart_definition['name']) : '';
+		$type_label = BaraTables_Chart_Types::get((string) ($chart_options['type'] ?? 'bar'))['label'];
+		$chart_aria_label = $chart_name !== ''
+			? sprintf(
+				/* translators: 1: the chart's name, 2: the chart type label. */
+				__('%1$s chart (%2$s)', 'baratables'),
+				$chart_name,
+				$type_label
+			)
+			: sprintf(
+				/* translators: %s: the chart type label. */
+				__('%s chart', 'baratables'),
+				$type_label
+			);
 		// No edit link on the chart-only render: render_table_view only surfaces it on the table
 		// path ($render_table), so resolving the chart's post id and edit link here was a dead
 		// query on every chart view, for every visitor.
-		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, false);
+		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, false, $chart_aria_label);
 	}
 
 	private function get_render_instance_id(string $base): string {
@@ -164,9 +195,12 @@ class BaraTables_Frontend {
 	 * Which optional front-end libraries a table actually needs.
 	 *
 	 * All three ship off by default -- `buttons` defaults to [], `colReorder` to false, and a
-	 * column's `filter` to 'none' (Select2 is only ever instantiated for dropdown filters). They
-	 * are loaded only when used. Buttons extensions are selected per configured action, so JSZip
-	 * ships only with Excel rather than with every Copy/CSV/Print/visibility control.
+	 * column's `filter` to 'none' (the enhanced dropdown picker is only ever instantiated for
+	 * dropdown filters). They are loaded only when used. Buttons 4 bundles every button module
+	 * (html5 export, print, column visibility) in one file behind the single `buttons` feature;
+	 * only the third-party export libraries stay per-action, so JSZip ships only with Excel and
+	 * pdfmake (plus its fonts) only with PDF, rather than with every Copy/CSV/Print/visibility
+	 * control.
 	 */
 	private function get_table_asset_features(array $definition): array {
 		$features = [];
@@ -176,25 +210,22 @@ class BaraTables_Frontend {
 		if (!empty($buttons)) {
 			$features[] = 'buttons';
 			if (in_array('excel', $buttons, true)) {
-				$features[] = 'buttons-html5';
 				$features[] = 'buttons-excel';
-			} elseif (array_intersect($buttons, ['copy', 'csv'])) {
-				$features[] = 'buttons-html5';
 			}
-			if (in_array('print', $buttons, true)) {
-				$features[] = 'buttons-print';
-			}
-			if (in_array('colvis', $buttons, true)) {
-				$features[] = 'buttons-colvis';
+			if (in_array('pdf', $buttons, true)) {
+				$features[] = 'buttons-pdf';
 			}
 		}
 		if (!empty($options['colReorder'])) {
 			$features[] = 'colreorder';
 		}
+		if (!empty($options['responsive'])) {
+			$features[] = 'responsive';
+		}
 		foreach (($definition['columns'] ?? []) as $col) {
 			$filter = is_array($col) && isset($col['filter']) ? (string) $col['filter'] : '';
 			if ($filter === 'dropdown' || $filter === 'dropdown_multi') {
-				$features[] = 'select2';
+				$features[] = 'enhanced-select';
 				break;
 			}
 		}
@@ -266,10 +297,11 @@ class BaraTables_Frontend {
 	private function get_style_specs(): array {
 		if ($this->style_specs === null) {
 			$this->style_specs = [
-				$this->asset_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '2.3.8', ['table_only' => true]),
-				$this->asset_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
-				$this->asset_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
-				$this->asset_spec('baratables-select2', 'assets/vendor/select2/select2.min.css', [], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
+				$this->asset_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '3.0.2', ['table_only' => true]),
+				$this->asset_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'buttons']),
+				$this->asset_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '3.0.1', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->asset_spec('baratables-datatables-responsive', 'assets/vendor/datatables/responsive.dataTables.min.css', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'responsive']),
+				$this->asset_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.default.min.css', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
 				$this->asset_spec('baratables', 'assets/baratables.css'),
 			];
 		}
@@ -280,19 +312,23 @@ class BaraTables_Frontend {
 		if ($this->script_specs === null) {
 			$this->script_specs = [
 				$this->script_spec('baratables-utils', 'assets/baratables-utils.js'),
-				$this->script_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.min.js', ['jquery'], '2.3.8', ['table_only' => true]),
-				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '3.2.6', ['table_only' => true, 'feature' => 'buttons']),
+				// DataTables 3 runs standalone, and Tom Select (the dropdown-filter picker) is
+				// dependency-free too, so table pages stay jQuery-free end to end.
+				$this->script_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.min.js', [], '3.0.2', ['table_only' => true]),
+				// Buttons 4 ships html5 export, print, and column visibility inside the one bundle;
+				// only JSZip (Excel) and pdfmake (PDF) stay separate, feature-gated libraries.
+				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'buttons']),
 				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons-excel']),
-				$this->script_spec('baratables-datatables-buttons-html5', 'assets/vendor/datatables/buttons.html5.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons-html5']),
-				$this->script_spec('baratables-datatables-buttons-print', 'assets/vendor/datatables/buttons.print.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons-print']),
-				$this->script_spec('baratables-datatables-buttons-colvis', 'assets/vendor/datatables/buttons.colVis.min.js', ['baratables-datatables-buttons'], '3.2.6', ['table_only' => true, 'feature' => 'buttons-colvis']),
-				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '2.1.2', ['table_only' => true, 'feature' => 'colreorder']),
-				$this->script_spec('baratables-select2', 'assets/vendor/select2/select2.min.js', ['jquery'], '4.1.0-rc.0', ['table_only' => true, 'feature' => 'select2']),
+				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '3.0.1', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->script_spec('baratables-datatables-responsive', 'assets/vendor/datatables/dataTables.responsive.min.js', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'responsive']),
+				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
+				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.min.js', ['baratables-pdfmake'], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
+				$this->script_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.complete.min.js', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
 				$this->script_spec('baratables-echarts', 'assets/vendor/echarts/echarts.min.js', [], '6.1.0', ['chart_only' => true]),
 				$this->script_spec('baratables-charts', 'assets/baratables-charts.js', ['baratables-echarts'], null, ['chart_only' => true]),
-				$this->script_spec('baratables-search', 'assets/baratables-search.js', ['jquery', 'baratables-utils'], null, ['table_only' => true]),
-				$this->script_spec('baratables-filters', 'assets/baratables-filters.js', ['jquery', 'baratables-utils'], null, ['table_only' => true]),
-				$this->script_spec('baratables-frontend', 'assets/baratables.js', ['jquery', 'baratables-utils', 'baratables-search', 'baratables-filters'], null, ['table_only' => true]),
+				$this->script_spec('baratables-search', 'assets/baratables-search.js', ['baratables-utils'], null, ['table_only' => true]),
+				$this->script_spec('baratables-filters', 'assets/baratables-filters.js', ['baratables-utils'], null, ['table_only' => true]),
+				$this->script_spec('baratables-frontend', 'assets/baratables.js', ['baratables-utils', 'baratables-search', 'baratables-filters'], null, ['table_only' => true]),
 				$this->script_spec('baratables-chart-bootstrap', 'assets/baratables-chart-bootstrap.js', ['baratables-utils', 'baratables-charts'], null, ['chart_only' => true]),
 			];
 		}
@@ -312,7 +348,7 @@ class BaraTables_Frontend {
 		return array_merge($this->asset_spec($handle, $relative, $deps, $version, $flags), ['in_footer' => true]);
 	}
 
-	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $table_id, bool $render_table): string {
+	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $table_id, bool $render_table, string $chart_aria_label = ''): string {
 		$this->prevent_access_control_caching($definition);
 
 		// Only the table markup consumes $filters. A [bara_chart] render always passes
@@ -326,6 +362,10 @@ class BaraTables_Frontend {
 		$table_class_attr = $render_table
 			? implode(' ', array_merge(['btbl-table'], $presentation['style_classes']))
 			: '';
+		// An explicit accent color overrides the theme-palette cascade at the wrapper, where
+		// every table control (and the bridged DataTables variables) resolve it.
+		$accent = sanitize_hex_color((string) ($table_options['accentColor'] ?? ''));
+		$wrapper_style = $accent ? ' style="--btbl-accent:' . esc_attr($accent) . '"' : '';
 
 		$this->enqueue_render_payload($this->build_render_payload(
 			$definition,
@@ -339,20 +379,31 @@ class BaraTables_Frontend {
 
 		ob_start();
 		?>
-		<div class="btbl-table-wrapper is-loading<?php echo !$render_table ? ' is-chart-only' : ''; ?><?php echo esc_attr($wrapper_compact_class); ?>" data-table-id="<?php echo esc_attr($table_id); ?>">
+		<div class="btbl-table-wrapper is-loading<?php echo !$render_table ? ' is-chart-only' : ''; ?><?php echo esc_attr($wrapper_compact_class); ?>" data-table-id="<?php echo esc_attr($table_id); ?>"<?php echo $wrapper_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- assembled from esc_attr() pieces above. ?>>
 			<div class="btbl-loading-mask" role="status" aria-live="polite">
 				<span class="btbl-spinner" aria-hidden="true"></span>
 				<span class="screen-reader-text"><?php esc_html_e('Loading table...', 'baratables'); ?></span>
 			</div>
 			<p class="btbl-runtime-error" role="alert" hidden><?php esc_html_e('Interactive content could not load. Reload the page to try again.', 'baratables'); ?></p>
+			<?php // With JavaScript disabled the server-rendered rows are all there is, but the loading mask hides them behind a permanent spinner and a dimmed overlay. Only noscript can undo that. ?>
+			<noscript>
+				<style>
+					.btbl-table-wrapper.is-loading .btbl-loading-mask { display: none; }
+					.btbl-table-wrapper.is-loading .btbl-filter-wrapper,
+					.btbl-table-wrapper.is-loading .btbl-table { opacity: 1; filter: none; }
+				</style>
+			</noscript>
 			<?php
 			$chart_id = 'btbl-chart-' . $table_id;
 			$chart_height = isset($chart_options['height']) ? (int) $chart_options['height'] : 360;
 			$chart_style = $chart_height > 0 ? ' style="height:' . esc_attr((string) $chart_height) . 'px;"' : '';
 			// Built once: the chart container is emitted from three mutually exclusive branches
-			// (above the table, below it, and the chart-only render). Both interpolations are
-			// escaped here, so the echo sites need no further escaping.
-			$chart_div_html = '<div id="' . esc_attr($chart_id) . '" class="btbl-chart"' . $chart_style . '></div>';
+			// (above the table, below it, and the chart-only render). Every interpolation is
+			// escaped here, so the echo sites need no further escaping. The noscript fallback is
+			// inert when scripting is enabled, and the only content a no-JS visitor ever sees.
+			$chart_div_html = '<div id="' . esc_attr($chart_id) . '" class="btbl-chart" role="img" aria-label="' . esc_attr($chart_aria_label) . '"' . $chart_style . '>'
+				. '<noscript><p class="btbl-chart-noscript">' . esc_html__('Enable JavaScript to view this chart.', 'baratables') . '</p></noscript>'
+				. '</div>';
 			if ($chart_enabled && ($chart_options['position'] ?? 'above') === 'above') :
 				?>
 				<?php echo $chart_div_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d. ?>
@@ -361,12 +412,16 @@ class BaraTables_Frontend {
 			<?php if ($render_table) : ?>
 				<div class="btbl-results-wrapper">
 					<table id="btbl-table-<?php echo esc_attr($table_id); ?>" class="<?php echo esc_attr($table_class_attr); ?>">
+						<?php $caption = trim(wp_strip_all_tags((string) ($table_options['caption'] ?? ''))); ?>
+						<?php if ($caption !== '') : ?>
+							<caption><?php echo wp_kses($caption, $allowed_inline); ?></caption>
+						<?php endif; ?>
 						<thead>
 							<tr>
 								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
 									<?php $hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : ''; ?>
 									<?php $heading = wp_kses($column_model['heading'], $allowed_inline); ?>
-									<th<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo $heading; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through wp_kses(). ?></th>
+									<th scope="col"<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo $heading; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through wp_kses(). ?></th>
 								<?php endforeach; ?>
 							</tr>
 						</thead>

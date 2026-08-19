@@ -42,6 +42,10 @@ class BaraTables_Admin_Preview_Renderer {
 				</div>
 				<div class="btbl-preview-table-wrapper">
 					<table class="<?php echo esc_attr(implode(' ', $table_classes)); ?>">
+						<?php $preview_caption = trim(wp_strip_all_tags((string) ($table_options['caption'] ?? ''))); ?>
+						<?php if ($preview_caption !== '') : ?>
+							<caption><?php echo wp_kses($preview_caption, $allowed_inline); ?></caption>
+						<?php endif; ?>
 						<thead>
 							<tr>
 								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
@@ -54,7 +58,7 @@ class BaraTables_Admin_Preview_Renderer {
 										$header_class[] = 'btbl-preview-sorted-' . $sort_dir;
 									}
 									?>
-									<th<?php echo !empty($header_class) ? ' class="' . esc_attr(implode(' ', $header_class)) . '"' : ''; ?>>
+									<th scope="col"<?php echo !empty($header_class) ? ' class="' . esc_attr(implode(' ', $header_class)) . '"' : ''; ?>>
 										<?php echo wp_kses($column_model['heading'], $allowed_inline); ?>
 									</th>
 								<?php endforeach; ?>

@@ -17,6 +17,7 @@ class BaraTables_Service {
 	 *  checkbox_multi [type, default, choices]. The order is the editor's canonical option order.
 	 */
 	private const TABLE_OPTION_DEFINITIONS = [
+		'caption'                 => ['text_html', ''],
 		'paging'                  => ['checkbox', true],
 		'pagingNumbers'           => ['checkbox', true],
 		'pagingFirstLast'         => ['checkbox', true],
@@ -38,6 +39,7 @@ class BaraTables_Service {
 		'colReorder'              => ['checkbox', false],
 		'stateSave'               => ['checkbox', false],
 		'autoWidth'               => ['checkbox', true],
+		'responsive'              => ['checkbox', false],
 		'scrollX'                 => ['checkbox', false],
 		'scrollYEnabled'          => ['checkbox', false],
 		'scrollY'                 => ['number', 300, 1, 2000],
@@ -48,6 +50,7 @@ class BaraTables_Service {
 		'hover'                   => ['checkbox', true],
 		'orderColumn'             => ['checkbox', true],
 		'compact'                 => ['checkbox', false],
+		'accentColor'             => ['color', ''],
 		'pageLength'              => ['number', 25, 1, 500],
 		'rowLimit'                => ['number', 1000, 1, 10000],
 		'lengthMenuPrefix'        => ['text_html', ''],
@@ -60,10 +63,11 @@ class BaraTables_Service {
 		'searchPlaceholder'       => ['text_html', ''],
 		'searchColumnsLabel'      => ['text_html', ''],
 		'searchColumnsHeading'    => ['text_html', ''],
-		'buttons'                 => ['checkbox_multi', [], ['copy' => null, 'csv' => null, 'excel' => null, 'print' => null, 'colvis' => null, 'pagelength' => null]],
+		'buttons'                 => ['checkbox_multi', [], ['copy' => null, 'csv' => null, 'excel' => null, 'pdf' => null, 'print' => null, 'colvis' => null, 'pagelength' => null]],
 		'buttonTextCopy'          => ['text_html', ''],
 		'buttonTextCsv'           => ['text_html', ''],
 		'buttonTextExcel'         => ['text_html', ''],
+		'buttonTextPdf'           => ['text_html', ''],
 		'buttonTextPrint'         => ['text_html', ''],
 		'buttonTextColvis'        => ['text_html', ''],
 		'buttonTextPagelength'    => ['text_html', ''],
@@ -185,6 +189,11 @@ class BaraTables_Service {
 	public const MAX_CUSTOM_ROWS = 1000;
 	public const DEFAULT_ROW_LIMIT = 1000;
 	public const MAX_ROW_LIMIT = 10000;
+	// Auto-derived dropdown/checkbox filter options are capped (after sorting, so the kept slice
+	// is the sorted-first one): a near-unique column at the row ceiling would otherwise ship every
+	// distinct value as <option> markup with data-search-terms JSON -- megabytes per filter.
+	// Custom hand-written filter values are the admin's explicit intent and stay uncapped.
+	public const MAX_AUTO_FILTER_OPTIONS = 250;
 	// Cell budget matches the pre-1.2.1 maximum (50 cols x 500 rows) so no manual grid that was
 	// legal in an earlier version is ever silently truncated when its editor is opened or saved;
 	// the per-dimension caps above remain the real guard against pathologically large grids.
@@ -512,10 +521,35 @@ class BaraTables_Service {
 			'buttonTextCopy'       => __('Copy', 'baratables'),
 			'buttonTextCsv'        => __('Export CSV', 'baratables'),
 			'buttonTextExcel'      => __('Export Excel', 'baratables'),
+			'buttonTextPdf'        => __('Export PDF', 'baratables'),
 			'buttonTextPrint'      => __('Print', 'baratables'),
 			'buttonTextColvis'     => __('Column visibility', 'baratables'),
 			'buttonTextPagelength' => __('Page length', 'baratables'),
 		];
+	}
+
+	/**
+	 * The accent a table gets when no override is set: the theme's primary palette color, or
+	 * the same #2271b1 fallback the front-end cascade uses. PHP-side mirror of the CSS chain
+	 * var(--wp--preset--color--primary, #2271b1), for places CSS variables cannot reach (the
+	 * editor's accent placeholder and swatch preview). Themes without a "primary" palette
+	 * slug fall back exactly like the front end does.
+	 */
+	public static function resolve_theme_accent(): string {
+		if (function_exists('wp_get_global_settings')) {
+			$palette = wp_get_global_settings(['color', 'palette']);
+			if (is_array($palette)) {
+				foreach ($palette as $color) {
+					if (is_array($color) && ($color['slug'] ?? '') === 'primary') {
+						$hex = sanitize_hex_color((string) ($color['color'] ?? ''));
+						if ($hex !== null && $hex !== '') {
+							return $hex;
+						}
+					}
+				}
+			}
+		}
+		return '#2271b1';
 	}
 
 	/**
@@ -679,6 +713,10 @@ class BaraTables_Service {
 				}
 			} elseif ($type === 'text_html') {
 				$options[$key] = $this->sanitize_inline_html($options_raw[$key]);
+			} elseif ($type === 'color') {
+				// Empty string means "inherit the theme's primary color"; anything that is not
+				// a valid 3- or 6-digit hex collapses back to that inherited state.
+				$options[$key] = sanitize_hex_color((string) $options_raw[$key]) ?? '';
 			} elseif ($type === 'checkbox_multi') {
 				$choices = isset($config['choices']) && is_array($config['choices']) ? array_keys($config['choices']) : [];
 				$options[$key] = $this->sanitize_checkbox_multi($options_raw[$key], $choices);
@@ -2595,6 +2633,8 @@ class BaraTables_Service {
 		}
 
 		$schema = self::build_table_option_schema();
+		$schema['caption']['label'] = __('Table caption', 'baratables');
+		$schema['caption']['description'] = __('Short heading shown with the table. Screen readers announce it with the table.', 'baratables');
 		$schema['paging']['label'] = __('Enable pagination', 'baratables');
 		$schema['lengthChange']['label'] = __('Show per page selector', 'baratables');
 		$schema['pagingNumbers']['label'] = __('Show page numbers', 'baratables');
@@ -2616,6 +2656,8 @@ class BaraTables_Service {
 		$schema['colReorder']['label'] = __('Allow column reordering', 'baratables');
 		$schema['stateSave']['label'] = __('Remember table state', 'baratables');
 		$schema['autoWidth']['label'] = __('Auto-size columns', 'baratables');
+		$schema['responsive']['label'] = __('Collapse columns on small screens', 'baratables');
+		$schema['responsive']['description'] = __('Wide tables stack their remaining columns into an expandable row instead of requiring horizontal scrolling. This replaces horizontal scrolling when enabled.', 'baratables');
 		$schema['scrollX']['label'] = __('Enable horizontal scrolling', 'baratables');
 		$schema['scrollYEnabled']['label'] = __('Fixed scroll height', 'baratables');
 		$schema['scrollY']['label'] = __('Height (px)', 'baratables');
@@ -2626,8 +2668,10 @@ class BaraTables_Service {
 		$schema['hover']['label'] = __('Highlight rows on hover', 'baratables');
 		$schema['orderColumn']['label'] = __('Highlight sorted column', 'baratables');
 		$schema['compact']['label'] = __('Compact density', 'baratables');
+		$schema['accentColor']['label'] = __('Accent color', 'baratables');
+		$schema['accentColor']['description'] = __('Color for focus rings, sorted columns, and paging highlights. Off follows your theme\'s primary color automatically.', 'baratables');
 		$schema['pageLength']['label'] = __('Rows per page', 'baratables');
-		$schema['rowLimit']['label'] = __('Maximum rows to load', 'baratables');
+		$schema['rowLimit']['label'] = __('Maximum rows', 'baratables');
 		$schema['rowLimit']['description'] = __('Rows fetched and rendered, on every data source. Maximum 10,000. Pre-filter larger datasets at the source.', 'baratables');
 		$schema['lengthMenuPrefix']['label'] = __('Selector prefix', 'baratables');
 		$schema['lengthMenuSuffix']['label'] = __('Selector suffix', 'baratables');
@@ -2637,7 +2681,7 @@ class BaraTables_Service {
 		$schema['paginateLast']['label'] = __('Pagination label: Last', 'baratables');
 		$schema['searchText']['label'] = __('Search text', 'baratables');
 		$schema['searchPlaceholder']['label'] = __('Search placeholder', 'baratables');
-		$schema['searchColumnsLabel']['label'] = __('Dropdown button text', 'baratables');
+		$schema['searchColumnsLabel']['label'] = __('Dropdown text', 'baratables');
 		$schema['searchColumnsHeading']['label'] = __('Dropdown heading', 'baratables');
 
 		$schema['buttons']['label'] = __('Table buttons', 'baratables');
@@ -2646,16 +2690,18 @@ class BaraTables_Service {
 			'copy' => __('Copy', 'baratables'),
 			'csv' => __('Export CSV', 'baratables'),
 			'excel' => __('Export Excel', 'baratables'),
+			'pdf' => __('Export PDF', 'baratables'),
 			'print' => __('Print', 'baratables'),
 			'colvis' => __('Column visibility', 'baratables'),
-			'pagelength' => __('Page length button', 'baratables'),
+			'pagelength' => __('Page length', 'baratables'),
 		];
-		$schema['buttonTextCopy']['label'] = __('Copy button text', 'baratables');
-		$schema['buttonTextCsv']['label'] = __('CSV button text', 'baratables');
-		$schema['buttonTextExcel']['label'] = __('Excel button text', 'baratables');
-		$schema['buttonTextPrint']['label'] = __('Print button text', 'baratables');
-		$schema['buttonTextColvis']['label'] = __('Column visibility button text', 'baratables');
-		$schema['buttonTextPagelength']['label'] = __('Page length button text', 'baratables');
+		$schema['buttonTextCopy']['label'] = __('Copy text', 'baratables');
+		$schema['buttonTextCsv']['label'] = __('CSV text', 'baratables');
+		$schema['buttonTextExcel']['label'] = __('Excel text', 'baratables');
+		$schema['buttonTextPdf']['label'] = __('PDF text', 'baratables');
+		$schema['buttonTextPrint']['label'] = __('Print text', 'baratables');
+		$schema['buttonTextColvis']['label'] = __('Column visibility text', 'baratables');
+		$schema['buttonTextPagelength']['label'] = __('Page length text', 'baratables');
 
 		foreach (array_keys(self::TABLE_STYLE_CLASS_MAP) as $key) {
 			$schema[$key]['editor_group'] = 'style';
@@ -2754,6 +2800,7 @@ class BaraTables_Service {
 			'copy' => 'buttonTextCopy',
 			'csv' => 'buttonTextCsv',
 			'excel' => 'buttonTextExcel',
+			'pdf' => 'buttonTextPdf',
 			'print' => 'buttonTextPrint',
 			'colvis' => 'buttonTextColvis',
 			'pagelength' => 'buttonTextPagelength',
@@ -2763,6 +2810,7 @@ class BaraTables_Service {
 			'copy' => null,
 			'csv' => null,
 			'excel' => null,
+			'pdf' => null,
 			'print' => null,
 			'colvis' => null,
 			'pagelength' => 'lengthChange',

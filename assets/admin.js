@@ -168,6 +168,45 @@ jQuery(function($) {
 		});
 	});
 
+	// The accent-color picker writes into the adjacent hex field; typing a hex updates the
+	// swatch in return -- live on every keystroke, so the pair never visibly disagrees. An
+	// empty field means "follow the theme", so clearing it parks the swatch back on the same
+	// theme accent the placeholder names. Partial/invalid hexes are ignored until complete:
+	// the native swatch can only ever show a full #rrggbb.
+	$(document).on('input', '.btbl-color-picker', function() {
+		var $value = $(this).closest('.btbl-color-field').find('.btbl-color-value');
+		if ($value.length) {
+			$value.val($(this).val()).trigger('change');
+		}
+	});
+	$(document).on('input change', '.btbl-color-value', function() {
+		var $field = $(this).closest('.btbl-color-field');
+		var $picker = $field.find('.btbl-color-picker');
+		// Masked as you type: only "#" and hex digits, seven characters at most. The value
+		// is rewritten ONLY when something was stripped, so normal typing never disturbs the
+		// caret. A non-empty value that is not yet a complete #rrggbb flags the field as
+		// invalid -- the save pipeline drops such a value back to the theme color.
+		var raw = String($(this).val() || '');
+		var masked = raw.replace(/[^#0-9a-fA-F]/g, '').slice(0, 7);
+		if (masked !== raw) {
+			$(this).val(masked);
+			this.setSelectionRange(masked.length, masked.length);
+		}
+		var complete = /^#[0-9a-fA-F]{6}$/.test(masked);
+		var invalid = masked !== '' && !complete;
+		$(this).toggleClass('is-invalid', invalid);
+		if (invalid) {
+			$(this).attr('aria-invalid', 'true');
+		} else {
+			$(this).removeAttr('aria-invalid');
+		}
+		if (complete) {
+			$picker.val(masked);
+		} else if (masked === '') {
+			$picker.val($field.data('btbl-theme-accent') || '#2271b1');
+		}
+	});
+
 	// #btbl_source_type is the one control applyFieldRefresh() never replaces, so it is safe to
 	// hold. Everything else below is re-queried on each call instead of cached at DOM-ready:
 	// applyFieldRefresh() swaps out the taxonomy select and the entire .btbl-taxonomy-filter

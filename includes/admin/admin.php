@@ -9,6 +9,7 @@ class BaraTables_Admin {
 	public const NONCE_FIELD = '_baratables_nonce';
 
 	private BaraTables_Service $service;
+	private BaraTables_Repository $repo;
 	private BaraTables_Admin_Assets $assets;
 	private BaraTables_Admin_Action_Handler $actions;
 	private BaraTables_Admin_Pages $pages;
@@ -17,6 +18,7 @@ class BaraTables_Admin {
 
 	public function __construct(BaraTables_Service $service, BaraTables_Repository $repo, string $plugin_url, string $plugin_path) {
 		$this->service = $service;
+		$this->repo = $repo;
 		$this->assets = new BaraTables_Admin_Assets($plugin_url, $plugin_path);
 		$this->actions = new BaraTables_Admin_Action_Handler($service);
 		$this->pages = new BaraTables_Admin_Pages(self::NONCE_ACTION, self::NONCE_FIELD);
@@ -37,6 +39,7 @@ class BaraTables_Admin {
 		add_action('admin_notices', ['BaraTables_Admin_Notice', 'render']);
 		add_action('wp_ajax_btbl_refresh_preview', [$this, 'ajax_refresh_preview']);
 		add_action('wp_ajax_btbl_refresh_fields', [$this, 'ajax_refresh_fields']);
+		add_action('wp_ajax_btbl_block_tables', [$this, 'ajax_block_tables']);
 		add_filter('admin_body_class', ['BaraTables_Help', 'body_class']);
 		add_action('wp_ajax_btbl_toggle_help', ['BaraTables_Help', 'ajax_toggle']);
 		(new BaraTables_Admin_Duplicator())->register();
@@ -128,6 +131,22 @@ class BaraTables_Admin {
 			'columns' => $this->pages->render_columns_panel($context, $editing_defn),
 			'source'  => $this->pages->render_source_panel($context, $editing_defn),
 		]);
+	}
+
+	/**
+	 * Table list for the block editor's table picker. Any user who can edit posts may embed a
+	 * published table, but table management stays admin-only: non-admins list published tables
+	 * only, so drafts and private tables are not leaked through the picker.
+	 */
+	public function ajax_block_tables(): void {
+		check_ajax_referer('btbl_block_tables');
+		if (!current_user_can('edit_posts')) {
+			wp_send_json_error([], 403);
+		}
+		$search = isset($_GET['search']) ? sanitize_text_field(wp_unslash($_GET['search'])) : '';
+		$page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+		$statuses = current_user_can('manage_options') ? [] : ['publish'];
+		wp_send_json_success($this->repo->search_definition_choices($search, $page, 20, $statuses));
 	}
 
 	public function ajax_refresh_preview(): void {
@@ -241,6 +260,11 @@ class BaraTables_Admin {
 			$this->queue_table_rename_notice($old_slug, $slug, $requested_id, $rewrite['updated']);
 		}
 
+		// Report what happened to the external DB connection (kept-because-invalid, cleared, or
+		// incomplete) only once the whole save is known to have succeeded.
+		self::queue_external_db_notice($request, $existing);
+		self::queue_first_publish_notice($snapshot, (string) $post->post_status, $slug);
+
 		// Warn without blocking if the saved table has no effective columns and will render nothing.
 		$effective = $this->service->resolve_columns($definition);
 		if (empty($effective['columns'])) {
@@ -284,6 +308,55 @@ class BaraTables_Admin {
 					'warning'
 				);
 			}
+		}
+	}
+
+	/**
+	 * The editor's guidance used to stop at "Publish": nothing told a first-time user the final
+	 * step is pasting the shortcode into a page. Fire once, on the transition into publish.
+	 */
+	public static function queue_first_publish_notice(array $snapshot, string $new_status, string $slug): void {
+		if ($new_status !== 'publish' || ((string) ($snapshot['post_status'] ?? '')) === 'publish') {
+			return;
+		}
+		BaraTables_Admin_Notice::queue(
+			sprintf(
+				/* translators: %s: the table shortcode to paste into content. */
+				__('Table published. Add it to any page or post with the shortcode %s, or choose the BaraTables table block in the block editor.', 'baratables'),
+				'<code>[bara_table id="' . esc_html($slug) . '"]</code>'
+			),
+			'success'
+		);
+	}
+
+	/**
+	 * Report what the save did with the external DB connection. The definition merge keeps the
+	 * previous connection when the posted config is invalid, and clears it when every field was
+	 * posted empty; without these notices both outcomes happen silently, and an invalid edit
+	 * keeps serving the old table with no signal at all.
+	 */
+	public static function queue_external_db_notice(array $request, ?array $existing_definition): void {
+		if (($request['source_type'] ?? '') !== BaraTables_Source_Type::EXTERNAL_DB || !empty($request['external_db'])) {
+			return;
+		}
+		$had_connection = !empty($existing_definition['external_db']);
+		if (!empty($request['external_db_input_nonempty'])) {
+			if ($had_connection) {
+				BaraTables_Admin_Notice::queue(
+					__('The external database settings were not valid, so the previous connection was kept. The table name may only contain letters, numbers, and underscores. Clear every connection field to remove the connection.', 'baratables'),
+					'error'
+				);
+			} else {
+				BaraTables_Admin_Notice::queue(
+					__('The external database settings are not valid or incomplete. Fill in host, database, user, and table to connect.', 'baratables'),
+					'warning'
+				);
+			}
+		} elseif ($had_connection) {
+			BaraTables_Admin_Notice::queue(
+				__('The external database connection was removed from this table.', 'baratables'),
+				'info'
+			);
 		}
 	}
 
@@ -345,6 +418,7 @@ class BaraTables_Admin {
 
 class BaraTables_Chart_Admin {
 	private BaraTables_Chart_Service $chart_service;
+	private BaraTables_Chart_Repository $chart_repo;
 	private BaraTables_Service $table_service;
 	private BaraTables_Admin_Tab_Chart $tab_chart;
 	private string $nonce_action;
@@ -353,6 +427,7 @@ class BaraTables_Chart_Admin {
 
 	public function __construct(BaraTables_Chart_Service $chart_service, BaraTables_Chart_Repository $chart_repo, BaraTables_Service $table_service, string $nonce_action, string $nonce_field) {
 		$this->chart_service = $chart_service;
+		$this->chart_repo = $chart_repo;
 		$this->table_service = $table_service;
 		$this->tab_chart = new BaraTables_Admin_Tab_Chart();
 		$this->nonce_action = $nonce_action;
@@ -370,6 +445,7 @@ class BaraTables_Chart_Admin {
 		add_action('save_post_' . BaraTables_Chart_Repository::CPT, [$this, 'save_chart_from_editor'], 9, 2);
 		add_action('wp_ajax_btbl_refresh_chart_fields', [$this, 'ajax_refresh_chart_fields']);
 		add_action('wp_ajax_btbl_search_chart_tables', [$this, 'ajax_search_chart_tables']);
+		add_action('wp_ajax_btbl_block_charts', [$this, 'ajax_block_charts']);
 	}
 
 	public function register_meta_boxes(): void {
@@ -463,6 +539,23 @@ class BaraTables_Chart_Admin {
 		$search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Guard verified above.
 		$page = isset($_POST['page']) ? max(1, (int) $_POST['page']) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Guard verified above.
 		wp_send_json_success($this->chart_service->search_table_choices($search, $page));
+	}
+
+	/**
+	 * Chart list for the block editor's chart picker. Same policy as the table picker
+	 * (ajax_block_tables): any user who can edit posts may embed a published chart, but chart
+	 * management stays admin-only, so non-admins list published charts only and drafts and
+	 * private charts are not leaked through the picker.
+	 */
+	public function ajax_block_charts(): void {
+		check_ajax_referer('btbl_block_charts');
+		if (!current_user_can('edit_posts')) {
+			wp_send_json_error([], 403);
+		}
+		$search = isset($_GET['search']) ? sanitize_text_field(wp_unslash($_GET['search'])) : '';
+		$page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+		$statuses = current_user_can('manage_options') ? [] : ['publish'];
+		wp_send_json_success($this->chart_repo->search_definition_choices($search, $page, 20, $statuses));
 	}
 
 	/**

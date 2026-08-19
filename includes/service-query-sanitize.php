@@ -70,7 +70,7 @@ final class BaraTables_Query_Sanitizer {
 				// Clamp only to the rowLimit ceiling; the effective per-table cap is applied at
 				// render time via min(posts_per_page, rowLimit). Previously this clamped to a
 				// fixed 500, so an explicit posts_per_page silently overrode (and undercut) the
-				// table's configured "Maximum rows to load" -- e.g. rowLimit 10000 still yielded
+				// table's configured "Maximum rows" -- e.g. rowLimit 10000 still yielded
 				// 500 rows whenever the query JSON set posts_per_page.
 				$max_rows = BaraTables_Service::MAX_ROW_LIMIT;
 				$clean['posts_per_page'] = $posts_per_page < 0

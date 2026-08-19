@@ -39,7 +39,11 @@ jQuery(function($) {
 	function toggleTableFlagOptions() {
 		$('.btbl-table-flags .btbl-checkbox, .btbl-table-flags .btbl-flag-card').each(function() {
 			var $card = $(this);
-			var $checkbox = $card.find('input[type="checkbox"][name^="btbl_table_options"]');
+			// The FIRST checkbox is the card's own toggle -- the card body may hold further
+			// checkboxes ("Collapse when shorter", "Show per page selector") whose defaults are
+			// checked. is(':checked') over the whole collection means "any is checked", which
+			// kept the gear visible on disabled cards like "Fixed scroll height".
+			var $checkbox = $card.find('input[type="checkbox"][name^="btbl_table_options"]').first();
 			if (!$checkbox.length) { return; }
 			var checked = $checkbox.is(':checked');
 			var $toggle = $card.find('.btbl-flag-options-toggle');
@@ -64,6 +68,32 @@ jQuery(function($) {
 		var open = !$body.hasClass('is-open');
 		$body.toggleClass('is-open', open);
 		$toggle.attr('aria-expanded', open ? 'true' : 'false');
+	});
+
+	// "Table overrides" cards. The checkbox state is derived from the stored value, so an
+	// override switched off must submit the default again -- otherwise the saved value flips
+	// the toggle right back on at the next render. Visibility follows the same contract as the
+	// flag cards in toggleTableFlagOptions(): checking reveals the gear only (the body opens
+	// via the gear), and unchecking closes and hides both. The accent hex deliberately stays
+	// empty when enabled -- empty means "follow the theme", so the override only takes hold
+	// once a color is actually entered.
+	$(document).on('change', '.btbl-override-flags [data-btbl-override-toggle]', function() {
+		var $card = $(this).closest('[data-btbl-override]');
+		var enabled = $(this).is(':checked');
+		var $toggle = $card.find('.btbl-flag-options-toggle');
+		var $body = $card.find('.btbl-field-options-body');
+		$toggle.toggleClass('is-hidden', !enabled).attr('aria-expanded', enabled && $body.hasClass('is-open') ? 'true' : 'false');
+		if (!enabled) {
+			// Empty IS "use the default" (the placeholder carries the default; the save
+			// pipeline restores it), so clearing the fields keeps the derived state honest.
+			$card.find('[data-btbl-override-field]').val('');
+			// The swatch cannot be blank: park it back on the theme accent the field renders.
+			var $colorField = $card.find('.btbl-color-field');
+			$card.find('.btbl-color-picker').val(($colorField.data('btbl-theme-accent') || '#2271b1'));
+			$body.removeClass('is-open').addClass('is-hidden');
+		} else {
+			$body.removeClass('is-hidden');
+		}
 	});
 
 	function initLayoutBuilder($builder) {

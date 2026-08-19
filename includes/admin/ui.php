@@ -884,9 +884,110 @@ class BaraTables_Admin_Tab_Table {
 		$layout_unused = array_values(array_filter($layout_allowed, static function ($item) use ($layout_used) {
 			return !isset($layout_used[$item]);
 		}));
+		// The override toggles are DERIVED from the stored value: a set caption, a non-default
+		// row limit, or a picked accent color reads as "on", blank/default reads as "off". No
+		// separate enabled flag is stored, so existing definitions and the front end are
+		// unchanged. The fields render empty with the default shown as the placeholder --
+		// empty IS "use the default", and the save pipeline restores the default from it, so
+		// admin-layout.js only has to clear the field when a toggle goes off.
+		$caption_value = (string) ($table_options['caption'] ?? '');
 		$row_limit_config = $option_schema['rowLimit'] ?? null;
+		$row_limit_default = (int) ($row_limit_config['default'] ?? 1000);
+		$row_limit_value = (int) ($table_options['rowLimit'] ?? $row_limit_default);
+		$row_limit_overridden = $row_limit_value !== $row_limit_default;
+		$accent_value = sanitize_hex_color((string) ($table_options['accentColor'] ?? '')) ?? '';
+		$theme_accent = BaraTables_Service::resolve_theme_accent();
+		$button_text_defaults = BaraTables_Service::frontend_label_defaults();
 		?>
 		<div id="btbl-tab-table" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-table-label">
+				<div class="btbl-control">
+					<strong class="btbl-small-heading"><?php esc_html_e('Table overrides', 'baratables'); ?></strong>
+					<p class="description"><?php esc_html_e('Off keeps the default. Turn one on to set it for this table.', 'baratables'); ?></p>
+					<div class="btbl-flag-grid btbl-table-flags btbl-override-flags">
+						<div class="btbl-checkbox" data-btbl-override="caption">
+							<span class="btbl-checkbox-top">
+								<label class="btbl-checkbox-main" for="btbl_override_caption">
+									<input type="checkbox" id="btbl_override_caption" data-btbl-override-toggle <?php checked($caption_value !== ''); ?> />
+									<span class="btbl-field-name"><?php echo esc_html($option_schema['caption']['label']); ?></span>
+								</label>
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle<?php echo $caption_value !== '' ? '' : ' is-hidden'; ?>" aria-expanded="false">
+									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
+								</button>
+							</span>
+							<div class="btbl-field-options-body<?php echo $caption_value !== '' ? '' : ' is-hidden'; ?>">
+								<div class="btbl-options-row btbl-options-inline">
+									<label class="btbl-inline" for="btbl_table_caption">
+										<span class="btbl-small-label"><?php esc_html_e('Caption text', 'baratables'); ?></span>
+										<input type="text" name="btbl_table_options[caption]" id="btbl_table_caption" class="regular-text" value="<?php echo esc_attr($caption_value); ?>" data-btbl-override-field data-default="" />
+									</label>
+								</div>
+							</div>
+						</div>
+						<div class="btbl-checkbox" data-btbl-override="rowLimit">
+							<span class="btbl-checkbox-top">
+								<label class="btbl-checkbox-main" for="btbl_override_rowlimit">
+									<input type="checkbox" id="btbl_override_rowlimit" data-btbl-override-toggle <?php checked($row_limit_overridden); ?> />
+									<span class="btbl-field-name"><?php echo esc_html($row_limit_config['label']); ?></span>
+								</label>
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle<?php echo $row_limit_overridden ? '' : ' is-hidden'; ?>" aria-expanded="false">
+									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
+								</button>
+							</span>
+							<div class="btbl-field-options-body<?php echo $row_limit_overridden ? '' : ' is-hidden'; ?>">
+								<div class="btbl-options-row btbl-options-inline">
+									<label class="btbl-inline" for="btbl_rowLimit">
+										<span class="btbl-small-label"><?php esc_html_e('Rows to load', 'baratables'); ?></span>
+										<input
+											type="number"
+											class="small-text"
+											name="btbl_table_options[rowLimit]"
+											id="btbl_rowLimit"
+											min="<?php echo esc_attr((int) ($row_limit_config['min'] ?? 1)); ?>"
+											max="<?php echo esc_attr((int) ($row_limit_config['max'] ?? 10000)); ?>"
+											step="1"
+											value="<?php echo esc_attr($row_limit_overridden ? (string) $row_limit_value : ''); ?>"
+											placeholder="<?php echo esc_attr((string) $row_limit_default); ?>"
+											data-btbl-override-field
+										/>
+									</label>
+								</div>
+							</div>
+						</div>
+						<div class="btbl-checkbox" data-btbl-override="accentColor">
+							<span class="btbl-checkbox-top">
+								<label class="btbl-checkbox-main" for="btbl_override_accentcolor">
+									<input type="checkbox" id="btbl_override_accentcolor" data-btbl-override-toggle <?php checked($accent_value !== ''); ?> />
+									<span class="btbl-field-name"><?php echo esc_html($option_schema['accentColor']['label']); ?></span>
+								</label>
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle<?php echo $accent_value !== '' ? '' : ' is-hidden'; ?>" aria-expanded="false">
+									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
+								</button>
+							</span>
+							<div class="btbl-field-options-body<?php echo $accent_value !== '' ? '' : ' is-hidden'; ?>">
+								<div class="btbl-options-row btbl-options-inline">
+									<div>
+										<label class="btbl-small-label" for="btbl_table_accentcolor"><?php esc_html_e('Hex color', 'baratables'); ?></label>
+										<div class="btbl-color-field" data-btbl-theme-accent="<?php echo esc_attr($theme_accent); ?>">
+											<input
+												type="text"
+												id="btbl_table_accentcolor"
+												name="btbl_table_options[accentColor]"
+												class="btbl-color-value"
+												value="<?php echo esc_attr($accent_value); ?>"
+												placeholder="<?php echo esc_attr($theme_accent); ?>"
+												data-btbl-override-field
+											/>
+											<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($accent_value !== '' ? $accent_value : $theme_accent); ?>" aria-label="<?php echo esc_attr__('Pick accent color', 'baratables'); ?>" />
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
 				<div class="btbl-control">
 					<strong class="btbl-small-heading"><?php esc_html_e('Table controls', 'baratables'); ?></strong>
 					<p class="description"><?php esc_html_e('Turn the most common table controls on or off.', 'baratables'); ?></p>
@@ -937,19 +1038,26 @@ class BaraTables_Admin_Tab_Table {
 														/>
 														<?php echo esc_html($inline_config['label']); ?>
 													</label>
-												<?php elseif ($inline_config['type'] === 'number') : ?>
-													<label class="btbl-inline" for="btbl_<?php echo esc_attr($inline_key); ?>">
-														<span class="btbl-small-label"><?php echo esc_html($inline_config['label']); ?></span>
-														<input
-															type="number"
-															min="<?php echo esc_attr((int) ($inline_config['min'] ?? 1)); ?>"
-															max="<?php echo esc_attr((int) ($inline_config['max'] ?? 500)); ?>"
-															step="1"
-															name="btbl_table_options[<?php echo esc_attr($inline_key); ?>]"
-															id="btbl_<?php echo esc_attr($inline_key); ?>"
-															value="<?php echo esc_attr((int) ($table_options[$inline_key] ?? $inline_config['default'])); ?>"
-														/>
-													</label>
+				<?php elseif ($inline_config['type'] === 'number') : ?>
+					<?php
+					// Same empty-means-default contract as the override fields: the default rides
+					// along as the placeholder, and the save pipeline restores it from an empty value.
+					$number_default = (int) $inline_config['default'];
+					$number_value = (int) ($table_options[$inline_key] ?? $number_default);
+					?>
+					<label class="btbl-inline" for="btbl_<?php echo esc_attr($inline_key); ?>">
+						<span class="btbl-small-label"><?php echo esc_html($inline_config['label']); ?></span>
+						<input
+							type="number"
+							min="<?php echo esc_attr((int) ($inline_config['min'] ?? 1)); ?>"
+							max="<?php echo esc_attr((int) ($inline_config['max'] ?? 500)); ?>"
+							step="1"
+							name="btbl_table_options[<?php echo esc_attr($inline_key); ?>]"
+							id="btbl_<?php echo esc_attr($inline_key); ?>"
+							value="<?php echo esc_attr($number_value !== $number_default ? (string) $number_value : ''); ?>"
+							placeholder="<?php echo esc_attr((string) $number_default); ?>"
+						/>
+					</label>
 												<?php else : ?>
 													<?php
 													$input_value = array_key_exists($inline_key, $table_options)
@@ -983,25 +1091,10 @@ class BaraTables_Admin_Tab_Table {
 										<?php endforeach; ?>
 									</div>
 								<?php endif; ?>
-							</div>
-						<?php endforeach; ?>
-					</div>
 				</div>
-				<?php if ($row_limit_config) : ?>
-					<div class="btbl-control">
-						<label class="btbl-small-heading" for="btbl_rowLimit"><?php echo esc_html($row_limit_config['label']); ?></label>
-						<input
-							type="number"
-							class="small-text"
-							name="btbl_table_options[rowLimit]"
-							id="btbl_rowLimit"
-							min="<?php echo esc_attr((int) ($row_limit_config['min'] ?? 1)); ?>"
-							max="<?php echo esc_attr((int) ($row_limit_config['max'] ?? 10000)); ?>"
-							value="<?php echo esc_attr((int) ($table_options['rowLimit'] ?? $row_limit_config['default'])); ?>"
-						/>
-						<p class="description"><?php echo esc_html($row_limit_config['description'] ?? ''); ?></p>
-					</div>
-				<?php endif; ?>
+			<?php endforeach; ?>
+		</div>
+	</div>
 				<div class="btbl-control btbl-layout-builder" data-defaults="<?php echo esc_attr(wp_json_encode($layout_defaults)); ?>">
 					<div class="btbl-layout-header">
 						<div class="btbl-header-stack">
@@ -1043,22 +1136,23 @@ class BaraTables_Admin_Tab_Table {
 						<strong class="btbl-small-heading"><?php esc_html_e('Style features', 'baratables'); ?></strong>
 						<p class="description"><?php esc_html_e('Toggle built-in styles like borders, stripes, and hover highlighting.', 'baratables'); ?></p>
 						<div class="btbl-flag-grid btbl-table-flags">
-							<?php foreach ($style_keys as $style_key) : ?>
-							<?php $config = $option_schema[$style_key]; ?>
-							<?php $input_id = 'btbl_table_style_' . sanitize_key($style_key); ?>
-							<?php $style_default = !empty($config['default']) ? '1' : '0'; ?>
-								<input type="hidden" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="0" />
-								<div class="btbl-checkbox">
-									<span class="btbl-checkbox-top">
-										<label class="btbl-checkbox-main" for="<?php echo esc_attr($input_id); ?>">
-										<input type="checkbox" id="<?php echo esc_attr($input_id); ?>" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="1" data-default="<?php echo esc_attr($style_default); ?>" <?php checked(!empty($table_options[$style_key])); ?> />
-											<span class="btbl-field-name"><?php echo esc_html($config['label']); ?></span>
-										</label>
-									</span>
-								</div>
-							<?php endforeach; ?>
-						</div>
+					<?php foreach ($style_keys as $style_key) : ?>
+						<?php $config = $option_schema[$style_key]; ?>
+						<?php if (($config['type'] ?? '') !== 'checkbox') { continue; } ?>
+						<?php $input_id = 'btbl_table_style_' . sanitize_key($style_key); ?>
+						<?php $style_default = !empty($config['default']) ? '1' : '0'; ?>
+							<input type="hidden" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="0" />
+							<div class="btbl-checkbox">
+								<span class="btbl-checkbox-top">
+									<label class="btbl-checkbox-main" for="<?php echo esc_attr($input_id); ?>">
+									<input type="checkbox" id="<?php echo esc_attr($input_id); ?>" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="1" data-default="<?php echo esc_attr($style_default); ?>" <?php checked(!empty($table_options[$style_key])); ?> />
+										<span class="btbl-field-name"><?php echo esc_html($config['label']); ?></span>
+									</label>
+								</span>
+							</div>
+						<?php endforeach; ?>
 					</div>
+				</div>
 				<?php endif; ?>
 			<?php if ($buttons_config) : ?>
 				<?php $config = $buttons_config['config']; ?>
@@ -1101,17 +1195,17 @@ class BaraTables_Admin_Tab_Table {
 								<?php if ($text_key !== '') : ?>
 									<div class="btbl-field-options-body <?php echo $button_checked ? '' : 'is-hidden'; ?>">
 										<div class="btbl-options-row btbl-options-inline">
-											<label class="btbl-inline" for="<?php echo esc_attr($button_text_id); ?>">
-												<span class="btbl-small-label"><?php esc_html_e('Button text', 'baratables'); ?></span>
-												<input
-													type="text"
-													name="btbl_table_options[<?php echo esc_attr($text_key); ?>]"
-													id="<?php echo esc_attr($button_text_id); ?>"
-													class="regular-text"
-													value="<?php echo esc_attr($button_text_value); ?>"
-													placeholder="<?php echo esc_attr($choice_label); ?>"
-												/>
-											</label>
+										<label class="btbl-inline" for="<?php echo esc_attr($button_text_id); ?>">
+											<span class="btbl-small-label"><?php esc_html_e('Text', 'baratables'); ?></span>
+											<input
+												type="text"
+												name="btbl_table_options[<?php echo esc_attr($text_key); ?>]"
+												id="<?php echo esc_attr($button_text_id); ?>"
+												class="regular-text"
+												value="<?php echo esc_attr($button_text_value); ?>"
+												placeholder="<?php echo esc_attr($button_text_defaults[$text_key] ?? $choice_label); ?>"
+											/>
+										</label>
 										</div>
 									</div>
 								<?php endif; ?>

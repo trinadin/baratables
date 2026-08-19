@@ -106,6 +106,41 @@
 	max-width: 100%;
 }
 
+/* A color field pairs a hex input with its swatch picker on one line. The hex input is
+   scoped tighter than the 100%-width rule above (same specificity, later in the file) and
+   sized to a #rrggbb value -- wide enough for its "Theme color" placeholder. The row uses
+   align-items: stretch instead of a fixed picker height so the swatch always matches the
+   text input's height, whatever the current wp-admin form sizing (40px since WP 6.7). */
+.btbl-color-field {
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.btbl-color-field input[type="text"] {
+	width: 8em;
+	max-width: 100%;
+	flex: none;
+}
+
+.btbl-color-field input[type="color"] {
+	width: 40px;
+	/* height:auto (beating core's fixed input[type=color] height) lets the flex row's
+	   align-items: stretch size the swatch to the hex input's height. */
+	height: auto;
+	padding: 0;
+	border-radius: 3px;
+	flex: none;
+	cursor: pointer;
+}
+
+/* A non-empty hex that is not yet a complete #rrggbb: same danger treatment as the invalid
+   Value overrides JSON, so an incomplete color reads as "keep going", not "broken". */
+.btbl-color-field input[type="text"].is-invalid {
+	border-color: var(--btbl-color-danger);
+	box-shadow: 0 0 0 1px var(--btbl-color-danger);
+}
+
 .btbl-taxonomy-filter .btbl-tax-terms-group:not(:first-child) {
 	margin-top: 8px;
 }
@@ -254,9 +289,12 @@
 	flex-direction: column;
 }
 
+/* Exactly two columns so the drop zones sit where their labels say they are: top-left above
+   bottom-left, top-right above bottom-right. auto-fit spread all four across one wide row,
+   breaking that spatial map. */
 .btbl-layout-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 12px;
 }
 

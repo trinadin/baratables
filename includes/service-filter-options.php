@@ -129,6 +129,7 @@ trait BaraTables_Filter_Options_Trait {
 
 	private function finalize_filter_options(array $filter): array {
 		$filter['options'] = array_values(array_map([$this, 'normalize_filter_option'], $filter['options']));
+		$option_cap = empty($filter['has_custom_values']) ? self::MAX_AUTO_FILTER_OPTIONS : null;
 		$sort_order = $filter['filter_sort'] ?? 'custom';
 		if ($sort_order === 'none') {
 			$sort_order = 'custom';
@@ -139,6 +140,9 @@ trait BaraTables_Filter_Options_Trait {
 
 		$should_sort = !($sort_order === 'custom' && empty($type_priority));
 		if (!$should_sort || empty($filter['options'])) {
+			if ($option_cap !== null) {
+				$filter['options'] = array_slice($filter['options'], 0, $option_cap);
+			}
 			return $filter;
 		}
 
@@ -210,6 +214,9 @@ trait BaraTables_Filter_Options_Trait {
 			unset($option['_btbl_index'], $option['_btbl_type'], $option['_btbl_time']);
 		}
 		unset($option);
+		if ($option_cap !== null) {
+			$filter['options'] = array_slice($filter['options'], 0, $option_cap);
+		}
 		return $filter;
 	}
 

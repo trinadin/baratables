@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.2.5
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,22 +12,24 @@ Create searchable, sortable WordPress tables and charts from CSV files, manual r
 
 == Description ==
 
-BaraTables builds interactive tables and charts from your site data. Use manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publish with a shortcode.
+BaraTables builds interactive tables and charts from your site data. Use manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publish with a shortcode or a block.
 
-Import a JSON, XML, HTML, CSV, TXT, or ZIP export from another table plugin or a spreadsheet to rebuild an existing table.
+Import a JSON, XML, HTML, CSV, TXT, or ZIP export from another table plugin or spreadsheet to rebuild a table.
 
-Tables can include search, sorting, pagination, filters, export buttons, column visibility controls, and custom control layouts. Charts draw from any BaraTables table and embed separately with their own shortcode.
+Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, column visibility controls, and custom control layouts. Charts draw from any BaraTables table and embed with their own shortcode.
 
 **Features:**
 
 * Build tables from WordPress content, CSV files, manual data, or external MySQL/MariaDB databases
+* Embed with a shortcode or a block in the block editor
 * Add search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, including filtering by category or tag
-* Export table data to CSV or Excel, copy it, or print it
+* Export table data to CSV, Excel, or PDF, copy it, or print it
 * Reorder columns and control column visibility
+* Collapse wide tables into stacked, expandable rows on small screens
+* Match your theme automatically: colors follow your theme's palette, with an optional custom accent color
 * Restrict WordPress-content, CSV, and external-database rows by user role or user metadata
-* Remember table state between visits, and control scrolling, column sizing, and row loading limits
+* Remember table state between visits, and control scrolling, column sizing, and row limits
 * Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts with ECharts
-* Customize table controls, labels, layout, and display options
 * Light frontend styles that are easy to override with CSS
 * Import an existing table from another plugin or a spreadsheet (JSON, XML, HTML, CSV, TXT, or ZIP)
 
@@ -42,11 +44,11 @@ Tables can include search, sorting, pagination, filters, export buttons, column 
 
 = What data sources are supported? =
 
-CSV files from the media library, manual data entry via the admin editor, WordPress content, and external MySQL/MariaDB databases.
+CSV files, manual data entry, WordPress content, and external MySQL/MariaDB databases.
 
 = Which table plugin exports can I import? =
 
-For TablePress, use a single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports are supported; export an externally connected table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and data-only CSV exports from wpDataTables and Tablesome are also supported. HTML table exports can be imported directly. For a ZIP containing multiple tables, BaraTables previews and imports the first supported table and tells you how many were found.
+For TablePress, use a single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports are supported; export an externally connected table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and data-only CSV from wpDataTables and Tablesome also import, as do HTML tables. A ZIP with multiple tables imports the first supported table and reports how many were found.
 
 Imports rebuild the table data and compatible display settings. Plugin-specific styling, formulas, shortcodes, charts, and external data connections are not carried over. Export XLS or XLSX files as CSV first.
 
@@ -54,11 +56,11 @@ An upload or pasted import can be up to 5 MB. ZIP files can contain up to 50 ent
 
 = How many rows can a table load? =
 
-Each table loads up to 1,000 rows by default. The Options tab lets administrators choose a limit from 1 to 10,000 rows. The limit applies to tables and charts across every data source.
+Each table loads up to 1,000 rows by default. The Options tab lets you choose a limit from 1 to 10,000 rows, applying to tables and charts on every data source.
 
 = Can I link to a filtered view of a table? =
 
-Yes. Filtering or searching a table updates the page address as you go, so you can copy it and share that exact view. You can also build the link yourself using `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
+Yes. Filtering or searching updates the page address as you go, so you can copy and share that exact view. You can also build the link yourself with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
 
 = How do I add a chart? =
 
@@ -66,11 +68,11 @@ Create a table first, then go to Charts and create a new chart linked to that ta
 
 = Can I customize the table appearance? =
 
-Yes. The Options tab provides controls for striping, hover effects, borders, compact mode, pagination style, button labels, search text, and info display. You can also arrange layout zones for full control over where controls appear.
+Yes. The Options tab provides controls for striping, hover, borders, compact mode, pagination style, button labels, search text, and info display, and layout zones control where controls appear.
 
 = Can I style BaraTables with custom CSS? =
 
-Yes. BaraTables ships minimal frontend styles so your theme stays in control. Use your theme stylesheet, the Site Editor, or additional custom CSS to adjust colors, spacing, typography, borders, and button styles.
+Yes. BaraTables ships minimal frontend styles so your theme stays in control. Adjust colors, spacing, typography, and buttons with your theme stylesheet, the Site Editor, or custom CSS.
 
 = Where can I see examples? =
 
@@ -79,11 +81,39 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 == Screenshots ==
 
 1. Frontend chart generated from a BaraTables table.
-2. Frontend table with search, filters, CSV and Excel export, column visibility, sorting, and pagination.
-3. Table Options tab with saved state, scrolling, row limits, layout, styling, and export controls.
+2. Frontend table with search, filters, CSV, Excel, and PDF export, column visibility, sorting, and pagination.
+3. The Options tab: per-table overrides, control toggles, layout builder, styling, and export buttons.
 4. Chart builder and chart-type gallery with all supported chart types.
+5. Responsive table on a phone: collapsed columns expand into a stacked row.
 
 == Changelog ==
+
+= 1.3.0 =
+New:
+
+* New block editor blocks: add any table or chart from the BaraTables block picker instead of pasting a shortcode.
+* Wide tables can collapse into stacked, expandable rows on small screens.
+* Export any table to PDF with a new Export PDF button.
+* Tables match your theme automatically: colors follow your theme's palette, with an optional custom accent color per table.
+
+Improvements:
+
+* Table pages no longer load jQuery, and dropdown filters use a lighter picker, so pages with tables load faster.
+* The table engine is now DataTables 3; pages with export buttons load fewer files.
+* Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column can no longer make the page unresponsive.
+* The editor's Options tab is reorganized with clearer wording, and every field shows its default until you change it.
+* Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable fallback when JavaScript is off.
+* Publishing a table for the first time shows the shortcode and block to embed it with.
+
+Fixes:
+
+* Day-first dates such as 25/12/2026 now format correctly with "Format as date".
+* Chart values written with a decimal comma (1.234,56) plot at the correct magnitude.
+* Tab-delimited files import as separate columns instead of one long column.
+* An invalid external database edit no longer silently keeps the previous connection, and clearing every field now removes the connection.
+* Search limited to chosen columns follows columns you move by dragging.
+* The settings gear no longer appears on a switched-off control, such as Fixed scroll height, when its inner option is still checked.
+* In the layout builder, drop zones sit where their labels say instead of spreading across one row.
 
 = 1.2.5 =
 New:
@@ -240,6 +270,9 @@ Security:
 
 == Upgrade Notice ==
 
+= 1.3.0 =
+New table and chart blocks, responsive stacking on small screens, PDF export, theme-matched colors with a custom accent, and faster table pages without jQuery. Fixes day-first dates, decimal-comma chart values, and silent external database edits.
+
 = 1.2.5 =
 Broader and more accurate table imports, faster tables and chart-only pages, reliable saves, clear load errors, PHP 7.4 compatibility, and secure import validation.
 
@@ -271,28 +304,37 @@ Initial release.
 
 This plugin bundles the following libraries and admin thumbnail assets:
 
-* [DataTables](https://datatables.net/) v2.3.8 - MIT License
-* DataTables Buttons v3.2.6 - MIT License
-* DataTables ColReorder v2.1.2 - MIT License
-* [Select2](https://select2.org/) v4.1.0-rc.0 - MIT License
+* [DataTables](https://datatables.net/) v3.0.2 - MIT License
+* DataTables Buttons v4.0.2 - MIT License
+* DataTables ColReorder v3.0.1 - MIT License
+* DataTables Responsive v4.0.2 - MIT License
+* [Select2](https://select2.org/) v4.1.0-rc.0 - MIT License (admin editor pickers)
+* [Tom Select](https://tom-select.js.org/) v2.6.2 - Apache License 2.0 (front-end dropdown filters)
 * [JSZip](https://stuk.github.io/jszip/) v3.10.1 - MIT License
+* [pdfmake](http://pdfmake.org/) v0.2.23 - MIT License (bundles the Roboto font family - Apache License 2.0)
 * [ECharts](https://echarts.apache.org/) v6.1.0 - Apache License 2.0
-* FileSaver.js v1.3.3 - MIT License (bundled inside DataTables Buttons)
+* FileSaver.js - MIT License (bundled inside DataTables Buttons)
 * pako - MIT License (bundled inside JSZip)
 
 Source code and uncompressed distribution files for the bundled compressed assets are available here:
 
-* DataTables v2.3.8 source: https://github.com/DataTables/DataTablesSrc/tree/2.3.8
-* DataTables v2.3.8 distribution files: https://cdn.datatables.net/2.3.8/
-* DataTables Buttons v3.2.6 source: https://github.com/DataTables/Buttons/tree/3.2.6
-* DataTables Buttons v3.2.6 distribution files: https://cdn.datatables.net/buttons/3.2.6/
-* DataTables ColReorder v2.1.2 source: https://github.com/DataTables/ColReorder/tree/2.1.2
-* DataTables ColReorder v2.1.2 distribution files: https://cdn.datatables.net/colreorder/2.1.2/
+* DataTables v3.0.2 source: https://github.com/DataTables/DataTablesSrc/tree/3.0.2
+* DataTables v3.0.2 distribution files: https://cdn.datatables.net/3.0.2/
+* DataTables Buttons v4.0.2 source: https://github.com/DataTables/Buttons/tree/4.0.2
+* DataTables Buttons v4.0.2 distribution files: https://cdn.datatables.net/buttons/4.0.2/
+* DataTables ColReorder v3.0.1 source: https://github.com/DataTables/ColReorder/tree/3.0.1
+* DataTables ColReorder v3.0.1 distribution files: https://cdn.datatables.net/colreorder/3.0.1/
+* DataTables Responsive v4.0.2 source: https://github.com/DataTables/Responsive/tree/4.0.2
+* DataTables Responsive v4.0.2 distribution files: https://cdn.datatables.net/responsive/4.0.2/
 * Select2 v4.1.0-rc.0 source: https://github.com/select2/select2/tree/4.1.0-rc.0
 * Select2 v4.1.0-rc.0 uncompressed JavaScript: https://raw.githubusercontent.com/select2/select2/4.1.0-rc.0/dist/js/select2.js
 * Select2 v4.1.0-rc.0 uncompressed CSS: https://raw.githubusercontent.com/select2/select2/4.1.0-rc.0/dist/css/select2.css
+* Tom Select v2.6.2 source: https://github.com/orchidjs/tom-select/tree/v2.6.2
+* Tom Select v2.6.2 distribution files: https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/
 * JSZip v3.10.1 source: https://github.com/Stuk/jszip/tree/v3.10.1
 * JSZip v3.10.1 uncompressed JavaScript: https://raw.githubusercontent.com/Stuk/jszip/v3.10.1/dist/jszip.js
+* pdfmake v0.2.23 source: https://github.com/bpampuch/pdfmake/tree/0.2.23
+* pdfmake v0.2.23 distribution files: https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.23/
 * FileSaver.js v1.3.3 source: https://github.com/eligrey/FileSaver.js/tree/1.3.3
 * pako source: https://github.com/nodeca/pako
 * ECharts v6.1.0 source: https://github.com/apache/echarts/tree/6.1.0

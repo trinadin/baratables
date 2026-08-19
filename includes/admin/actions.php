@@ -12,7 +12,7 @@ class BaraTables_Admin_Action_Handler {
 		'source_type' => ['raw', 'btbl_source_type'],
 		'csv_attachment_id' => ['int', 'btbl_csv_attachment_id'],
 		'csv_has_header' => ['bool', 'btbl_csv_has_header'],
-		'csv_delimiter' => ['text', 'btbl_csv_delimiter'],
+		'csv_delimiter' => ['raw', 'btbl_csv_delimiter'],
 		'columns' => ['array_text', 'btbl_columns'],
 		'column_order' => ['text', 'btbl_column_order'],
 		'custom_columns' => ['array_raw', 'btbl_custom_columns'],
@@ -75,6 +75,20 @@ class BaraTables_Admin_Action_Handler {
 	 * strips null bytes and ensures valid UTF-8. The parsed JSON used for
 	 * actual queries is sanitized separately downstream.
 	 */
+	/**
+	 * Single-character CSV delimiter. sanitize_text_field() strips tabs (and wp_strip_all_tags()
+	 * trims them away), so a tab pasted into the one-character field silently became a comma and
+	 * TSV content parsed as a single column. Drop leading spaces/newlines, then keep one byte;
+	 * a one-byte value cannot carry markup, so no tag stripping is needed.
+	 */
+	public static function sanitize_csv_delimiter($raw): string {
+		if (!is_scalar($raw)) {
+			return '';
+		}
+		$value = ltrim((string) $raw, " \n\r\0\x0B");
+		return $value === '' ? '' : $value[0];
+	}
+
 	public static function sanitize_json_textarea($value): string {
 		if (!is_scalar($value)) {
 			return '';
@@ -138,7 +152,10 @@ class BaraTables_Admin_Action_Handler {
 			$input['column_order']
 		);
 		$column_records = $this->build_requested_column_records($input, $columns, $custom['dataset'], $source_type);
-		$csv_delimiter = $input['csv_delimiter'] !== '' ? substr($input['csv_delimiter'], 0, 1) : ',';
+		$csv_delimiter = self::sanitize_csv_delimiter($input['csv_delimiter']);
+		if ($csv_delimiter === '') {
+			$csv_delimiter = ',';
+		}
 
 		return [
 			'name' => $name,
@@ -173,6 +190,13 @@ class BaraTables_Admin_Action_Handler {
 				'charset' => $input['external_charset'],
 				'port' => $input['external_port'],
 			]),
+			// Whether ANY external connection field was posted with content. The editor form always
+			// posts these fields for an external source, so "all empty" is an explicit clear and
+			// "content but sanitize_external_db_config() returned nothing" is an invalid config.
+			'external_db_input_nonempty' => trim(
+				$input['external_host'] . ' ' . $input['external_name'] . ' ' . $input['external_user'] . ' '
+				. $input['external_pass'] . ' ' . $input['external_table'] . ' ' . $input['external_charset'] . ' ' . $input['external_port']
+			) !== '',
 			'custom_data' => [
 				'columns' => $custom['dataset']['columns'],
 				'rows' => $custom['dataset']['rows'],
@@ -210,12 +234,21 @@ class BaraTables_Admin_Action_Handler {
 
 		$defn['columns'] = $this->service->build_columns_from_records($request_columns, $request['column_records']);
 
-		if ($request['source_type'] === BaraTables_Source_Type::EXTERNAL_DB && !empty($request['external_db'])) {
+		if ($request['source_type'] === BaraTables_Source_Type::EXTERNAL_DB) {
 			$external_db = $request['external_db'];
-			if (empty($external_db['pass']) && !empty($defn['external_db']['pass'])) {
-				$external_db['pass'] = $defn['external_db']['pass'];
+			if (!empty($external_db)) {
+				if (empty($external_db['pass']) && !empty($defn['external_db']['pass'])) {
+					$external_db['pass'] = $defn['external_db']['pass'];
+				}
+				$defn['external_db'] = $external_db;
+			} elseif (!empty($request['external_db_input_nonempty'])) {
+				// Invalid config (e.g. a table name outside [A-Za-z0-9_]): keep the previous
+				// connection rather than half-replacing it. The save flow reports this loudly;
+				// the bug is the silent fallback to the old table, not the keep itself.
+			} elseif (array_key_exists('external_db', $defn)) {
+				// Every connection field posted empty against a stored config: an explicit clear.
+				unset($defn['external_db']);
 			}
-			$defn['external_db'] = $external_db;
 		}
 
 		if (!empty($request['access_control'])) {

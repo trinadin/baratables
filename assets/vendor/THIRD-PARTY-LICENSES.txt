@@ -6,12 +6,13 @@ images from the projects listed below. Versioned source links are documented
 in readme.txt.
 
 
-DataTables, DataTables Buttons, DataTables ColReorder
------------------------------------------------------
+DataTables, DataTables Buttons, DataTables ColReorder, DataTables Responsive
+----------------------------------------------------------------------------
 
-DataTables v2.3.8
-DataTables Buttons v3.2.6
-DataTables ColReorder v2.1.2
+DataTables v3.0.2
+DataTables Buttons v4.0.2
+DataTables ColReorder v3.0.1
+DataTables Responsive v4.0.2
 
 License: MIT
 
@@ -26,8 +27,13 @@ ColReorder copyright:
 Copyright (c) 2010-2015 SpryMedia Limited
 http://datatables.net
 
-DataTables Buttons (buttons.html5.min.js) includes FileSaver.js v1.3.3, which is
-released under the MIT License.
+Responsive copyright:
+Copyright (c) SpryMedia Ltd
+https://datatables.net
+
+DataTables Buttons (dataTables.buttons.min.js, which bundles the html5, print,
+and column-visibility button modules) includes FileSaver.js, which is released
+under the MIT License.
 Copyright (c) 2016 Eli Grey
 http://eligrey.com
 
@@ -35,11 +41,21 @@ http://eligrey.com
 Select2
 -------
 
-Select2 v4.1.0-rc.0
+Select2 v4.1.0-rc.0 (admin editor pickers)
 
 License: MIT
 
 Copyright (c) 2012-2017 Kevin Brown, Igor Vaynberg, and Select2 contributors
+
+
+Tom Select
+----------
+
+Tom Select v2.6.2 (front-end dropdown filters)
+
+License: Apache License 2.0 (full text below)
+
+Copyright 2013-2015 Brian Reavis
 
 
 JSZip
@@ -57,6 +73,24 @@ Antonio Afonso
 
 JSZip includes pako, which is released under the MIT License.
 Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
+
+
+pdfmake
+-------
+
+pdfmake v0.2.23
+
+License: MIT
+
+Copyright (c) 2014-2023 Bartek Pampuch and pdfmake contributors
+http://pdfmake.org
+
+vfs_fonts.min.js embeds the Roboto font family (Roboto-Regular, Roboto-Italic,
+Roboto-Medium, and Roboto-MediumItalic), used to render exported PDF text.
+Roboto is available under the Apache License 2.0 (full text below).
+
+Roboto copyright:
+Copyright 2011 Google Inc. All Rights Reserved.
 
 
 MIT License Text

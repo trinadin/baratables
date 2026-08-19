@@ -111,11 +111,11 @@ class BaraTables_Import_Util {
  *     'columns'     => string[]   header labels, positional (may be [])
  *     'rows'        => array[]     body rows, each a positional array of cell strings (pre-sanitize)
  *     'has_header'  => bool        false => synthesize labels, treat every row as body
- *     'settings'    => [ page_length:int|null, paging:bool|null, search:bool|null,
- *                        ordering:bool|null, length_change:bool|null, info:bool|null,
- *                        scroll_x:bool|null, scroll_y_enabled:bool|null, scroll_y:string|null,
- *                        stripe:bool|null, hover:bool|null, sort_column_index:int|null,
- *                        sort_direction:'asc'|'desc'|null ]
+	 *     'settings'    => [ page_length:int|null, paging:bool|null, search:bool|null,
+	 *                        ordering:bool|null, length_change:bool|null, info:bool|null,
+	 *                        scroll_x:bool|null, scroll_y_enabled:bool|null, scroll_y:string|null,
+	 *                        responsive:bool|null, stripe:bool|null, hover:bool|null,
+	 *                        sort_column_index:int|null, sort_direction:'asc'|'desc'|null ]
  *     'column_meta' => array[]     positional BaraTables column-record fields
  *     'warnings'    => string[]
  *   ]
@@ -136,6 +136,7 @@ class BaraTables_Import_Builder {
 			'scroll_x' => null,
 			'scroll_y_enabled' => null,
 			'scroll_y' => null,
+			'responsive' => null,
 			'stripe' => null,
 			'hover' => null,
 			'sort_column_index' => null,
@@ -186,6 +187,7 @@ class BaraTables_Import_Builder {
 				'info' => 'info',
 				'scroll_x' => 'scrollX',
 				'scroll_y_enabled' => 'scrollYEnabled',
+				'responsive' => 'responsive',
 				'stripe' => 'stripe',
 				'hover' => 'hover',
 			] as $setting_key => $option_key
@@ -441,6 +443,7 @@ class BaraTables_Import_TablePress {
 			$settings['info'] = false;
 			$settings['scroll_x'] = false;
 			$settings['scroll_y_enabled'] = false;
+			$settings['responsive'] = false;
 			return $settings;
 		}
 		if (array_key_exists('datatables_paginate', $options)) {
@@ -468,6 +471,15 @@ class BaraTables_Import_TablePress {
 			if (array_key_exists($source_key, $options)) {
 				$settings[$setting_key] = BaraTables_Import_Util::to_bool($options[$source_key], false);
 			}
+		}
+		// TablePress stores responsive as a breakpoint keyword ('none', '', 'phone', 'tablet',
+		// 'phone-tablet', 'all', ...) rather than a boolean; every value that names a breakpoint
+		// means stacking was on.
+		if (array_key_exists('datatables_responsive', $options)) {
+			$responsive = $options['datatables_responsive'];
+			$settings['responsive'] = is_string($responsive)
+				? !in_array($responsive, ['', 'none', 'false'], true)
+				: BaraTables_Import_Util::to_bool($responsive, false);
 		}
 		if (isset($options['datatables_scrolly']) && $options['datatables_scrolly'] !== false) {
 			$scroll_y = trim((string) $options['datatables_scrolly']);

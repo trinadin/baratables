@@ -191,6 +191,7 @@ jQuery(function($) {
 		var rowsForCells = Math.max(1, Math.floor(caps.cells / cols));
 		var rowCount = Math.max(1, Math.min(rows.length, caps.rows, rowsForCells));
 		renderCustomGrid(readCustomGridHeaders().slice(0, cols), rows, { cols: cols, rows: rowCount });
+		$(document).trigger('btbl:preview-state-change');
 	}
 
 	if ($customGrid.length) {
@@ -300,6 +301,7 @@ jQuery(function($) {
 				window.alert(gridPasteCapped.replace('%1$d', String(newRows)).replace('%2$d', String(newCols)));
 			}
 			renderCustomGrid(readCustomGridHeaders().slice(0, newCols), values, { cols: newCols, rows: newRows });
+			$(document).trigger('btbl:preview-state-change');
 		});
 		rebuildCustomGrid(false);
 	}

@@ -491,6 +491,7 @@ jQuery(function($) {
 			var shouldCheck = action === 'select-all';
 			$targets.prop('checked', shouldCheck);
 			updateTermCount($group);
+			$(document).trigger('btbl:preview-state-change');
 		});
 
 		$(document).on('change', '.btbl-term-chip input[type="checkbox"]', function() {
@@ -536,6 +537,7 @@ jQuery(function($) {
 				if (mediaTarget) {
 					mediaTarget.val(attachment.id);
 					mediaTarget.siblings('.btbl-media-clear').show();
+					$(document).trigger('btbl:preview-state-change');
 					triggerCsvPreviewRefresh();
 				}
 			});
@@ -551,6 +553,7 @@ jQuery(function($) {
 		var $target = $(targetSelector);
 		if ($target.length) {
 			$target.val('');
+			$(document).trigger('btbl:preview-state-change');
 		}
 		$(this).hide();
 		triggerCsvPreviewRefresh({ clearCsv: true });
@@ -1159,7 +1162,18 @@ jQuery(function($) {
 	// state the preview currently reflects; hide it again when edits are reverted.
 	var $builderForm = $('#btbl-table-builder').closest('form');
 	if (!$builderForm.length) { $builderForm = $('#post'); }
+	var $previewTarget = $('#btbl-preview-target');
 	var previewedState = $builderForm.length ? $builderForm.serialize() : '';
+	var previewRefreshPending = false;
+	function setPreviewStale(stale) {
+		if (!$previewTarget.length) { return; }
+		$previewTarget.toggleClass('is-stale', stale).prop('inert', stale);
+		if (stale) {
+			$previewTarget.attr('aria-disabled', 'true');
+		} else {
+			$previewTarget.removeAttr('aria-disabled');
+		}
+	}
 	function syncRefreshPreviewVisibility() {
 		if (!$builderForm.length) { return; }
 		// serialize() walks every control in the builder, and this is bound at document level to
@@ -1169,6 +1183,7 @@ jQuery(function($) {
 		if (bulkColumnToggle) { return; }
 		var dirty = $builderForm.serialize() !== previewedState;
 		$('.btbl-preview-toolbar').prop('hidden', !dirty);
+		setPreviewStale(dirty || previewRefreshPending);
 	}
 	// Debounce the input-driven path only. A manual-data grid is thousands of text inputs inside
 	// this form, and syncRefreshPreviewVisibility() serialize()s the whole #post form; running that
@@ -1180,15 +1195,20 @@ jQuery(function($) {
 		clearTimeout(refreshPreviewDebounce);
 		refreshPreviewDebounce = setTimeout(syncRefreshPreviewVisibility, 200);
 	});
+	$(document).on('btbl:preview-state-change', function() {
+		clearTimeout(refreshPreviewDebounce);
+		refreshPreviewDebounce = setTimeout(syncRefreshPreviewVisibility, 200);
+	});
 
 	// Refresh the table preview against the current unsaved builder state.
 	$(document).on('click', '#btbl-refresh-preview', function(e) {
 		e.preventDefault();
 		var $btn = $(this);
-		var $target = $('#btbl-preview-target');
-		if (!$target.length) { return; }
+		if (!$previewTarget.length) { return; }
 		var serialized = $builderForm.length ? $builderForm.serialize() : '';
 		var data = serialized + '&action=btbl_refresh_preview';
+		previewRefreshPending = true;
+		setPreviewStale(true);
 		$btn.prop('disabled', true);
 		requestFragment({
 			key: 'preview',
@@ -1196,12 +1216,16 @@ jQuery(function($) {
 			data: data,
 			validate: function(response) { return !!(response && response.success && response.data && typeof response.data.html === 'string'); },
 			success: function(responseData) {
-				$target.html(responseData.html);
+				$previewTarget.html(responseData.html);
 				previewedState = serialized; // preview now reflects this state
 				syncRefreshPreviewVisibility(); // -> hides the button until the next edit
 			},
 			always: function(isCurrent) {
-				if (isCurrent) { $btn.prop('disabled', false); }
+				if (isCurrent) {
+					previewRefreshPending = false;
+					$btn.prop('disabled', false);
+					syncRefreshPreviewVisibility();
+				}
 			}
 		});
 	});

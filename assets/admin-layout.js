@@ -48,7 +48,7 @@ jQuery(function($) {
 			var checked = $checkbox.is(':checked');
 			var $toggle = $card.find('.btbl-flag-options-toggle');
 			var $body = $card.find('.btbl-field-options-body');
-			$toggle.toggleClass('is-hidden', !checked).attr('aria-expanded', checked && $body.hasClass('is-open') ? 'true' : 'false');
+			$toggle.prop('disabled', !checked).attr('aria-expanded', checked && $body.hasClass('is-open') ? 'true' : 'false');
 			if (!checked) { $body.removeClass('is-open').addClass('is-hidden'); }
 			else { $body.removeClass('is-hidden'); }
 		});
@@ -64,17 +64,18 @@ jQuery(function($) {
 	$(document).on('click', '.btbl-flag-options-toggle', function(event) {
 		event.preventDefault();
 		var $toggle = $(this);
+		if ($toggle.prop('disabled')) { return; }
 		var $body = $toggle.closest('.btbl-checkbox, .btbl-flag-card').find('.btbl-field-options-body');
 		var open = !$body.hasClass('is-open');
 		$body.toggleClass('is-open', open);
 		$toggle.attr('aria-expanded', open ? 'true' : 'false');
 	});
 
-	// "Table overrides" cards. The checkbox state is derived from the stored value, so an
+	// "Table settings" cards. The checkbox state is derived from the stored value, so an
 	// override switched off must submit the default again -- otherwise the saved value flips
 	// the toggle right back on at the next render. Visibility follows the same contract as the
-	// flag cards in toggleTableFlagOptions(): checking reveals the gear only (the body opens
-	// via the gear), and unchecking closes and hides both. The accent hex deliberately stays
+	// flag cards in toggleTableFlagOptions(): checking enables the gear only (the body opens
+	// via the gear), and unchecking closes the body and disables the gear. The accent hex stays
 	// empty when enabled -- empty means "follow the theme", so the override only takes hold
 	// once a color is actually entered.
 	$(document).on('change', '.btbl-override-flags [data-btbl-override-toggle]', function() {
@@ -82,7 +83,7 @@ jQuery(function($) {
 		var enabled = $(this).is(':checked');
 		var $toggle = $card.find('.btbl-flag-options-toggle');
 		var $body = $card.find('.btbl-field-options-body');
-		$toggle.toggleClass('is-hidden', !enabled).attr('aria-expanded', enabled && $body.hasClass('is-open') ? 'true' : 'false');
+		$toggle.prop('disabled', !enabled).attr('aria-expanded', enabled && $body.hasClass('is-open') ? 'true' : 'false');
 		if (!enabled) {
 			// Empty IS "use the default" (the placeholder carries the default; the save
 			// pipeline restores it), so clearing the fields keeps the derived state honest.
@@ -98,6 +99,7 @@ jQuery(function($) {
 
 	function initLayoutBuilder($builder) {
 		var dragItem = null;
+		var syncedLayout = null;
 		var $palette = $builder.find('.btbl-layout-palette-drop');
 		var defaults = $builder.data('defaults') || {};
 		if (typeof defaults === 'string') {
@@ -154,10 +156,16 @@ jQuery(function($) {
 			$builder.find('.btbl-layout-reset').prop('hidden', layoutMatchesDefaults());
 		}
 
-		function syncLayoutState() {
+		function syncLayoutState(notifyChange) {
+			var nextLayout = JSON.stringify(getCurrentLayout());
+			var changed = syncedLayout !== null && nextLayout !== syncedLayout;
 			syncLayoutInputs();
 			updateLayoutAvailability();
 			syncLayoutResetVisibility();
+			syncedLayout = nextLayout;
+			if (notifyChange && changed) {
+				$(document).trigger('btbl:preview-state-change');
+			}
 		}
 
 		function resetLayout() {
@@ -169,7 +177,7 @@ jQuery(function($) {
 					if ($chip.length) { $zone.append($chip); }
 				});
 			});
-			syncLayoutState();
+			syncLayoutState(true);
 		}
 
 		$builder.on('keydown', '.btbl-layout-chip', function(event) {
@@ -193,7 +201,7 @@ jQuery(function($) {
 				if (targetIndex < 0 || targetIndex >= $zones.length) { return; }
 				$zones.eq(targetIndex).append($chip);
 			}
-			syncLayoutState();
+			syncLayoutState(true);
 			$chip.trigger('focus');
 		});
 
@@ -210,7 +218,7 @@ jQuery(function($) {
 			// Hovering chips reorders the live DOM mid-drag, so a drag aborted with Esc or an
 			// outside release leaves the chips visually moved. Re-sync so the hidden inputs (and
 			// the next save) match what the admin sees; idempotent for completed drops.
-			syncLayoutState();
+			syncLayoutState(true);
 		});
 		$builder.on('dragover', '.btbl-layout-drop', function(event) {
 			event.preventDefault();
@@ -223,7 +231,7 @@ jQuery(function($) {
 			$(this).removeClass('is-dragover');
 			if (!dragItem) { return; }
 			if ($(event.target).closest('.btbl-layout-chip').length === 0) { $(this).append(dragItem); }
-			syncLayoutState();
+			syncLayoutState(true);
 		});
 		$builder.on('dragover', '.btbl-layout-chip', function(event) {
 			if (!dragItem || dragItem === this) { return; }

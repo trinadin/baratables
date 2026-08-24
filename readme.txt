@@ -2,9 +2,9 @@
 Contributors: nathannoom
 Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.1
+Stable tag: 1.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -79,11 +79,15 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 1. Frontend chart generated from a BaraTables table.
 2. Frontend table with search, filters, CSV, Excel, and PDF export, column visibility, sorting, and pagination.
-3. The Options tab: per-table overrides, control toggles, layout builder, styling, and export buttons.
+3. The Options tab: table settings, control toggles, layout builder, styling, and export buttons.
 4. Chart builder and chart-type gallery with all supported chart types.
 5. Responsive table on a phone: collapsed columns expand into a stacked row.
 
 == Changelog ==
+
+= 1.3.2 =
+* The table preview now clearly indicates when it needs refreshing, stays unavailable until refreshed, and recognizes when changes are undone.
+* Option settings remain visible while switched off, with clearer grouping and more consistent spacing.
 
 = 1.3.1 =
 Fixes:
@@ -283,6 +287,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.3.2 =
+Makes table preview refreshes reliable and clarifies which options have additional settings.
 
 = 1.3.1 =
 Fixes search after column reordering, remembered searches, and meta columns dropped on save. Developers: PHP methods deprecated in 1.2.5 are removed.

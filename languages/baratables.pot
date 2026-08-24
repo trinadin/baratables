@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: BaraTables 1.3.1\n"
+"Project-Id-Version: BaraTables 1.3.2\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/baratables\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-19T20:22:30+00:00\n"
+"POT-Creation-Date: 2026-08-24T04:14:53+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -1250,7 +1250,7 @@ msgid "Show a search box inside this filter's dropdown (useful when a filter has
 msgstr ""
 
 #: includes/admin/ui.php:908
-msgid "Table overrides"
+msgid "Table settings"
 msgstr ""
 
 #: includes/admin/ui.php:909
@@ -2113,7 +2113,7 @@ msgid "Auto-size columns"
 msgstr ""
 
 #: includes/services.php:2610
-msgid "Collapse columns on small screens"
+msgid "Collapse columns on mobile"
 msgstr ""
 
 #: includes/services.php:2611

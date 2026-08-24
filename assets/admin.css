@@ -277,6 +277,12 @@
 	gap: 10px;
 	align-items: start;
 }
+
+/* Checkbox cards normally carry their own 8px stack margin. Inside a grid that margin adds to
+   row-gap, so rows look farther apart than columns. Let the grid own both axes here. */
+.btbl-admin .btbl-flag-grid .btbl-checkbox {
+	margin-bottom: 0;
+}
 /* stylelint-disable-next-line no-descending-specificity -- earlier rule sets the identical value (12px) */
 .btbl-flag-grid + .btbl-control-grid {
 	margin-top: 12px;
@@ -366,6 +372,10 @@
 
 .btbl-layout-palette {
 	margin-top: 12px;
+}
+
+.btbl-layout-palette-drop {
+	align-content: center;
 }
 
 .btbl-flag-card,
@@ -462,6 +472,16 @@
 .btbl-preview-table-wrapper {
 	overflow: auto;
 	max-height: 420px;
+}
+
+#btbl-preview-target {
+	transition: opacity 0.12s ease;
+}
+
+#btbl-preview-target.is-stale {
+	opacity: 0.45;
+	pointer-events: none;
+	user-select: none;
 }
 
 .btbl-preview-table th,
@@ -732,6 +752,13 @@
 .btbl-id-edit-toggle:hover,
 .btbl-id-edit-toggle:focus-visible {
 	color: var(--btbl-color-primary-hover);
+}
+
+.btbl-options-toggle:disabled,
+.btbl-options-toggle:disabled:hover,
+.btbl-options-toggle:disabled:focus {
+	color: #a7aaad;
+	cursor: default;
 }
 
 .btbl-options-toggle .dashicons {
@@ -1171,10 +1198,11 @@ textarea.btbl-invalid {
 }
 
 /* Empty layout palette placeholder and disabled chip. */
-.btbl-palette-placeholder {
+.btbl-layout-palette-drop .btbl-palette-placeholder {
 	color: #646970;
 	font-size: 12px;
 	font-style: italic;
+	margin: 0;
 }
 .btbl-layout-palette-drop:has(.btbl-layout-chip) .btbl-palette-placeholder {
 	display: none;

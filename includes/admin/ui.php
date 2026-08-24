@@ -905,7 +905,7 @@ class BaraTables_Admin_Tab_Table {
 		?>
 		<div id="btbl-tab-table" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-table-label">
 				<div class="btbl-control">
-					<strong class="btbl-small-heading"><?php esc_html_e('Table overrides', 'baratables'); ?></strong>
+					<strong class="btbl-small-heading"><?php esc_html_e('Table settings', 'baratables'); ?></strong>
 					<p class="description"><?php esc_html_e('Off keeps the default. Turn one on to set it for this table.', 'baratables'); ?></p>
 					<div class="btbl-flag-grid btbl-table-flags btbl-override-flags">
 						<div class="btbl-checkbox" data-btbl-override="caption">
@@ -914,7 +914,7 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_caption" data-btbl-override-toggle <?php checked($caption_value !== ''); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($option_schema['caption']['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle<?php echo $caption_value !== '' ? '' : ' is-hidden'; ?>" aria-expanded="false">
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled($caption_value === ''); ?>>
 									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
 									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 								</button>
@@ -934,7 +934,7 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_rowlimit" data-btbl-override-toggle <?php checked($row_limit_overridden); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($row_limit_config['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle<?php echo $row_limit_overridden ? '' : ' is-hidden'; ?>" aria-expanded="false">
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled(!$row_limit_overridden); ?>>
 									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
 									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 								</button>
@@ -965,7 +965,7 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_accentcolor" data-btbl-override-toggle <?php checked($accent_value !== ''); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($option_schema['accentColor']['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle<?php echo $accent_value !== '' ? '' : ' is-hidden'; ?>" aria-expanded="false">
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled($accent_value === ''); ?>>
 									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
 									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 								</button>
@@ -1011,7 +1011,7 @@ class BaraTables_Admin_Tab_Table {
 										<span class="btbl-field-name"><?php echo esc_html($config['label']); ?></span>
 									</label>
 									<?php if ($has_inline) : ?>
-										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false">
+										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled(empty($table_options[$flag_key])); ?>>
 											<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
 											<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 										</button>
@@ -1190,7 +1190,7 @@ class BaraTables_Admin_Tab_Table {
 										<span class="btbl-field-name"><?php echo esc_html($choice_label); ?></span>
 									</label>
 									<?php if ($text_key !== '') : ?>
-										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle <?php echo $button_checked ? '' : 'is-hidden'; ?>" aria-expanded="false">
+										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled(!$button_checked); ?>>
 											<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
 											<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 										</button>

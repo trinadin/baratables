@@ -2607,7 +2607,7 @@ class BaraTables_Service {
 		$schema['colReorder']['label'] = __('Allow column reordering', 'baratables');
 		$schema['stateSave']['label'] = __('Remember table state', 'baratables');
 		$schema['autoWidth']['label'] = __('Auto-size columns', 'baratables');
-		$schema['responsive']['label'] = __('Collapse columns on small screens', 'baratables');
+		$schema['responsive']['label'] = __('Collapse columns on mobile', 'baratables');
 		$schema['responsive']['description'] = __('Wide tables stack their remaining columns into an expandable row instead of requiring horizontal scrolling. This replaces horizontal scrolling when enabled.', 'baratables');
 		$schema['scrollX']['label'] = __('Enable horizontal scrolling', 'baratables');
 		$schema['scrollYEnabled']['label'] = __('Fixed scroll height', 'baratables');

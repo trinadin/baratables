@@ -22,6 +22,15 @@ class BaraTables_Admin_Preview_Renderer {
 		$sorted_columns = $presentation['sorted_columns'];
 		$layout_zones = $presentation['layout_zones'];
 		$layout_seen = [];
+		$footer_values = [];
+		$has_footer = false;
+		foreach ($presentation['columns'] as $column_index => $column_model) {
+			$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+			$footer_values[$column_index] = $aggregate !== 'none'
+				? BaraTables_Cell_Semantics::aggregate_rows($rows, (int) $column_index, $aggregate)
+				: '';
+			$has_footer = $has_footer || $aggregate !== 'none';
+		}
 
 		?>
 		<?php if ($source_error !== '') : ?>
@@ -75,14 +84,30 @@ class BaraTables_Admin_Preview_Renderer {
 										if (array_key_exists($idx, $sorted_columns)) {
 											$cell_class[] = 'btbl-preview-sorted';
 										}
+										$safe_cell = wp_kses_post((string) $cell);
+										$semantic = BaraTables_Cell_Semantics::present_cell($safe_cell, $column_model);
+										$cell_class = array_merge($cell_class, $semantic['classes']);
 										?>
 										<td<?php echo !empty($cell_class) ? ' class="' . esc_attr(implode(' ', $cell_class)) . '"' : ''; ?>>
-											<?php echo wp_kses_post($cell); ?>
+											<?php echo $semantic['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitized cell plus allowlisted wrapper. ?>
 										</td>
 									<?php endforeach; ?>
 								</tr>
 							<?php endforeach; ?>
 						</tbody>
+						<?php if ($has_footer) : ?>
+							<tfoot><tr>
+								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
+									<?php if ($column_model['hidden']) { continue; } ?>
+									<?php
+									$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+									$value = (string) ($footer_values[$idx] ?? '');
+									$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
+									?>
+									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"<?php echo $aggregate !== 'none' ? ' aria-label="' . esc_attr($label . ($value !== '' ? ': ' . $value : '')) . '"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped aria label. ?>><?php echo esc_html($value); ?></td>
+								<?php endforeach; ?>
+							</tr></tfoot>
+						<?php endif; ?>
 					</table>
 				</div>
 				<div class="btbl-preview-layout-row btbl-preview-layout-bottom">

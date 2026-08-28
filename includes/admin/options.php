@@ -21,12 +21,16 @@ class BaraTables_Admin_Options {
 		'htm' => 'text/html',
 		'csv' => 'text/csv',
 		'txt' => 'text/plain',
+		'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+		'ods' => 'application/vnd.oasis.opendocument.spreadsheet',
 		'zip' => 'application/zip',
 	];
 	private const IMPORT_MIME_TYPES = [
 		'application/csv',
 		'application/json',
 		'application/vnd.ms-excel',
+		'application/vnd.oasis.opendocument.spreadsheet',
+		'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 		'application/xml',
 		'application/x-zip-compressed',
 		'application/zip',
@@ -185,9 +189,18 @@ class BaraTables_Admin_Options {
 		// would push the token outside the [A-Za-z0-9]{32} shape claim_handoff() checks for and
 		// break every import on the site. 16 bytes of hex is the same 32 characters, unfilterable.
 		$token = bin2hex(random_bytes(16));
+		// ZIP bytes are not valid database text and can contain NULs or invalid UTF-8. Passing the
+		// raw archive to set_transient() makes database-backed transients silently reject even tiny
+		// valid ZIPs. Encode archives for this short handoff only; text imports stay unexpanded.
+		$is_archive = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION)) === 'zip'
+			|| strncmp($raw, 'PK', 2) === 0;
 		$stored = set_transient(
 			self::HANDOFF_PREFIX . get_current_user_id() . '_' . $token,
-			['raw' => $raw, 'filename' => $filename],
+			[
+				'raw' => $is_archive ? base64_encode($raw) : $raw,
+				'raw_encoding' => $is_archive ? 'base64' : 'plain',
+				'filename' => $filename,
+			],
 			self::HANDOFF_TTL
 		);
 		// A persistent object cache can silently refuse an oversized value -- memcached's default
@@ -215,8 +228,16 @@ class BaraTables_Admin_Options {
 		if (!is_array($stored) || !isset($stored['raw']) || !is_string($stored['raw']) || $stored['raw'] === '') {
 			return null;
 		}
+		$raw = $stored['raw'];
+		if (($stored['raw_encoding'] ?? 'plain') === 'base64') {
+			$decoded = base64_decode($raw, true);
+			if (!is_string($decoded) || $decoded === '') {
+				return null;
+			}
+			$raw = $decoded;
+		}
 		return [
-			'raw' => $stored['raw'],
+			'raw' => $raw,
 			'filename' => isset($stored['filename']) && is_string($stored['filename']) ? $stored['filename'] : '',
 		];
 	}
@@ -238,7 +259,7 @@ class BaraTables_Admin_Options {
 			// in the table editor lost this page's guidance with no way to bring it back.
 			BaraTables_Help::render_toggle();
 			?>
-			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, HTML, CSV, TXT, or ZIP. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
+			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
 			<?php foreach ($errors as $message) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php echo esc_html($message); ?></p></div>
 			<?php endforeach; ?>
@@ -251,8 +272,8 @@ class BaraTables_Admin_Options {
 				<div class="btbl-control-grid">
 						<div class="btbl-control">
 							<label class="btbl-small-heading" for="btbl_import_file"><?php esc_html_e('Upload a table export', 'baratables'); ?></label>
-							<input type="file" name="btbl_import_file" id="btbl_import_file" accept=".json,.xml,.html,.htm,.csv,.txt,.zip,application/json,application/xml,text/html,text/csv,text/plain,application/zip" />
-							<p class="description"><?php esc_html_e('Accepts .json, .xml, .html, .csv, .txt, or .zip (max 5 MB).', 'baratables'); ?></p>
+							<input type="file" name="btbl_import_file" id="btbl_import_file" accept=".json,.xml,.html,.htm,.csv,.txt,.xlsx,.ods,.zip,application/json,application/xml,text/html,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.oasis.opendocument.spreadsheet,application/zip" />
+							<p class="description"><?php esc_html_e('Accepts .json, .xml, .html, .csv, .txt, .xlsx, .ods, or .zip (max 5 MB).', 'baratables'); ?></p>
 						</div>
 					<div class="btbl-control">
 						<label class="btbl-small-heading" for="btbl_import_json"><?php esc_html_e('Or paste the export', 'baratables'); ?></label>
@@ -426,7 +447,7 @@ class BaraTables_Admin_Options {
 				return ['raw' => '', 'filename' => '', 'error' => $this->get_import_size_error()];
 			}
 			if (!$this->is_valid_import_upload($tmp_file, $file_name)) {
-				return ['raw' => '', 'filename' => '', 'error' => __('Import uploads must be a valid .json, .xml, .html, .csv, .txt, or .zip file.', 'baratables')];
+				return ['raw' => '', 'filename' => '', 'error' => __('Import uploads must be a valid .json, .xml, .html, .csv, .txt, .xlsx, .ods, or .zip file.', 'baratables')];
 			}
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reading an uploaded temp file; wp_remote_get() is for remote URLs.
 			$raw = (string) file_get_contents($tmp_file);
@@ -464,6 +485,15 @@ class BaraTables_Admin_Options {
 		$extension = (string) ($file_type['ext'] ?? '');
 		if ($extension === 'zip') {
 			return in_array($mime_type, ['application/zip', 'application/x-zip-compressed'], true);
+		}
+		if (in_array($extension, ['xlsx', 'ods'], true)) {
+			$spreadsheet_mimes = [
+				'application/zip',
+				'application/x-zip-compressed',
+				'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				'application/vnd.oasis.opendocument.spreadsheet',
+			];
+			return in_array($mime_type, $spreadsheet_mimes, true);
 		}
 		if ($mime_type === 'text/html') {
 			// WP Table Builder labels its HTML table fragment as XML, so .xml is valid here.

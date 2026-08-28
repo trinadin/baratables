@@ -117,6 +117,7 @@ final class BaraTables_Source_Type {
 	public const CUSTOM_DATA = 'custom_data';
 	public const CSV = 'csv';
 	public const EXTERNAL_DB = 'external_db';
+	public const REMOTE_SNAPSHOT = 'remote_snapshot';
 
 	private const ALL = [
 		self::WP_QUERY,
@@ -124,6 +125,7 @@ final class BaraTables_Source_Type {
 		self::CUSTOM_DATA,
 		self::CSV,
 		self::EXTERNAL_DB,
+		self::REMOTE_SNAPSHOT,
 	];
 
 	public static function normalize($raw, string $default = self::WP_QUERY): string {
@@ -136,6 +138,7 @@ final class BaraTables_Source_Type {
 			self::WP_QUERY => __('WP Query', 'baratables'),
 			self::CSV => __('CSV', 'baratables'),
 			self::EXTERNAL_DB => __('External DB', 'baratables'),
+			self::REMOTE_SNAPSHOT => __('Remote snapshot', 'baratables'),
 			self::CUSTOM_QUERY => __('Custom Query', 'baratables'),
 			self::CUSTOM_DATA => __('Custom Data', 'baratables'),
 		];
@@ -161,8 +164,12 @@ final class BaraTables_Source_Type {
 		return $source === self::CUSTOM_DATA;
 	}
 
+	public static function is_remote_snapshot(string $source): bool {
+		return $source === self::REMOTE_SNAPSHOT;
+	}
+
 	public static function uses_column_preview(string $source): bool {
-		return in_array($source, [self::CSV, self::EXTERNAL_DB], true);
+		return in_array($source, [self::CSV, self::EXTERNAL_DB, self::REMOTE_SNAPSHOT], true);
 	}
 }
 

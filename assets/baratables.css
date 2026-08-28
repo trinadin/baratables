@@ -21,6 +21,38 @@
 	width: 100%;
 }
 
+.btbl-table tfoot td[data-btbl-aggregate]:not([data-btbl-aggregate="none"]) {
+	font-weight: 600;
+}
+
+.btbl-table td.btbl-condition-accent,
+.btbl-table td.dtfc-fixed-start.btbl-condition-accent,
+.dtr-data.btbl-condition-accent {
+	background-color: #eaf4fb;
+	color: #135e96;
+}
+
+.btbl-table td.btbl-condition-success,
+.btbl-table td.dtfc-fixed-start.btbl-condition-success,
+.dtr-data.btbl-condition-success {
+	background-color: #edfaef;
+	color: #14532d;
+}
+
+.btbl-table td.btbl-condition-warning,
+.btbl-table td.dtfc-fixed-start.btbl-condition-warning,
+.dtr-data.btbl-condition-warning {
+	background-color: #fff8e1;
+	color: #6b4f00;
+}
+
+.btbl-table td.btbl-condition-danger,
+.btbl-table td.dtfc-fixed-start.btbl-condition-danger,
+.dtr-data.btbl-condition-danger {
+	background-color: #fff0f0;
+	color: #8a1f11;
+}
+
 .btbl-filter-wrapper,
 .btbl-filter {
 	display: flex;

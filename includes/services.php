@@ -11,6 +11,7 @@ class BaraTables_Service {
 	use BaraTables_Filter_Options_Trait;
 	use BaraTables_Value_Format_Trait;
 	use BaraTables_Column_State_Trait;
+	use BaraTables_Server_Side_Trait;
 
 	/** Compact declarations expanded by build_table_option_schema(). Tuple shapes:
 	 *  checkbox [type, default], text [type, default], number [type, default, min, max],
@@ -18,6 +19,7 @@ class BaraTables_Service {
 	 */
 	private const TABLE_OPTION_DEFINITIONS = [
 		'caption'                 => ['text_html', ''],
+		'serverSide'              => ['checkbox', false],
 		'paging'                  => ['checkbox', true],
 		'pagingNumbers'           => ['checkbox', true],
 		'pagingFirstLast'         => ['checkbox', true],
@@ -39,8 +41,11 @@ class BaraTables_Service {
 		'colReorder'              => ['checkbox', false],
 		'stateSave'               => ['checkbox', false],
 		'autoWidth'               => ['checkbox', true],
+		'fixedHeader'             => ['checkbox', false],
 		'responsive'              => ['checkbox', false],
 		'scrollX'                 => ['checkbox', false],
+		'fixedColumnsEnabled'     => ['checkbox', false],
+		'fixedColumnsStart'       => ['number', 1, 1, 50],
 		'scrollYEnabled'          => ['checkbox', false],
 		'scrollY'                 => ['number', 300, 1, 2000],
 		'scrollCollapse'          => ['checkbox', true],
@@ -189,6 +194,14 @@ class BaraTables_Service {
 	public const MAX_CUSTOM_ROWS = 1000;
 	public const DEFAULT_ROW_LIMIT = 1000;
 	public const MAX_ROW_LIMIT = 10000;
+	public const SERVER_SIDE_MAX_PAGE_LENGTH = 100;
+	public const SERVER_SIDE_MAX_WINDOW = 100000;
+	private const SERVER_SIDE_MAX_DRAWS_PER_MINUTE = 180;
+	private const SERVER_SIDE_MAX_SEARCH_BYTES = 100;
+	private const SERVER_SIDE_MAX_SEARCH_COLUMNS = 20;
+	private const SERVER_SIDE_MAX_SORTS = 3;
+	private const SERVER_SIDE_MAX_CELL_BYTES = 65536;
+	private const SERVER_SIDE_MAX_RESPONSE_BYTES = 5242880;
 	// Auto-derived dropdown/checkbox filter options are capped (after sorting, so the kept slice
 	// is the sorted-first one): a near-unique column at the row ceiling would otherwise ship every
 	// distinct value as <option> markup with data-search-terms JSON -- megabytes per filter.
@@ -239,6 +252,10 @@ class BaraTables_Service {
 	private array $row_cache = [];
 	/** @var array<string,wpdb> Per-request external connections keyed by credentials + charset. */
 	private array $external_connections = [];
+	/** @var array<string,string> Supported timeout dialect by live external connection. */
+	private array $server_side_timeout_connections = [];
+	/** @var array<string,array> Source-verified server-side state by complete definition. */
+	private array $server_side_state_cache = [];
 	private BaraTables_Repository $repo;
 	private ?BaraTables_Query_Sanitizer $query_sanitizer = null;
 	private ?BaraTables_Fields_Discovery $fields_discovery = null;
@@ -484,7 +501,23 @@ class BaraTables_Service {
 		$saved = isset($definition['table_options']) && is_array($definition['table_options'])
 			? $definition['table_options']
 			: [];
-		return $this->merge_table_options($saved);
+		$options = $this->merge_table_options($saved);
+		if (!empty($options['fixedColumnsEnabled'])) {
+			$visible_columns = 0;
+			foreach ((array) ($definition['columns'] ?? []) as $column) {
+				if (!is_array($column) || empty($column['hidden'])) {
+					$visible_columns++;
+				}
+			}
+			// Leave at least one visible column scrollable. Freezing every visible column creates
+			// a viewport that technically scrolls but cannot reveal any additional information.
+			if ($visible_columns < 2) {
+				$options['fixedColumnsEnabled'] = false;
+			} else {
+				$options['fixedColumnsStart'] = min((int) $options['fixedColumnsStart'], $visible_columns - 1);
+			}
+		}
+		return $options;
 	}
 
 	public function get_chart_options(array $definition): array {
@@ -727,6 +760,16 @@ class BaraTables_Service {
 		// (0 = off); when the flag is absent, derive it so those tables keep their behavior.
 		if (!array_key_exists('scrollYEnabled', $options_raw)) {
 			$options['scrollYEnabled'] = ((int) ($options_raw['scrollY'] ?? 0)) > 0;
+		}
+
+		// FixedColumns operates on DataTables' horizontally scrolling viewport and is not
+		// compatible with Responsive's collapsed-row presentation. Normalize this server-side as
+		// well as in the editor so imported definitions and direct API callers cannot create an
+		// unsupported combination. The explicit feature wins because enabling it is the more
+		// specific request; both related defaults remain unchanged for existing tables.
+		if (!empty($options['fixedColumnsEnabled'])) {
+			$options['scrollX'] = true;
+			$options['responsive'] = false;
 		}
 
 		return $options;
@@ -981,6 +1024,7 @@ class BaraTables_Service {
 		$filter_type = (string) ($record['filter'] ?? 'none');
 		$sort_priority = (int) ($record['sort_priority'] ?? 0);
 		$sort_direction = (string) ($record['sort_direction'] ?? 'asc');
+		$data_type = BaraTables_Cell_Semantics::normalize_type($record['data_type'] ?? 'auto');
 
 		return [
 			'key'    => $key,
@@ -1000,8 +1044,11 @@ class BaraTables_Service {
 			'sortable' => array_key_exists('sortable', $record) ? (bool) $record['sortable'] : true,
 			'filter_values' => isset($record['filter_values']) && is_array($record['filter_values']) ? array_values($record['filter_values']) : [],
 			'filter_type_priority' => $this->normalize_data_type_priority_list(isset($record['filter_type_priority']) && is_array($record['filter_type_priority']) ? $record['filter_type_priority'] : []),
-			'format_date' => !empty($record['format_date']),
-			'date_format' => (string) ($record['date_format'] ?? ''),
+			'format_date' => $data_type !== 'number' && !empty($record['format_date']),
+			'date_format' => $data_type !== 'number' ? (string) ($record['date_format'] ?? '') : '',
+			'data_type' => $data_type,
+			'conditional_rules' => BaraTables_Cell_Semantics::normalize_rules($record['conditional_rules'] ?? [], $data_type),
+			'footer_aggregate' => BaraTables_Cell_Semantics::normalize_aggregate($record['footer_aggregate'] ?? 'none', $data_type),
 		];
 	}
 
@@ -1223,6 +1270,11 @@ class BaraTables_Service {
 			'numberposts' => -1,
 			'fields' => 'ids',
 			'no_found_rows' => true,
+			// Recovery must visit linked charts in a stable order. Core's default date order is
+			// ambiguous for posts created in the same second and makes partial-write compensation
+			// depend on database tie ordering.
+			'orderby' => 'ID',
+			'order' => 'ASC',
 		]);
 		// Prime the meta cache in one query instead of letting the loop below issue a separate
 		// get_post_meta() lookup per chart. Same pattern (and reason) as
@@ -1393,7 +1445,10 @@ class BaraTables_Service {
 	 * row-level access control at all (manual data is filtered by no branch of get_rows()).
 	 */
 	public static function access_token_field_for_source(string $source_type): string {
-		if (BaraTables_Source_Type::is_custom_data($source_type)) {
+		if (
+			BaraTables_Source_Type::is_custom_data($source_type)
+			|| BaraTables_Source_Type::is_remote_snapshot($source_type)
+		) {
 			return '';
 		}
 		if (BaraTables_Source_Type::is_csv($source_type)) {
@@ -1486,6 +1541,8 @@ class BaraTables_Service {
 		}
 
 		$external_db = new class($user, $password, $dbname, $host) extends wpdb {
+			private bool $btbl_transport_timeouts = false;
+
 			public function __construct($dbuser, $dbpassword, $dbname, $dbhost) {
 				$this->dbuser = $dbuser;
 				$this->dbpassword = $dbpassword;
@@ -1495,6 +1552,55 @@ class BaraTables_Service {
 				$this->db_connect(false);
 			}
 
+			/** Connect with hard transport bounds before any external source can block a request. */
+			public function db_connect($allow_bail = true) {
+				$this->is_mysql = true;
+				// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_report -- Mirrors wpdb::db_connect(); required before a bounded external connection on PHP 8.1+.
+				mysqli_report(MYSQLI_REPORT_OFF);
+				// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_init -- wpdb exposes no pre-connect transport-timeout hook.
+				$this->dbh = mysqli_init();
+				if (!$this->dbh) {
+					return false;
+				}
+				// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_options -- Must be applied before connect; wpdb has no API for this bound.
+				$connect_bounded = mysqli_options($this->dbh, MYSQLI_OPT_CONNECT_TIMEOUT, 3);
+				if (!defined('MYSQLI_OPT_READ_TIMEOUT')) {
+					$this->dbh = null;
+					return false;
+				}
+				// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_options -- Must be applied before connect; wpdb has no API for this bound.
+				$read_bounded = mysqli_options($this->dbh, MYSQLI_OPT_READ_TIMEOUT, 5);
+				if (!$connect_bounded || !$read_bounded) {
+					$this->dbh = null;
+					return false;
+				}
+				$this->btbl_transport_timeouts = true;
+				$host = $this->dbhost;
+				$port = null;
+				$socket = null;
+				$is_ipv6 = false;
+				$host_data = $this->parse_db_host($this->dbhost);
+				if ($host_data) {
+					list($host, $port, $socket, $is_ipv6) = $host_data;
+				}
+				if ($is_ipv6 && extension_loaded('mysqlnd')) {
+					$host = '[' . $host . ']';
+				}
+				// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_real_connect -- Bounded equivalent of wpdb::db_connect() for a separate read-only source.
+				$connected = mysqli_real_connect($this->dbh, $host, $this->dbuser, $this->dbpassword, null, $port, $socket, 0);
+				if (!$connected || $this->dbh->connect_errno) {
+					$this->dbh = null;
+					return false;
+				}
+				$this->init_charset();
+				$this->has_connected = true;
+				$this->set_charset($this->dbh);
+				$this->ready = true;
+				$this->set_sql_mode();
+				$this->select($this->dbname, $this->dbh);
+				return true;
+			}
+
 			// Overrides wpdb::bail(); the signature is fixed by core, and neither argument is
 			// wanted here -- a failed external connection must fail silently rather than print
 			// WordPress's database-error page over the site.
@@ -1502,6 +1608,14 @@ class BaraTables_Service {
 			public function bail($message, $error_code = '500') {
 				$this->ready = false;
 				return false;
+			}
+
+			public function btbl_connection_identity(): string {
+				return $this->dbhost . '|' . $this->dbname . '|' . $this->dbuser;
+			}
+
+			public function btbl_transport_timeouts_enabled(): bool {
+				return $this->btbl_transport_timeouts;
 			}
 		};
 
@@ -1608,7 +1722,10 @@ class BaraTables_Service {
 		// fingerprinting it would cost an encode+hash of the entire dataset on every call -- more
 		// than the custom-data row path spends doing the work, which is pure array manipulation with
 		// no I/O. Nothing to memoize, so don't.
-		if (BaraTables_Source_Type::is_custom_data($definition['source_type'] ?? '')) {
+		if (
+			BaraTables_Source_Type::is_custom_data($definition['source_type'] ?? '')
+			|| BaraTables_Source_Type::is_remote_snapshot($definition['source_type'] ?? '')
+		) {
 			return '';
 		}
 		$fingerprint = wp_json_encode($definition);
@@ -1646,6 +1763,14 @@ class BaraTables_Service {
 		$row_limit = $limit > 0 ? min($limit, $configured_limit) : $configured_limit;
 
 		if (BaraTables_Source_Type::is_custom_data($definition['source_type'])) {
+			return $this->get_row_result_from_custom($definition, $row_limit);
+		}
+
+		if (BaraTables_Source_Type::is_remote_snapshot($definition['source_type'])) {
+			$snapshot = isset($definition['remote_snapshot']) && is_array($definition['remote_snapshot'])
+				? $definition['remote_snapshot']
+				: [];
+			$definition['custom_data'] = isset($snapshot['data']) && is_array($snapshot['data']) ? $snapshot['data'] : [];
 			return $this->get_row_result_from_custom($definition, $row_limit);
 		}
 
@@ -2586,6 +2711,9 @@ class BaraTables_Service {
 		$schema = self::build_table_option_schema();
 		$schema['caption']['label'] = __('Table caption', 'baratables');
 		$schema['caption']['description'] = __('Short heading shown with the table. Screen readers announce it with the table.', 'baratables');
+		$schema['serverSide']['label'] = __('Page large database tables on demand', 'baratables');
+		$schema['serverSide']['description'] = __('External databases only. Loads up to 100 rows per request with bounded database queries.', 'baratables');
+		$schema['serverSide']['editor_group'] = 'server_side';
 		$schema['paging']['label'] = __('Enable pagination', 'baratables');
 		$schema['lengthChange']['label'] = __('Show per page selector', 'baratables');
 		$schema['pagingNumbers']['label'] = __('Show page numbers', 'baratables');
@@ -2607,9 +2735,12 @@ class BaraTables_Service {
 		$schema['colReorder']['label'] = __('Allow column reordering', 'baratables');
 		$schema['stateSave']['label'] = __('Remember table state', 'baratables');
 		$schema['autoWidth']['label'] = __('Auto-size columns', 'baratables');
+		$schema['fixedHeader']['label'] = __('Keep header visible', 'baratables');
 		$schema['responsive']['label'] = __('Collapse columns on mobile', 'baratables');
 		$schema['responsive']['description'] = __('Wide tables stack their remaining columns into an expandable row instead of requiring horizontal scrolling. This replaces horizontal scrolling when enabled.', 'baratables');
 		$schema['scrollX']['label'] = __('Enable horizontal scrolling', 'baratables');
+		$schema['fixedColumnsEnabled']['label'] = __('Freeze leading columns', 'baratables');
+		$schema['fixedColumnsStart']['label'] = __('Columns to freeze', 'baratables');
 		$schema['scrollYEnabled']['label'] = __('Fixed scroll height', 'baratables');
 		$schema['scrollY']['label'] = __('Height (px)', 'baratables');
 		$schema['scrollCollapse']['label'] = __('Collapse when shorter', 'baratables');
@@ -2663,6 +2794,7 @@ class BaraTables_Service {
 			'searchBox' => ['searchText', 'searchPlaceholder', 'searchColumns', 'searchColumnsLabel', 'searchColumnsHeading'],
 			'info' => ['infoText', 'infoEmpty', 'infoFiltered'],
 			'filtersTitle' => ['filtersTitleText'],
+			'fixedColumnsEnabled' => ['fixedColumnsStart'],
 			'scrollYEnabled' => ['scrollY', 'scrollCollapse'],
 		];
 		foreach ($inline_controls as $parent => $children) {

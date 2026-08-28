@@ -108,6 +108,27 @@
 		};
 	}
 
+	function btblTypedNumber(data) {
+		if (typeof data !== 'string') { return null; }
+		var match = data.match(/data-btbl-number=(['"])([+-]?(?:\d+(?:\.\d*)?|\.\d+))\1/);
+		if (!match) { return null; }
+		var value = Number(match[2]);
+		return Number.isFinite(value) && Math.abs(value) <= 1000000000000 ? value : null;
+	}
+
+	var btblNumberTypeRegistered = false;
+	function btblRegisterNumberType() {
+		var ext = dataTablesLib() && dataTablesLib().ext;
+		if (btblNumberTypeRegistered || !ext || !ext.type) { return; }
+		btblNumberTypeRegistered = true;
+		ext.type.order['btbl-number-pre'] = function(data) {
+			var value = btblTypedNumber(data);
+			// Empty and malformed display values sort after valid values in ascending order and
+			// before them when the visitor reverses that order. They never become a fake zero.
+			return value === null ? Number.POSITIVE_INFINITY : value;
+		};
+	}
+
 	// Column filters apply a RegExp via column().search(regex), and the scoped search box owns
 	// a native column-group search; DataTables cannot serialize the RegExp (JSON.stringify turns
 	// it into {}, restoring as "[object Object]" and hiding every row), and both filter kinds
@@ -116,7 +137,7 @@
 	// both save and load; the load pass also repairs any poisoned entry written by an older
 	// plugin version, so returning visitors recover on their next page view without touching
 	// localStorage.
-	function sanitizeSavedTableState(data) {
+	function sanitizeSavedTableState(data, maxPageLength, fallbackPageLength) {
 		if (!data || typeof data !== 'object') {
 			return;
 		}
@@ -139,6 +160,32 @@
 		// column moved into that slot.
 		delete data.colReorder;
 		delete data.ColReorder;
+		if (maxPageLength) {
+			if (Array.isArray(data.order) && data.order.length > 3) {
+				data.order = data.order.slice(0, 3);
+			}
+			var savedTerm = data.search && typeof data.search.search === 'string' ? data.search.search : '';
+			if (savedTerm && new TextEncoder().encode(savedTerm).length > 100) {
+				data.search.search = '';
+			}
+			var length = parseInt(data.length, 10);
+			if (!length || length < 1 || length > maxPageLength) {
+				data.length = fallbackPageLength;
+			}
+			var start = parseInt(data.start, 10);
+			if (isNaN(start) || start < 0 || start + parseInt(data.length, 10) > 100000) {
+				data.start = 0;
+			}
+		}
+	}
+
+	function savedStateMatchesServerFirstPage(data, pageLength, order) {
+		if (!data || typeof data !== 'object' || !Object.keys(data).length) { return true; }
+		var search = data.search && typeof data.search.search === 'string' ? data.search.search : '';
+		var savedOrder = Array.isArray(data.order) ? data.order : order;
+		return (parseInt(data.start, 10) || 0) === 0 &&
+			(parseInt(data.length, 10) || pageLength) === pageLength &&
+			search === '' && JSON.stringify(savedOrder) === JSON.stringify(order);
 	}
 
 	function initChart(chartConfig, tableInstance, tableId, slugToIndex) {
@@ -279,6 +326,14 @@
 				}
 			});
 		}
+		if (config.typedColumns && typeof config.typedColumns === 'object') {
+			Object.keys(config.typedColumns).forEach(function(index) {
+				var column = config.typedColumns[index];
+				if (column && column.data_type === 'number') {
+					definitions.push({ targets: parseInt(index, 10), type: 'btbl-number' });
+				}
+			});
+		}
 		return definitions;
 	}
 
@@ -310,6 +365,9 @@
 			if (!key || !registry[key] || seen[key]) { return; }
 			seen[key] = true;
 			var definition = { extend: registry[key].extend };
+			if (['copy', 'csv', 'excel', 'pdf', 'print'].indexOf(key) !== -1) {
+				definition.footer = false;
+			}
 			var buttonText = resolveLabelHtml(options[registry[key].optionKey] || '', registry[key].defaultText);
 			if (buttonText !== '') { definition.text = buttonText; }
 			(utilityKeys.indexOf(key) !== -1 ? utilityDefinitions : definitions).push(definition);
@@ -326,10 +384,11 @@
 		return definitions;
 	}
 
-	function buildOrderDefinitions(config, slugToIndex) {
+	function buildOrderDefinitions(config, slugToIndex, maxOrders) {
 		var definitions = [];
 		if (!Array.isArray(config.defaultOrder)) { return definitions; }
-		config.defaultOrder.forEach(function(item) {
+		var source = maxOrders ? config.defaultOrder.slice(0, maxOrders) : config.defaultOrder;
+		source.forEach(function(item) {
 			if (!item || typeof item.slug === 'undefined') { return; }
 			var idx = slugIdx(slugToIndex, item.slug);
 			if (idx !== null && idx !== undefined) {
@@ -379,14 +438,26 @@
 		};
 	}
 
-	function buildDataTableConfiguration(options, config, slugToIndex, languageResult, searchFeatureItem) {
+	function fixedHeaderOffset() {
+		var adminBar = document.getElementById('wpadminbar');
+		if (!adminBar || window.getComputedStyle(adminBar).position !== 'fixed') {
+			return 0;
+		}
+		var rect = adminBar.getBoundingClientRect();
+		return rect.bottom > 0 ? Math.max(0, Math.round(rect.bottom)) : 0;
+	}
+
+	function buildDataTableConfiguration(options, config, slugToIndex, languageResult, searchFeatureItem, searchController) {
 		var buttonList = Array.isArray(options.buttons) ? options.buttons : [];
 		var layout = buildLayoutConfiguration(options, buttonList, searchFeatureItem);
 		var pageLength = parseInt(options.pageLength, 10);
 		if (!pageLength || pageLength < 1) { pageLength = 25; }
 		var scrollY = parseInt(options.scrollY, 10);
 		if (isNaN(scrollY) || scrollY < 0 || options.scrollYEnabled === false) { scrollY = 0; }
-		var order = buildOrderDefinitions(config, slugToIndex);
+		var fixedColumnsStart = parseInt(options.fixedColumnsStart, 10);
+		if (isNaN(fixedColumnsStart) || fixedColumnsStart < 1) { fixedColumnsStart = 1; }
+		var isServer = !!(config.serverSide && config.serverSide.url);
+		var order = buildOrderDefinitions(config, slugToIndex, isServer ? 3 : 0);
 		var tableConfig = {
 			pageLength: pageLength,
 			paging: options.paging !== false,
@@ -394,8 +465,22 @@
 			colReorder: options.colReorder === true,
 			stateSave: options.stateSave === true,
 			stateDuration: 0,
-			stateSaveParams: function(settings, data) { sanitizeSavedTableState(data); },
-			stateLoadParams: function(settings, data) { sanitizeSavedTableState(data); },
+			stateSaveParams: function(settings, data) {
+				sanitizeSavedTableState(data, isServer ? 100 : 0, pageLength);
+			},
+			stateLoadParams: function(settings, data) {
+				sanitizeSavedTableState(data, isServer ? 100 : 0, pageLength);
+				if (!isServer) { return; }
+				var savedTerm = data && data.search && typeof data.search.search === 'string' ? data.search.search : '';
+				if (searchController && searchController.adoptState) {
+					searchController.adoptState(savedTerm);
+				}
+				// deferLoading is safe only while the restored state still describes the exact
+				// server-rendered first page. Any other state must issue one authoritative draw.
+				if (!savedStateMatchesServerFirstPage(data, pageLength, order)) {
+					settings.deferLoading = false;
+				}
+			},
 			autoWidth: options.autoWidth !== false,
 			// The Responsive extension does not support horizontal scrolling; when responsive
 			// stacking is on it takes over and scrollX is never sent to DataTables.
@@ -407,8 +492,44 @@
 			columnDefs: buildColumnDefinitions(config),
 			language: languageResult.language,
 			search: { search: '', smart: true },
-			searchDelay: 250
+			searchDelay: config.serverSide && config.serverSide.url ? 500 : 250
 		};
+		if (config.serverSide && config.serverSide.url) {
+			var indexedSlugs = [];
+			Object.keys(slugToIndex || {}).forEach(function(slug) {
+				var index = parseInt(slugToIndex[slug], 10);
+				if (!isNaN(index) && index >= 0) { indexedSlugs[index] = slug; }
+			});
+			tableConfig.serverSide = true;
+			tableConfig.orderMulti = false;
+			tableConfig.processing = true;
+			var initialTerm = config.presetSearch && typeof config.presetSearch.term === 'string'
+				? config.presetSearch.term
+				: '';
+			if (!initialTerm) {
+				tableConfig.deferLoading = [
+					parseInt(config.serverSide.recordsFiltered, 10) || 0,
+					parseInt(config.serverSide.recordsTotal, 10) || 0
+				];
+			}
+			tableConfig.columns = indexedSlugs.map(function(slug) { return {name: slug || ''}; });
+			tableConfig.ajax = {
+				url: config.serverSide.url,
+				type: 'POST',
+				data: function(data) {
+					var state = searchController && searchController.getState
+						? searchController.getState()
+						: {term: '', columns: []};
+					data.action = config.serverSide.action;
+					data.table_id = config.serverSide.tableId;
+					data.token = config.serverSide.token;
+					data.btbl_search_term = state.term || '';
+					data.btbl_search_columns = JSON.stringify((state.columns || []).map(function(index) {
+						return indexedSlugs[parseInt(index, 10)] || '';
+					}).filter(Boolean));
+				}
+			};
+		}
 		if (scrollY > 0) {
 			tableConfig.scrollY = scrollY + 'px';
 			tableConfig.scrollCollapse = options.scrollCollapse !== false;
@@ -418,8 +539,102 @@
 		if (options.responsive === true) {
 			tableConfig.responsive = true;
 		}
+		if (options.fixedHeader === true) {
+			tableConfig.fixedHeader = { header: true, headerOffset: fixedHeaderOffset() };
+		}
+		// The server normalizes this relationship as well. Keeping the guard here makes the
+		// compiler safe when called directly in tests or by third-party integrations with raw
+		// options rather than the server-resolved payload.
+		if (options.fixedColumnsEnabled === true && options.responsive !== true) {
+			tableConfig.scrollX = true;
+			tableConfig.fixedColumns = { start: fixedColumnsStart };
+		}
 		tableConfig.layout = layout;
 		return tableConfig;
+	}
+
+	function formatAggregateNumber(value) {
+		if (!Number.isFinite(value)) { return ''; }
+		// Match PHP_ROUND_HALF_UP: ties round away from zero on both signs.
+		var magnitude = Math.floor((Math.abs(value) * 1000000) + 0.5 + 0.000000001);
+		var rounded = (value < 0 ? -magnitude : magnitude) / 1000000;
+		if (Math.abs(rounded) < 0.0000005) { rounded = 0; }
+		return rounded.toFixed(6).replace(/\.?0+$/, '');
+	}
+
+	function updateTypedFooters(table, tableEl, typedColumns) {
+		if (!typedColumns || typeof typedColumns !== 'object') { return; }
+		var aggregateIndexes = Object.keys(typedColumns).filter(function(index) {
+			var aggregate = typedColumns[index] && typedColumns[index].footer_aggregate;
+			return ['sum', 'average', 'min', 'max'].indexOf(aggregate) !== -1;
+		});
+		if (!aggregateIndexes.length) { return; }
+		var stats = {};
+		aggregateIndexes.forEach(function(index) {
+			stats[index] = {sum: 0, count: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY};
+		});
+		var rowData = table.rows({search: 'applied'}).data();
+		var rows = rowData && typeof rowData.toArray === 'function' ? rowData.toArray() : Array.from(rowData || []);
+		rows.forEach(function(row) {
+			aggregateIndexes.forEach(function(index) {
+				// DataTables 3 keeps API row arrays in their original data order when ColReorder
+				// moves presentation columns. The browser acceptance test filters after a move and
+				// proves this original index still produces the logical column's hardcoded total.
+				var value = btblTypedNumber(row[parseInt(index, 10)]);
+				if (value === null) { return; }
+				var stat = stats[index];
+				stat.sum += value;
+				stat.count += 1;
+				stat.min = Math.min(stat.min, value);
+				stat.max = Math.max(stat.max, value);
+			});
+		});
+		aggregateIndexes.forEach(function(index) {
+			var stat = stats[index];
+			var aggregate = typedColumns[index].footer_aggregate;
+			var result = null;
+			if (stat.count) {
+				if (aggregate === 'sum') { result = stat.sum; }
+				if (aggregate === 'average') { result = stat.sum / stat.count; }
+				if (aggregate === 'min') { result = stat.min; }
+				if (aggregate === 'max') { result = stat.max; }
+			}
+			var text = result === null ? '' : formatAggregateNumber(result);
+			var footerRoot = tableEl.closest('.btbl-table-wrapper') || tableEl;
+			footerRoot.querySelectorAll('tfoot [data-btbl-footer-column="' + index + '"]').forEach(function(footer) {
+				footer.textContent = text;
+				var label = footer.getAttribute('data-btbl-aggregate-label') || '';
+				footer.setAttribute('aria-label', label + (text ? ': ' + text : ''));
+			});
+		});
+	}
+
+	function syncResponsiveTypedStyles(wrapper) {
+		if (!wrapper) { return; }
+		var presets = ['accent', 'success', 'warning', 'danger'];
+		// AJAX rows carry the trusted numeric marker inside the cell, while server-rendered rows
+		// also have the preset class on <td>. Mirror it after every draw so both paths have the
+		// same cell background, including FixedColumns' cloned cells.
+		wrapper.querySelectorAll('tbody td').forEach(function(cell) {
+			presets.forEach(function(preset) { cell.classList.remove('btbl-condition-' + preset); });
+			var marker = cell.querySelector('.btbl-number-marker');
+			if (!marker) { return; }
+			presets.some(function(preset) {
+				if (!marker.classList.contains('btbl-condition-' + preset)) { return false; }
+				cell.classList.add('btbl-condition-' + preset);
+				return true;
+			});
+		});
+		wrapper.querySelectorAll('.dtr-data').forEach(function(container) {
+			presets.forEach(function(preset) { container.classList.remove('btbl-condition-' + preset); });
+			var marker = container.querySelector('.btbl-number-marker');
+			if (!marker) { return; }
+			presets.some(function(preset) {
+				if (!marker.classList.contains('btbl-condition-' + preset)) { return false; }
+				container.classList.add('btbl-condition-' + preset);
+				return true;
+			});
+		});
 	}
 
 	function initInstanceUnsafe(config) {
@@ -498,6 +713,8 @@
 			labelHtml: searchTextHtml,
 			labelPlain: searchTextPlain,
 			placeholder: searchPlaceholderText,
+			debounceDelay: config.serverSide && config.serverSide.url ? 500 : 250,
+			maxSearchBytes: config.serverSide && config.serverSide.url ? 100 : 0,
 			onChange: function(state) {
 				syncStateToUrl(null, state);
 			}
@@ -510,8 +727,9 @@
 			// controller.
 			searchFeatureItem = { btblSearch: searchController };
 		}
-		var tableConfig = buildDataTableConfiguration(resolvedOptions, config, slugToIndex, languageResult, searchFeatureItem);
+		var tableConfig = buildDataTableConfiguration(resolvedOptions, config, slugToIndex, languageResult, searchFeatureItem, searchController);
 		btblRegisterDateType();
+		btblRegisterNumberType();
 		if (typeof DataTableLib.isDataTable === 'function' && DataTableLib.isDataTable(tableEl)) {
 			// A page builder or AJAX swap can re-run the bootstrap while the previous table is
 			// still live. DataTables refuses to reinitialise (a modal alert at the visitor, by
@@ -520,6 +738,32 @@
 			new DataTableLib.Api(tableEl).destroy();
 		}
 		var table = new DataTableLib(tableEl, tableConfig);
+		if (config.serverSide && config.serverSide.url) {
+			table.on('xhr', function(event, settings, json) {
+				if (!json || json.error) { showRuntimeError(wrapper); }
+			});
+		}
+		var refreshTypedFooters = function() {
+			updateTypedFooters(table, tableEl, config.typedColumns || {});
+		};
+		table.on('draw', refreshTypedFooters);
+		refreshTypedFooters();
+		table.on('draw responsive-display', function() {
+			syncResponsiveTypedStyles(wrapper);
+		});
+		syncResponsiveTypedStyles(wrapper);
+		if (resolvedOptions.fixedHeader === true && table.fixedHeader && typeof table.fixedHeader.headerOffset === 'function') {
+			// WordPress changes the admin bar from fixed to absolute at narrow widths. Recompute
+			// after a responsive viewport change, and remove the listener with the table so AJAX
+			// reinits do not accumulate handlers.
+			var syncFixedHeaderOffset = function() {
+				table.fixedHeader.headerOffset(fixedHeaderOffset());
+			};
+			window.addEventListener('resize', syncFixedHeaderOffset);
+			table.on('destroy', function() {
+				window.removeEventListener('resize', syncFixedHeaderOffset);
+			});
+		}
 		if (searchController) {
 			searchController.attach(table);
 		}
@@ -544,6 +788,11 @@
 				asNodeList(column.nodes()).forEach(function(node) {
 					node.style.display = '';
 				});
+				if (typeof column.footer === 'function') {
+					asNodeList(column.footer()).forEach(function(node) {
+						node.style.display = '';
+					});
+				}
 			});
 		}
 

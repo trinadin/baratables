@@ -13,6 +13,8 @@ class BaraTables_Admin_Action_Handler {
 		'csv_attachment_id' => ['int', 'btbl_csv_attachment_id'],
 		'csv_has_header' => ['bool', 'btbl_csv_has_header'],
 		'csv_delimiter' => ['raw', 'btbl_csv_delimiter'],
+		'remote_url' => ['raw', 'btbl_remote_url'],
+		'remote_format' => ['raw', 'btbl_remote_format'],
 		'columns' => ['array_text', 'btbl_columns'],
 		'column_order' => ['text', 'btbl_column_order'],
 		'custom_columns' => ['array_raw', 'btbl_custom_columns'],
@@ -45,6 +47,9 @@ class BaraTables_Admin_Action_Handler {
 		'sortable' => ['array_raw', 'btbl_sortable'],
 		'format_date_flags' => ['array_raw', 'btbl_format_date'],
 		'date_formats' => ['array_raw', 'btbl_date_format'],
+		'data_types' => ['array_raw', 'btbl_data_type'],
+		'conditional_rules' => ['array_raw', 'btbl_conditional_rules'],
+		'footer_aggregates' => ['array_raw', 'btbl_footer_aggregate'],
 	];
 	private const ACCESS_INPUT_FIELDS = [
 		'access_user_meta' => ['raw', 'btbl_access_user_meta'],
@@ -165,6 +170,10 @@ class BaraTables_Admin_Action_Handler {
 			'csv_attachment_id' => $input['csv_attachment_id'],
 			'csv_has_header' => $input['csv_has_header'],
 			'csv_delimiter' => $csv_delimiter,
+			'remote_source' => [
+				'url' => BaraTables_Remote_Snapshot::sanitize_url($input['remote_url']),
+				'format' => BaraTables_Remote_Snapshot::sanitize_format($input['remote_format']),
+			],
 			'columns' => $columns,
 			'column_records' => $column_records,
 			'taxonomy_filter' => $this->service->sanitize_taxonomy_filter($post_types, $input['taxonomy'], $input['taxonomy_terms']),
@@ -314,6 +323,13 @@ class BaraTables_Admin_Action_Handler {
 		}
 		if ($request['source_type'] !== BaraTables_Source_Type::EXTERNAL_DB) {
 			unset($defn['external_db']);
+		}
+		if ($request['source_type'] !== BaraTables_Source_Type::REMOTE_SNAPSHOT) {
+			unset($defn['remote_source'], $defn['remote_snapshot']);
+		} else {
+			$defn['remote_source'] = $request['remote_source'];
+			// The latest stored snapshot stays on the server. Rows and provenance never round-trip
+			// through editor fields, so an ordinary Update cannot overwrite a concurrent fetch.
 		}
 
 		return $defn;

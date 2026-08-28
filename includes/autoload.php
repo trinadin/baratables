@@ -10,11 +10,15 @@ spl_autoload_register(static function (string $class): void {
 		'core.php' => ['BaraTables_Asset_Utils', 'BaraTables_Crypto', 'BaraTables_Id_Generator', 'BaraTables_Source_Type', 'BaraTables_Taxonomy_Filters'],
 		'repositories.php' => ['BaraTables_Abstract_CPT_Repository', 'BaraTables_Base_Repository', 'BaraTables_Chart_Repository', 'BaraTables_Entity_Descriptor', 'BaraTables_Persistence_Guard', 'BaraTables_Repository'],
 		'row-result.php' => ['BaraTables_Row_Result'],
+		'cell-semantics.php' => ['BaraTables_Cell_Semantics'],
+		'remote-snapshot.php' => ['BaraTables_Remote_Snapshot'],
 		'service-query-sanitize.php' => ['BaraTables_Query_Sanitizer'],
 		'service-filter-options.php' => ['BaraTables_Filter_Options_Trait'],
 		'service-value-format.php' => ['BaraTables_Value_Format_Trait'],
 		'service-fields-discovery.php' => ['BaraTables_Fields_Discovery'],
 		'service-column-state.php' => ['BaraTables_Column_State_Trait'],
+		'service-server-side.php' => ['BaraTables_Server_Side_Trait'],
+		'server-side.php' => ['BaraTables_Server_Side_Endpoint'],
 		'services.php' => ['BaraTables_Service'],
 		'table-presentation.php' => ['BaraTables_Table_Presentation'],
 		'chart-types.php' => ['BaraTables_Chart_Types'],
@@ -37,6 +41,10 @@ spl_autoload_register(static function (string $class): void {
 		'admin/admin.php' => ['BaraTables_Admin', 'BaraTables_Chart_Admin'],
 	];
 
+	if ($class === 'BaraTables_Import_Workbook') {
+		require_once __DIR__ . '/admin/import-workbook.php';
+		return;
+	}
 	if ($class === 'BaraTables_Importer' || strpos($class, 'BaraTables_Import_') === 0) {
 		require_once __DIR__ . '/admin/import.php';
 		return;

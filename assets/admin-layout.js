@@ -54,12 +54,43 @@ jQuery(function($) {
 		});
 	}
 
+	function normalizeScrollingOptions(changedKey) {
+		var $responsive = $('#btbl_table_flag_responsive');
+		var $scrollX = $('#btbl_table_flag_scrollx');
+		var $fixedColumns = $('#btbl_table_flag_fixedcolumnsenabled');
+		if (!$fixedColumns.length) { return false; }
+		var changed = false;
+		function setChecked($input, checked) {
+			if ($input.length && $input.is(':checked') !== checked) {
+				$input.prop('checked', checked);
+				changed = true;
+			}
+		}
+
+		// The control changed most recently wins. Frozen columns need scrollX and cannot share
+		// Responsive's collapsed-row model; turning Responsive on or horizontal scrolling off
+		// therefore turns freezing off. Enabling freezing establishes both prerequisites.
+		if (changedKey === 'responsive' && $responsive.is(':checked')) {
+			setChecked($fixedColumns, false);
+		} else if (changedKey === 'scrollX' && !$scrollX.is(':checked')) {
+			setChecked($fixedColumns, false);
+		} else if ($fixedColumns.is(':checked')) {
+			setChecked($responsive, false);
+			setChecked($scrollX, true);
+		}
+		return changed;
+	}
+
 	var defaultFlagSelector = 'input[type="checkbox"][data-btbl-restore-default="1"]';
 	$(document).on('pointerdown keydown change', defaultFlagSelector, function() { $(this).data('touched', true); });
 	$(document).on('change', 'input[type="checkbox"][name^="btbl_table_options"]', toggleTableOptionDependencies);
 	$(document).on('change', '.btbl-table-flags input[type="checkbox"][name^="btbl_table_options"]', function() {
+		var name = $(this).attr('name') || '';
+		var match = name.match(/^btbl_table_options\[([^\]]+)\]$/);
+		var compatibilityChanged = normalizeScrollingOptions(match ? match[1] : '');
 		toggleTableFlagOptions();
 		toggleTableOptionDependencies();
+		if (compatibilityChanged) { $(document).trigger('btbl:preview-state-change'); }
 	});
 	$(document).on('click', '.btbl-flag-options-toggle', function(event) {
 		event.preventDefault();
@@ -252,6 +283,7 @@ jQuery(function($) {
 		});
 	}
 
+	normalizeScrollingOptions('');
 	toggleTableFlagOptions();
 	toggleTableOptionDependencies();
 	$('.btbl-layout-builder').each(function() { initLayoutBuilder($(this)); });

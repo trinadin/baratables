@@ -41,6 +41,9 @@ final class BaraTables_Table_Presentation {
 			'non_sortable' => $column_state['non_sortable'],
 			'non_searchable' => $column_state['non_searchable'],
 			'default_sort' => $default_sort,
+			'typed_columns' => array_filter($column_state['models'], static function ($model) {
+				return ($model['data_type'] ?? 'auto') === 'number';
+			}),
 		];
 		if (!$include_preview) {
 			return $presentation;
@@ -149,6 +152,15 @@ final class BaraTables_Table_Presentation {
 					? '&nbsp;'
 					: $this->service->display_column_label($column, $index, (string) ($definition['source_type'] ?? '')),
 				'sort_direction' => $sorted_columns[$index] ?? null,
+				'data_type' => BaraTables_Cell_Semantics::normalize_type($column['data_type'] ?? 'auto'),
+				'conditional_rules' => BaraTables_Cell_Semantics::normalize_rules(
+					$column['conditional_rules'] ?? [],
+					BaraTables_Cell_Semantics::normalize_type($column['data_type'] ?? 'auto')
+				),
+				'footer_aggregate' => BaraTables_Cell_Semantics::normalize_aggregate(
+					$column['footer_aggregate'] ?? 'none',
+					BaraTables_Cell_Semantics::normalize_type($column['data_type'] ?? 'auto')
+				),
 			];
 		}
 		return [

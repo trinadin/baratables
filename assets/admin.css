@@ -11,6 +11,28 @@
 	--btbl-radius-pill: 999px;
 }
 
+/* The static preview does not load the public stylesheet, so repeat the fixed semantic palette
+   here to keep its conditional-format result visually identical. */
+.btbl-preview-table td.btbl-condition-accent {
+	background-color: #eaf4fb;
+	color: #135e96;
+}
+
+.btbl-preview-table td.btbl-condition-success {
+	background-color: #edfaef;
+	color: #14532d;
+}
+
+.btbl-preview-table td.btbl-condition-warning {
+	background-color: #fff8e1;
+	color: #6b4f00;
+}
+
+.btbl-preview-table td.btbl-condition-danger {
+	background-color: #fff0f0;
+	color: #8a1f11;
+}
+
 .btbl-admin .btbl-small-heading {
 	display: block;
 	margin-bottom: 6px;

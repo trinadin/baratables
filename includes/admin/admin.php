@@ -39,6 +39,7 @@ class BaraTables_Admin {
 		add_action('admin_notices', ['BaraTables_Admin_Notice', 'render']);
 		add_action('wp_ajax_btbl_refresh_preview', [$this, 'ajax_refresh_preview']);
 		add_action('wp_ajax_btbl_refresh_fields', [$this, 'ajax_refresh_fields']);
+		add_action('wp_ajax_btbl_fetch_remote_snapshot', [$this, 'ajax_fetch_remote_snapshot']);
 		add_action('wp_ajax_btbl_block_tables', [$this, 'ajax_block_tables']);
 		add_filter('admin_body_class', ['BaraTables_Help', 'body_class']);
 		add_action('wp_ajax_btbl_toggle_help', ['BaraTables_Help', 'ajax_toggle']);
@@ -175,6 +176,39 @@ class BaraTables_Admin {
 		wp_send_json_success(['html' => $html]);
 	}
 
+	/** Fetch only the already-saved remote config, then atomically replace only its snapshot. */
+	public function ajax_fetch_remote_snapshot(): void {
+		BaraTables_Admin_Ajax_Guard::verify(self::NONCE_ACTION, self::NONCE_FIELD);
+		$post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- AJAX nonce and capability verified above.
+		$post = $post_id > 0 ? get_post($post_id) : null;
+		if (!$post instanceof WP_Post || $post->post_type !== BaraTables_Repository::CPT) {
+			wp_send_json_error(['message' => __('Save the table before fetching a remote snapshot.', 'baratables')]);
+		}
+		$definition = get_post_meta($post_id, BaraTables_Repository::META_KEY, true);
+		if (!is_array($definition) || !BaraTables_Source_Type::is_remote_snapshot($definition['source_type'] ?? '')) {
+			wp_send_json_error(['message' => __('Save Remote snapshot as the data source before fetching.', 'baratables')]);
+		}
+		$config = isset($definition['remote_source']) && is_array($definition['remote_source']) ? $definition['remote_source'] : [];
+		$snapshot = BaraTables_Remote_Snapshot::fetch(
+			(string) ($config['url'] ?? ''),
+			(string) ($config['format'] ?? ''),
+			$this->service
+		);
+		if (is_wp_error($snapshot)) {
+			wp_send_json_error(['message' => $snapshot->get_error_message()]);
+		}
+
+		$definition = BaraTables_Remote_Snapshot::commit_fetched_snapshot($post_id, $config, $snapshot, $this->service);
+		if (is_wp_error($definition)) {
+			wp_send_json_error(['message' => $definition->get_error_message()]);
+		}
+		wp_send_json_success([
+			'message' => __('Remote snapshot updated. Reloading the editor...', 'baratables'),
+			'row_count' => (int) $snapshot['row_count'],
+			'column_count' => (int) $snapshot['column_count'],
+		]);
+	}
+
 	public function save_table_from_editor(int $post_id, WP_Post $post, bool $update): void {
 		if ($post->post_type !== BaraTables_Repository::CPT) {
 			return;
@@ -263,6 +297,7 @@ class BaraTables_Admin {
 				}
 				return;
 			}
+			$this->service->delete_server_side_rate_limits($old_slug);
 			$this->queue_table_rename_notice($old_slug, $slug, $requested_id, $rewrite['updated']);
 		}
 

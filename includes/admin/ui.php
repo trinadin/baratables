@@ -53,6 +53,13 @@ class BaraTables_Admin_Tab_General {
 		$csv_attachment_id = $context['csv_attachment_id'] ?? 0;
 		$csv_delimiter = $context['csv_delimiter'] ?? ',';
 		$csv_has_header = !empty($context['csv_has_header']);
+		$remote_url = $context['remote_url'] ?? '';
+		$remote_format = $context['remote_format'] ?? BaraTables_Remote_Snapshot::FORMAT_CSV;
+		$remote_snapshot = isset($context['remote_snapshot']) && is_array($context['remote_snapshot']) ? $context['remote_snapshot'] : [];
+		$remote_stale = !empty($remote_snapshot) && BaraTables_Remote_Snapshot::is_stale(
+			['url' => $remote_url, 'format' => $remote_format],
+			$remote_snapshot
+		);
 		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
 		$panel_class = $active_tab === 'btbl-tab-general' ? 'btbl-tab-panel is-active' : 'btbl-tab-panel';
 		$source_hidden_class = static function(string $target) use ($source_type): string {
@@ -73,6 +80,7 @@ class BaraTables_Admin_Tab_General {
 						<option value="custom_data" <?php selected($source_type, 'custom_data'); ?>><?php esc_html_e('Manual Data', 'baratables'); ?></option>
 						<option value="csv" <?php selected($source_type, 'csv'); ?>><?php esc_html_e('CSV File', 'baratables'); ?></option>
 						<option value="external_db" <?php selected($source_type, 'external_db'); ?>><?php esc_html_e('External Database', 'baratables'); ?></option>
+						<option value="remote_snapshot" <?php selected($source_type, 'remote_snapshot'); ?>><?php esc_html_e('Remote snapshot', 'baratables'); ?></option>
 					</select>
 					<p class="description"><?php esc_html_e('Choose where your table data will come from.', 'baratables'); ?></p>
 				</div>
@@ -99,6 +107,46 @@ class BaraTables_Admin_Tab_General {
 						<input type="checkbox" name="btbl_csv_has_header" id="btbl_csv_has_header" value="1" <?php checked($csv_has_header); ?> />
 						<span class="btbl-flag-text"><?php esc_html_e('First row contains column headers', 'baratables'); ?></span>
 					</label>
+				</div>
+			</div>
+			<div class="btbl-control-grid<?php echo esc_attr($source_hidden_class('remote_snapshot')); ?>" data-btbl-source="remote_snapshot">
+				<div class="btbl-control">
+					<label class="btbl-small-heading" for="btbl_remote_url"><?php esc_html_e('Public source URL', 'baratables'); ?></label>
+					<input type="url" name="btbl_remote_url" id="btbl_remote_url" class="large-text" value="<?php echo esc_attr($remote_url); ?>" placeholder="https://example.com/table.csv" />
+					<p class="description"><?php esc_html_e('HTTPS only. Authentication and private sources are not supported.', 'baratables'); ?></p>
+				</div>
+				<div class="btbl-control">
+					<label class="btbl-small-heading" for="btbl_remote_format"><?php esc_html_e('Source format', 'baratables'); ?></label>
+					<select name="btbl_remote_format" id="btbl_remote_format">
+						<option value="csv" <?php selected($remote_format, 'csv'); ?>><?php esc_html_e('CSV with header row', 'baratables'); ?></option>
+						<option value="json" <?php selected($remote_format, 'json'); ?>><?php esc_html_e('JSON record array', 'baratables'); ?></option>
+						<option value="google_sheets" <?php selected($remote_format, 'google_sheets'); ?>><?php esc_html_e('Public Google Sheet', 'baratables'); ?></option>
+					</select>
+					<p class="description"><?php esc_html_e('Save URL or format changes before fetching.', 'baratables'); ?></p>
+				</div>
+				<div class="btbl-control btbl-remote-snapshot-control">
+					<button type="button" class="button btbl-remote-fetch" data-can-fetch="<?php echo $remote_url !== '' ? '1' : '0'; ?>" <?php disabled($remote_url === ''); ?>><?php esc_html_e('Fetch snapshot', 'baratables'); ?></button>
+					<p class="description btbl-remote-status" aria-live="polite" data-saved-url="<?php echo esc_attr($remote_url); ?>" data-saved-format="<?php echo esc_attr($remote_format); ?>" data-dirty-message="<?php echo esc_attr__('Save table changes before fetching a snapshot.', 'baratables'); ?>" data-error-message="<?php echo esc_attr__('The snapshot could not be fetched. The previous snapshot was kept.', 'baratables'); ?>">
+						<?php if (empty($remote_snapshot)) : ?>
+							<?php esc_html_e('No snapshot yet. Save this source, then fetch it.', 'baratables'); ?>
+						<?php elseif ($remote_stale) : ?>
+							<?php esc_html_e('The last snapshot is from a different saved URL or format. Published output continues using that snapshot until a refresh succeeds.', 'baratables'); ?>
+						<?php else : ?>
+							<?php
+							echo esc_html(sprintf(
+								/* translators: 1: retained row count, 2: retained column count, 3: UTC fetch timestamp. */
+								__('%1$d rows and %2$d columns fetched at %3$s UTC.', 'baratables'),
+								(int) ($remote_snapshot['row_count'] ?? 0),
+								(int) ($remote_snapshot['column_count'] ?? 0),
+								(string) ($remote_snapshot['fetched_at_utc'] ?? '')
+							));
+							?>
+							<?php if (!empty($remote_snapshot['truncated_rows']) || !empty($remote_snapshot['truncated_columns'])) : ?>
+								<?php esc_html_e(' The source exceeded the snapshot limits and was truncated.', 'baratables'); ?>
+							<?php endif; ?>
+						<?php endif; ?>
+					</p>
+					<p class="description"><?php esc_html_e('Fetching is manual and admin-only. Published pages never contact this URL.', 'baratables'); ?></p>
 				</div>
 			</div>
 			<div class="btbl-control-grid<?php echo esc_attr($source_hidden_class('custom_data')); ?>" data-btbl-source="custom_data">
@@ -438,6 +486,17 @@ class BaraTables_Admin_Tab_Columns {
 								$selected_columns
 							);
 							?>
+						<?php elseif ($source_type === 'remote_snapshot') : ?>
+							<?php
+							$this->render_simple_column_group(
+								$display_columns,
+								__('Snapshot columns', 'baratables'),
+								__('No columns yet. Save the remote source, then fetch its first snapshot.', 'baratables'),
+								'custom:',
+								$column_option_state,
+								$selected_columns
+							);
+							?>
 							<?php else : ?>
 								<div>
 									<strong class="btbl-small-heading"><?php esc_html_e('Core fields', 'baratables'); ?></strong>
@@ -612,6 +671,11 @@ class BaraTables_Admin_Tab_Columns {
 		$sortable_checked = array_key_exists('sortable', $column) ? !empty($column['sortable']) : true;
 		$date_format_val = (string) ($column['date_format'] ?? '');
 		$format_date_checked = !empty($column['format_date']) || $date_format_val !== '';
+		$data_type_val = BaraTables_Cell_Semantics::normalize_type($column['data_type'] ?? 'auto');
+		$conditional_rules_text = BaraTables_Cell_Semantics::rules_to_text(
+			isset($column['conditional_rules']) && is_array($column['conditional_rules']) ? $column['conditional_rules'] : []
+		);
+		$footer_aggregate_val = BaraTables_Cell_Semantics::normalize_aggregate($column['footer_aggregate'] ?? 'none', $data_type_val);
 		$filter_values_text = '';
 		if (isset($column['filter_values']) && is_array($column['filter_values'])) {
 			$lines = [];
@@ -757,6 +821,39 @@ class BaraTables_Admin_Tab_Columns {
 							<input type="text" class="btbl-date-format-input" name="btbl_date_format[<?php echo esc_attr($slug_attr); ?>]" value="<?php echo esc_attr($date_format_val); ?>" placeholder="<?php echo esc_attr(get_option('date_format')); ?>" />
 						</label>
 					</div>
+					<p class="btbl-gear-section-heading"><?php esc_html_e('Numeric values', 'baratables'); ?></p>
+					<div class="btbl-options-row btbl-options-inline">
+						<label class="btbl-inline">
+							<span class="btbl-small-label"><?php esc_html_e('Value type', 'baratables'); ?></span>
+							<select name="btbl_data_type[<?php echo esc_attr($slug_attr); ?>]" class="btbl-data-type-select">
+								<option value="auto" <?php selected($data_type_val === 'auto'); ?>><?php esc_html_e('Automatic', 'baratables'); ?></option>
+								<option value="number" <?php selected($data_type_val === 'number'); ?>><?php esc_html_e('Number', 'baratables'); ?></option>
+							</select>
+						</label>
+						<p class="description btbl-field-hint"><?php esc_html_e('Number accepts plain decimals such as -12.5. Currency symbols, percentages, grouping separators, and words are left unchanged but excluded from numeric rules and totals.', 'baratables'); ?></p>
+					</div>
+					<div class="btbl-number-options <?php echo $data_type_val === 'number' ? '' : 'is-hidden'; ?>">
+						<div class="btbl-options-row btbl-options-inline">
+							<label class="btbl-inline">
+								<span class="btbl-small-label"><?php esc_html_e('Footer calculation', 'baratables'); ?></span>
+								<select name="btbl_footer_aggregate[<?php echo esc_attr($slug_attr); ?>]" class="btbl-footer-aggregate-select">
+									<option value="none" <?php selected($footer_aggregate_val === 'none'); ?>><?php esc_html_e('None', 'baratables'); ?></option>
+									<option value="sum" <?php selected($footer_aggregate_val === 'sum'); ?>><?php esc_html_e('Sum', 'baratables'); ?></option>
+									<option value="average" <?php selected($footer_aggregate_val === 'average'); ?>><?php esc_html_e('Average', 'baratables'); ?></option>
+									<option value="min" <?php selected($footer_aggregate_val === 'min'); ?>><?php esc_html_e('Minimum', 'baratables'); ?></option>
+									<option value="max" <?php selected($footer_aggregate_val === 'max'); ?>><?php esc_html_e('Maximum', 'baratables'); ?></option>
+								</select>
+							</label>
+							<p class="description btbl-field-hint"><?php esc_html_e('Calculates all loaded rows that match the visitor\'s current search and filters, not only the current page.', 'baratables'); ?></p>
+						</div>
+						<div class="btbl-options-row btbl-options-inline">
+							<label class="btbl-inline">
+								<span class="btbl-small-label"><?php esc_html_e('Conditional styles', 'baratables'); ?></span>
+								<textarea name="btbl_conditional_rules[<?php echo esc_attr($slug_attr); ?>]" class="btbl-conditional-rules" rows="4" placeholder="<?php esc_attr_e("< 0 => danger\n>= 100 => success", 'baratables'); ?>"><?php echo esc_textarea($conditional_rules_text); ?></textarea>
+							</label>
+							<p class="description btbl-field-hint"><?php esc_html_e('One rule per line, checked from top to bottom. Operators: <, <=, =, !=, >=, >. Styles: accent, success, warning, danger.', 'baratables'); ?></p>
+						</div>
+					</div>
 					<p class="btbl-gear-section-heading"><?php esc_html_e('Filter', 'baratables'); ?></p>
 					<div class="btbl-options-row">
 						<label class="btbl-inline">
@@ -833,6 +930,7 @@ class BaraTables_Admin_Tab_Table {
 		$layout_dependencies = [];
 		$layout_zones = [];
 		$buttons_config = null;
+		$server_side_config = null;
 		foreach ($option_schema as $key => $config) {
 			$editor_group = $config['editor_group'] ?? '';
 			if ($editor_group === 'controls') {
@@ -851,6 +949,8 @@ class BaraTables_Admin_Tab_Table {
 				}
 			} elseif ($editor_group === 'buttons') {
 				$buttons_config = ['key' => $key, 'config' => $config];
+			} elseif ($editor_group === 'server_side') {
+				$server_side_config = ['key' => $key, 'config' => $config];
 			}
 		}
 		foreach ($inline_controls as &$children) {
@@ -902,8 +1002,28 @@ class BaraTables_Admin_Tab_Table {
 		$accent_value = sanitize_hex_color((string) ($table_options['accentColor'] ?? '')) ?? '';
 		$theme_accent = BaraTables_Service::resolve_theme_accent();
 		$button_text_defaults = BaraTables_Service::frontend_label_defaults();
+		$server_side_state = isset($context['server_side_state']) && is_array($context['server_side_state'])
+			? $context['server_side_state']
+			: ['requested' => false, 'enabled' => false, 'reason' => ''];
 		?>
 		<div id="btbl-tab-table" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-table-label">
+			<?php if ($server_side_config) : ?>
+				<div class="btbl-control<?php echo ($context['source_type'] ?? '') === 'external_db' ? '' : ' is-hidden'; ?>" data-btbl-source="external_db">
+					<strong class="btbl-small-heading"><?php esc_html_e('Large database performance', 'baratables'); ?></strong>
+					<input type="hidden" name="btbl_table_options[serverSide]" value="0" />
+					<label class="btbl-checkbox-main" for="btbl_table_flag_serverside">
+						<input type="checkbox" id="btbl_table_flag_serverside" name="btbl_table_options[serverSide]" value="1" data-default="0" <?php checked(!empty($table_options['serverSide'])); ?> />
+						<span class="btbl-field-name"><?php echo esc_html($server_side_config['config']['label']); ?></span>
+					</label>
+					<p class="description"><?php echo esc_html($server_side_config['config']['description']); ?></p>
+					<p class="description"><?php esc_html_e('Requires pagination, selected database columns, and a non-null unique key. Column filters, row access rules, value/date transforms, footer calculations, data exports, and print remain on the standard loading mode.', 'baratables'); ?></p>
+					<?php if (!empty($server_side_state['requested']) && empty($server_side_state['enabled']) && !empty($server_side_state['reason'])) : ?>
+						<p class="description btbl-server-side-warning" role="status"><?php echo esc_html($server_side_state['reason']); ?> <?php esc_html_e('The table will keep using standard loading until this is resolved.', 'baratables'); ?></p>
+					<?php elseif (!empty($server_side_state['enabled'])) : ?>
+						<p class="description btbl-server-side-ready" role="status"><?php esc_html_e('Ready: database paging, sorting, and literal search are active on the published table.', 'baratables'); ?></p>
+					<?php endif; ?>
+				</div>
+			<?php endif; ?>
 				<div class="btbl-control">
 					<strong class="btbl-small-heading"><?php esc_html_e('Table settings', 'baratables'); ?></strong>
 					<p class="description"><?php esc_html_e('Off keeps the default. Turn one on to set it for this table.', 'baratables'); ?></p>

@@ -96,6 +96,24 @@ abstract class BaraTables_Base_Repository {
 		}
 	}
 
+	/** Compare-and-swap a definition; never roll back across a concurrent writer. */
+	public static function persist_definition_if_unchanged(int $post_id, string $meta_key, array $expected, array $definition): ?WP_Error {
+		BaraTables_Persistence_Guard::begin();
+		try {
+			update_post_meta($post_id, $meta_key, wp_slash($definition), $expected);
+			$stored = get_post_meta($post_id, $meta_key, true);
+			if (is_array($stored) && $stored === $definition) {
+				return null;
+			}
+			if (!is_array($stored) || $stored !== $expected) {
+				return new WP_Error('baratables_definition_conflict', __('The plugin definition changed during this operation.', 'baratables'));
+			}
+			return new WP_Error('baratables_definition_not_saved', __('WordPress did not save the plugin definition.', 'baratables'));
+		} finally {
+			BaraTables_Persistence_Guard::end();
+		}
+	}
+
 	/** Write a definition and lookup ID as one compensated persistence unit. */
 	public static function persist(int $post_id, string $meta_key, string $meta_slug, array $definition, string $slug): ?WP_Error {
 		$before_definition = self::snapshot_meta($post_id, $meta_key);

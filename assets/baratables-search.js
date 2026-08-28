@@ -37,7 +37,28 @@
 		var resolvedOptions = options.resolvedOptions || {};
 		var presetColumns = Array.isArray(options.presetColumns) ? options.presetColumns : [];
 		var presetTerm = typeof options.presetTerm === 'string' ? options.presetTerm : '';
+		var maxSearchBytes = parseInt(options.maxSearchBytes, 10);
+		if (isNaN(maxSearchBytes) || maxSearchBytes < 1) { maxSearchBytes = 0; }
+		var termEncoder = new TextEncoder();
+		function boundedTerm(value) {
+			value = typeof value === 'string' ? value : '';
+			if (!maxSearchBytes || termEncoder.encode(value).length <= maxSearchBytes) {
+				return value;
+			}
+			var output = '';
+			var outputBytes = 0;
+			for (var character of value) {
+				var characterBytes = termEncoder.encode(character).length;
+				if (outputBytes + characterBytes > maxSearchBytes) { break; }
+				output += character;
+				outputBytes += characterBytes;
+			}
+			return output;
+		}
+		presetTerm = boundedTerm(presetTerm);
 		var enableColumnPicker = resolvedOptions.searchColumns !== false;
+		var debounceDelay = parseInt(options.debounceDelay, 10);
+		if (isNaN(debounceDelay) || debounceDelay < 0) { debounceDelay = 250; }
 
 		var searchableColumns = [];
 		var searchableColumnIndices = [];
@@ -127,7 +148,8 @@
 		}
 
 		function applySearchFromInput() {
-			var term = inputEl ? inputEl.value : '';
+			var term = boundedTerm(inputEl ? inputEl.value : '');
+			if (inputEl && inputEl.value !== term) { inputEl.value = term; }
 			searchState.term = term;
 			writeSearch(term, searchState.columns.length ? searchState.columns : null);
 			changed();
@@ -209,6 +231,7 @@
 			inputEl.className = inputClass;
 			inputEl.id = uid;
 			inputEl.autocomplete = 'off';
+			if (maxSearchBytes) { inputEl.maxLength = maxSearchBytes; }
 			inputEl.setAttribute('aria-controls', settings.tableId || '');
 			if (usesVisualLabel && options.labelPlain) {
 				// The visible label is an HTML span hidden from assistive tech, so without this
@@ -240,7 +263,7 @@
 				if (debounceTimer) {
 					window.clearTimeout(debounceTimer);
 				}
-				debounceTimer = window.setTimeout(applySearchFromInput, 250);
+				debounceTimer = window.setTimeout(applySearchFromInput, debounceDelay);
 			});
 			inputEl.addEventListener('keypress', function(event) {
 				if (event.key === 'Enter') {
@@ -427,6 +450,14 @@
 			},
 			getState: function() {
 				return searchState;
+			},
+			adoptState: function(term) {
+				term = boundedTerm(term);
+				searchState.term = term;
+				if (inputEl && inputEl.value !== term) {
+					inputEl.value = term;
+					syncFilledState();
+				}
 			},
 			getColumns: function() {
 				return searchableColumns;

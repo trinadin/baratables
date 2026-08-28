@@ -49,6 +49,8 @@ jQuery(function($) {
 		var $filterValuesRow = $label.find('.btbl-filter-values-row');
 		var $filterLabelRow = $label.find('.btbl-filter-label-row');
 		var $dateRow = $label.find('.btbl-date-format-row');
+		var $dataType = $label.find('.btbl-data-type-select');
+		var $numberOptions = $label.find('.btbl-number-options');
 		var isDateCandidate = $dateRow.data('date-candidate') === 1 || $dateRow.data('date-candidate') === '1' || $dateRow.data('date-candidate') === true;
 		var $fieldControls = $label.find('.btbl-field-controls');
 		var $optionsToggle = $label.find('.btbl-options-toggle');
@@ -60,6 +62,7 @@ jQuery(function($) {
 		var filterSort = $sortSelect.val() || 'asc';
 		var customFilterSort = filterSort === 'custom' || filterSort === 'none';
 		var sortEnabled = $sortToggle.is(':checked');
+		var numberEnabled = checked && $dataType.val() === 'number';
 
 		var headingInputEnabled = checked && !hideColumnChecked;
 
@@ -93,6 +96,7 @@ jQuery(function($) {
 		} else {
 			$dateRow.addClass('is-hidden');
 		}
+		$numberOptions.toggleClass('is-hidden', !numberEnabled);
 
 		$sortableRow.toggleClass('is-hidden', !sortableEnabled);
 		// Keep sortable state; default handled by server-side state.
@@ -150,6 +154,19 @@ jQuery(function($) {
 		});
 		$label.find('.btbl-sortable-toggle').on('change', function() {
 			$(this).data('touched', true);
+		});
+		$label.find('.btbl-data-type-select').on('change', function() {
+			if ($(this).val() === 'number') {
+				$label.find('.btbl-format-date-toggle').prop('checked', false);
+				$label.find('.btbl-date-format-input').val('');
+			}
+			toggleFilterControls($label);
+		});
+		$label.find('.btbl-format-date-toggle').on('change', function() {
+			if ($(this).is(':checked')) {
+				$label.find('.btbl-data-type-select').val('auto');
+			}
+			toggleFilterControls($label);
 		});
 		$label.find('.btbl-options-toggle').on('click', function(e) {
 			e.preventDefault();
@@ -778,6 +795,9 @@ jQuery(function($) {
 		$('input[name^="btbl_dropdown_"]').prop('checked', false);
 		$('.btbl-date-format-input').val('');
 		$('.btbl-format-date-toggle').prop('checked', false);
+		$('.btbl-data-type-select').val('auto');
+		$('.btbl-footer-aggregate-select').val('none');
+		$('.btbl-conditional-rules').val('');
 		$('textarea[name^="btbl_filter_values"]').val('');
 		$('.btbl-hide-column, .btbl-sort-enabled, .btbl-sortable-toggle').prop('checked', false);
 		$('.btbl-sort-priority').val('');
@@ -1164,7 +1184,30 @@ jQuery(function($) {
 	if (!$builderForm.length) { $builderForm = $('#post'); }
 	var $previewTarget = $('#btbl-preview-target');
 	var previewedState = $builderForm.length ? $builderForm.serialize() : '';
+	function serializeTableBuilder() {
+		return $('#btbl-table-builder').find(':input').serialize();
+	}
+	function serializeRemoteFetchState() {
+		return serializeTableBuilder() + '&post_title=' + encodeURIComponent($('#title').val() || '');
+	}
+	var savedBuilderState = serializeRemoteFetchState();
 	var previewRefreshPending = false;
+	var $remoteFetch = $('.btbl-remote-fetch');
+	var $remoteStatus = $('.btbl-remote-status');
+	if ($remoteStatus.length) {
+		$remoteStatus.data('clean-status', $remoteStatus.text().trim());
+	}
+	function syncRemoteFetchState() {
+		if (!$remoteFetch.length || !$builderForm.length) { return; }
+		var dirtyFromSaved = serializeRemoteFetchState() !== savedBuilderState;
+		var canFetch = String($remoteFetch.data('can-fetch') || '') === '1';
+		$remoteFetch.prop('disabled', !canFetch || dirtyFromSaved);
+		if ($remoteStatus.length) {
+			$remoteStatus.text(dirtyFromSaved
+				? ($remoteStatus.data('dirty-message') || '')
+				: ($remoteStatus.data('clean-status') || ''));
+		}
+	}
 	function setPreviewStale(stale) {
 		if (!$previewTarget.length) { return; }
 		$previewTarget.toggleClass('is-stale', stale).prop('inert', stale);
@@ -1184,6 +1227,7 @@ jQuery(function($) {
 		var dirty = $builderForm.serialize() !== previewedState;
 		$('.btbl-preview-toolbar').prop('hidden', !dirty);
 		setPreviewStale(dirty || previewRefreshPending);
+		syncRemoteFetchState();
 	}
 	// Debounce the input-driven path only. A manual-data grid is thousands of text inputs inside
 	// this form, and syncRefreshPreviewVisibility() serialize()s the whole #post form; running that
@@ -1195,10 +1239,42 @@ jQuery(function($) {
 		clearTimeout(refreshPreviewDebounce);
 		refreshPreviewDebounce = setTimeout(syncRefreshPreviewVisibility, 200);
 	});
+	$(document).on('change input', '#title', syncRemoteFetchState);
 	$(document).on('btbl:preview-state-change', function() {
 		clearTimeout(refreshPreviewDebounce);
 		refreshPreviewDebounce = setTimeout(syncRefreshPreviewVisibility, 200);
 	});
+
+	$remoteFetch.on('click', function(e) {
+		e.preventDefault();
+		if (serializeRemoteFetchState() !== savedBuilderState) {
+			syncRemoteFetchState();
+			return;
+		}
+		$remoteFetch.prop('disabled', true);
+		$remoteStatus.text('');
+		requestFragment({
+			key: 'remote-snapshot',
+			control: $remoteFetch,
+			data: {action: 'btbl_fetch_remote_snapshot'},
+			validate: function(response) { return !!(response && response.data && typeof response.data.message === 'string'); },
+			success: function(data, response) {
+				$remoteStatus.text(data.message);
+				if (response.success) {
+					window.location.reload();
+				}
+			},
+			fallback: function() {
+				$remoteStatus.text($remoteStatus.data('error-message') || '');
+			},
+			always: function(isCurrent) {
+				if (isCurrent && serializeRemoteFetchState() === savedBuilderState) {
+					$remoteFetch.prop('disabled', String($remoteFetch.data('can-fetch') || '') !== '1');
+				}
+			}
+		});
+	});
+	syncRemoteFetchState();
 
 	// Refresh the table preview against the current unsaved builder state.
 	$(document).on('click', '#btbl-refresh-preview', function(e) {

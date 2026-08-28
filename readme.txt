@@ -4,17 +4,17 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.2
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Create searchable, sortable WordPress tables and charts from CSV files, manual rows, posts, or external databases.
+Create searchable, sortable WordPress tables and charts from files, public snapshots, posts, or databases.
 
 == Description ==
 
-BaraTables builds interactive tables and charts from manual rows, CSV uploads, WordPress content, or an external MySQL/MariaDB database, then publishes them with a shortcode or a block.
+BaraTables builds interactive tables and charts from manual rows, CSV uploads, public remote snapshots, WordPress content, or an external MySQL/MariaDB database, then publishes them with a shortcode or a block.
 
-Import a JSON, XML, HTML, CSV, TXT, or ZIP export from another table plugin or spreadsheet to rebuild a table.
+Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another table plugin or spreadsheet to rebuild a table.
 
 Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, and column visibility controls. Charts draw from any BaraTables table and embed with their own shortcode.
 
@@ -22,7 +22,10 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 * Add search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, including filtering by category or tag
 * Export table data to CSV, Excel, or PDF, copy it, or print it
-* Reorder columns and control column visibility
+* Reorder columns, control column visibility, keep headers visible, and freeze leading columns while scrolling
+* Treat a column as strict numbers for reliable numeric sorting, conditional color presets, and filtered sum, average, minimum, or maximum footers
+* Fetch a bounded snapshot from a public CSV, JSON record array, or Google Sheet without contacting it from published pages
+* Page large external MySQL/MariaDB tables on demand with bounded database queries
 * Collapse wide tables into stacked, expandable rows on small screens
 * Match your theme automatically: colors follow your theme's palette, with an optional custom accent color
 * Restrict WordPress-content, CSV, and external-database rows by user role or user metadata
@@ -41,19 +44,23 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 = What data sources are supported? =
 
-CSV files, manual data entry, WordPress content, and external MySQL/MariaDB databases.
+CSV files, manual data entry, WordPress content, external MySQL/MariaDB databases, and stored snapshots from public CSV, JSON-record, or Google Sheets URLs.
+
+Remote snapshots are manual and administrator-only. Save the public HTTPS URL and format, then click Fetch snapshot. Published tables and charts use the last successful stored snapshot and never contact the source. CSV and Google Sheets endpoints must return `text/csv` or `application/csv`; generic `text/plain` downloads are rejected. Authentication, private Sheets, scheduled refresh, and schema-changing refreshes are not supported; create a new table when remote column headings change.
 
 = Which table plugin exports can I import? =
 
 Use a TablePress single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports work; export an externally connected Ninja table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and wpDataTables or Tablesome data-only CSV also import, as do HTML tables. A ZIP imports the first supported table and reports how many were found.
 
-Imports rebuild the table data and compatible display settings, not plugin-specific styling, formulas, shortcodes, charts, or external data connections. Export XLS or XLSX files as CSV first.
+Imports rebuild table data and compatible display settings, not plugin-specific styling, formulas, macros, shortcodes, charts, or external data connections. XLSX and ODS formulas use stored cached results and are never executed; save legacy XLS or encrypted workbooks as XLSX, ODS, or CSV first.
 
 Uploads and pasted imports can be up to 5 MB. A ZIP can hold 50 entries of up to 5 MB each, and up to 20 MB expanded.
 
 = How many rows can a table load? =
 
 Each table loads up to 1,000 rows by default. The Options tab sets a limit from 1 to 10,000 rows for tables and charts on every data source.
+
+External MySQL/MariaDB tables can instead opt into large database performance mode. It loads at most 100 rows per request and lets the database page, sort, and perform literal search across up to 100,000 addressable results. It requires selected database columns, pagination, and a non-null single-column primary or unique key. Row access rules, value/date transforms, column filter controls, footer calculations, data exports, print, and charts keep using standard loading so their whole-table meaning does not silently change. Database search follows the source collation, which controls case and accent matching.
 
 = Can I link to a filtered view of a table? =
 
@@ -66,6 +73,10 @@ Create a table first, then go to Charts and create a new chart linked to that ta
 = Can I customize the table appearance? =
 
 Yes. The Options tab provides controls for striping, hover, borders, compact mode, pagination style, button labels, search text, and info display, and layout zones control where controls appear.
+
+= How do numeric rules and footer calculations work? =
+
+Choose Number in a column's settings. Plain decimals such as -12.5 participate in numeric sorting, conditional styles, and footer calculations. Currency symbols, percentages, grouping separators, words, blank cells, and values outside the supported range stay visible but are excluded. Footers calculate every loaded row matching the current search and filters, not only the current page; they do not calculate rows beyond the table's row limit and are not added to exports.
 
 = Can I style BaraTables with custom CSS? =
 
@@ -84,6 +95,15 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 5. Responsive table on a phone: collapsed columns expand into a stacked row.
 
 == Changelog ==
+
+= 1.3.3 =
+New:
+
+* Import XLSX and ODS workbooks, including stored results for formulas without executing them.
+* Fetch a stored table snapshot from a public CSV, JSON-record, or Google Sheets URL.
+* Keep headers visible and freeze leading columns while a wide table scrolls.
+* Add strict numeric sorting, conditional color rules, and filtered footer calculations.
+* Page, sort, and search large external MySQL/MariaDB tables on demand with bounded queries.
 
 = 1.3.2 =
 * The table preview now clearly indicates when it needs refreshing, stays unavailable until refreshed, and recognizes when changes are undone.
@@ -288,6 +308,9 @@ Security:
 
 == Upgrade Notice ==
 
+= 1.3.3 =
+Adds workbook imports, remote snapshots, fixed headers and columns, numeric rules and footers, and bounded database paging.
+
 = 1.3.2 =
 Makes table preview refreshes reliable and clarifies which options have additional settings.
 
@@ -332,6 +355,8 @@ This plugin bundles these libraries and admin thumbnail images, all under GPL-co
 * DataTables Buttons v4.0.2 - MIT License - https://github.com/DataTables/Buttons/tree/4.0.2 (bundles FileSaver.js - MIT License - https://github.com/eligrey/FileSaver.js/tree/1.3.3)
 * DataTables ColReorder v3.0.1 - MIT License - https://github.com/DataTables/ColReorder/tree/3.0.1
 * DataTables Responsive v4.0.2 - MIT License - https://github.com/DataTables/Responsive/tree/4.0.2
+* DataTables FixedHeader v5.0.0 - MIT License - https://github.com/DataTables/FixedHeader/tree/5.0.0
+* DataTables FixedColumns v6.0.0 - MIT License - https://github.com/DataTables/FixedColumns/tree/6.0.0
 * Tom Select v2.6.2 - Apache License 2.0 - https://github.com/orchidjs/tom-select/tree/v2.6.2
 * JSZip v3.10.1 - MIT License - https://github.com/Stuk/jszip/tree/v3.10.1 (bundles pako - MIT License - https://github.com/nodeca/pako)
 * pdfmake v0.2.23 - MIT License - https://github.com/bpampuch/pdfmake/tree/0.2.23 (bundles the Roboto fonts - Apache License 2.0)

@@ -1661,25 +1661,38 @@ class BaraTables_Importer {
 			$result['message'] = __('The ZIP file is invalid or damaged.', 'baratables');
 			return $result;
 		}
-		if ($zip->numFiles > 50) {
+		$is_xlsx = $zip->locateName('[Content_Types].xml', ZipArchive::FL_NOCASE) !== false
+			&& $zip->locateName('xl/workbook.xml', ZipArchive::FL_NOCASE) !== false;
+		$ods_mimetype = false;
+		$ods_mimetype_index = $zip->locateName('mimetype');
+		if ($ods_mimetype_index !== false) {
+			$ods_mimetype_stat = $zip->statIndex((int) $ods_mimetype_index);
+			// The ODF mimetype is a fixed 46-byte ASCII string. Bound the read before
+			// getFromIndex() so a forged first entry cannot inflate in memory during detection.
+			if (is_array($ods_mimetype_stat) && (int) ($ods_mimetype_stat['size'] ?? 0) <= 128) {
+				$ods_mimetype = $zip->getFromIndex((int) $ods_mimetype_index);
+			}
+		}
+		$is_ods = is_string($ods_mimetype)
+			&& trim($ods_mimetype) === 'application/vnd.oasis.opendocument.spreadsheet';
+		$max_entries = ($is_xlsx || $is_ods) ? 200 : 50;
+		if ($zip->numFiles > $max_entries) {
 			$zip->close();
 			wp_delete_file($temp_file);
-			$result['message'] = __('The ZIP file contains too many entries. Import a ZIP with at most 50 files.', 'baratables');
+			$result['message'] = $is_xlsx || $is_ods
+				? __('The spreadsheet contains too many internal files to import safely.', 'baratables')
+				: __('The ZIP file contains too many entries. Import a ZIP with at most 50 files.', 'baratables');
 			return $result;
 		}
 
 		$entry_names = [];
 		$total_size = 0;
-		$is_xlsx = false;
 		for ($i = 0; $i < $zip->numFiles; $i++) {
 			$stat = $zip->statIndex($i);
 			if (!is_array($stat) || !isset($stat['name'])) {
 				continue;
 			}
 			$name = str_replace('\\', '/', (string) $stat['name']);
-			if ($name === '[Content_Types].xml' || strpos($name, 'xl/') === 0) {
-				$is_xlsx = true;
-			}
 			if (substr($name, -1) === '/') {
 				continue;
 			}
@@ -1696,11 +1709,16 @@ class BaraTables_Importer {
 				$entry_names[$i] = basename($name);
 			}
 		}
-		if ($is_xlsx) {
+		if ($is_xlsx || $is_ods) {
+			$result['format'] = $is_xlsx ? 'xlsx' : 'ods';
+			$parsed = BaraTables_Import_Workbook::to_normalized_list($zip, $result['format']);
 			$zip->close();
 			wp_delete_file($temp_file);
-			$result['message'] = __('Spreadsheet files cannot be read directly. Export the table as CSV, then import that file.', 'baratables');
-			return $result;
+			if ($parsed['message'] !== '') {
+				$result['message'] = $parsed['message'];
+				return $result;
+			}
+			return self::build_manual($result, $parsed['tables'], $service);
 		}
 
 		$selected_warnings = [];
@@ -1776,7 +1794,7 @@ class BaraTables_Importer {
 	}
 
 	private static function unknown_message(): string {
-		return __('This file is not a supported table export. Use JSON, XML, HTML, CSV, TXT, or ZIP. A spreadsheet needs a header row followed by data rows.', 'baratables');
+		return __('This file is not a supported table export. Use JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP. A spreadsheet needs a header row followed by data rows.', 'baratables');
 	}
 
 	/**
@@ -1796,7 +1814,7 @@ class BaraTables_Importer {
 			return [
 				'format' => 'unsupported',
 				'decoded' => null,
-				'reason' => __('Legacy spreadsheet files cannot be read directly. Export the table as CSV, then import that file.', 'baratables'),
+				'reason' => __('Legacy XLS or encrypted spreadsheet files cannot be read directly. Save an unencrypted copy as XLSX, ODS, or CSV, then import that file.', 'baratables'),
 			];
 		}
 		if (strncmp($raw_head, 'PK', 2) === 0) {

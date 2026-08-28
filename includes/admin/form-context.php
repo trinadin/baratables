@@ -78,6 +78,12 @@ class BaraTables_Admin_Form_Context {
 		$csv_has_header = isset($request['csv_header']) ? (bool) $request['csv_header'] : $original_has_header;
 		$csv_delimiter_raw = isset($request['csv_delim']) ? (string) $request['csv_delim'] : $original_delimiter_raw;
 		$csv_delimiter = $csv_delimiter_raw !== '' ? substr($csv_delimiter_raw, 0, 1) : ',';
+		$remote_source = isset($editing_defn['remote_source']) && is_array($editing_defn['remote_source']) ? $editing_defn['remote_source'] : [];
+		$remote_url = BaraTables_Remote_Snapshot::sanitize_url($remote_source['url'] ?? '');
+		$remote_format = BaraTables_Remote_Snapshot::sanitize_format($remote_source['format'] ?? BaraTables_Remote_Snapshot::FORMAT_CSV);
+		$remote_snapshot = isset($editing_defn['remote_snapshot']) && is_array($editing_defn['remote_snapshot'])
+			? $editing_defn['remote_snapshot']
+			: [];
 		$is_post_request = ($request['request_method'] ?? '') === 'POST';
 		$csv_inputs_changed = BaraTables_Source_Type::is_csv($source_type) && (
 			$csv_attachment_id !== $original_attachment_id
@@ -107,6 +113,9 @@ class BaraTables_Admin_Form_Context {
 			'csv_attachment_id',
 			'csv_has_header',
 			'csv_delimiter',
+			'remote_url',
+			'remote_format',
+			'remote_snapshot',
 			'columns_should_reset'
 		);
 	}
@@ -119,6 +128,7 @@ class BaraTables_Admin_Form_Context {
 		$csv_attachment_id = $source['csv_attachment_id'];
 		$csv_has_header = $source['csv_has_header'];
 		$csv_delimiter = $source['csv_delimiter'];
+		$remote_snapshot = $source['remote_snapshot'];
 		$inferred = [];
 		$source_error = '';
 		if (BaraTables_Source_Type::is_csv($source_type)) {
@@ -140,6 +150,8 @@ class BaraTables_Admin_Form_Context {
 			$result = $this->service->get_row_result($source_definition, 50);
 			$inferred = $result->inferred_columns();
 			$source_error = $result->has_error() ? $result->error_message() : '';
+		} elseif (BaraTables_Source_Type::is_remote_snapshot($source_type) && !empty($remote_snapshot['data']['columns'])) {
+			$inferred = $this->service->build_custom_display_columns((array) $remote_snapshot['data']['columns']);
 		}
 
 		if ($custom_query_empty) {
@@ -166,6 +178,8 @@ class BaraTables_Admin_Form_Context {
 				$source_columns = !empty($inferred) ? $inferred : ($editing_defn['columns'] ?? []);
 			}
 		} elseif (BaraTables_Source_Type::is_external_db($source_type)) {
+			$source_columns = !empty($inferred) ? $inferred : ($editing_defn['columns'] ?? []);
+		} elseif (BaraTables_Source_Type::is_remote_snapshot($source_type)) {
 			$source_columns = !empty($inferred) ? $inferred : ($editing_defn['columns'] ?? []);
 		}
 
@@ -335,6 +349,7 @@ class BaraTables_Admin_Form_Context {
 			'custom_query_raw' => '',
 			'value_overrides_raw' => '',
 			'table_options' => $this->service->get_default_table_options(),
+			'server_side_state' => ['requested' => false, 'enabled' => false, 'reason' => '', 'key' => ''],
 			'access_user_meta' => '',
 			'access_post_meta' => '',
 			'access_csv_column' => '',
@@ -348,6 +363,9 @@ class BaraTables_Admin_Form_Context {
 			'external_table' => '',
 			'external_charset' => '',
 			'external_port' => '',
+			'remote_url' => '',
+			'remote_format' => BaraTables_Remote_Snapshot::FORMAT_CSV,
+			'remote_snapshot' => [],
 			'filter_order' => [],
 			'active_tab' => $request['tab'] ?? 'btbl-tab-general',
 		];
@@ -393,6 +411,7 @@ class BaraTables_Admin_Form_Context {
 
 		if (!empty($editing_defn)) {
 			$values['table_options'] = $this->service->get_table_options($editing_defn);
+			$values['server_side_state'] = $this->service->get_server_side_state($editing_defn, true);
 			$values['filter_order'] = isset($editing_defn['filter_order']) && is_array($editing_defn['filter_order'])
 				? array_values($editing_defn['filter_order'])
 				: [];
@@ -410,6 +429,12 @@ class BaraTables_Admin_Form_Context {
 			$values['external_table'] = $external['table'] ?? '';
 			$values['external_charset'] = $external['charset'] ?? '';
 			$values['external_port'] = isset($external['port']) ? (string) $external['port'] : '';
+			$remote_source = isset($editing_defn['remote_source']) && is_array($editing_defn['remote_source']) ? $editing_defn['remote_source'] : [];
+			$values['remote_url'] = BaraTables_Remote_Snapshot::sanitize_url($remote_source['url'] ?? '');
+			$values['remote_format'] = BaraTables_Remote_Snapshot::sanitize_format($remote_source['format'] ?? BaraTables_Remote_Snapshot::FORMAT_CSV);
+			$values['remote_snapshot'] = isset($editing_defn['remote_snapshot']) && is_array($editing_defn['remote_snapshot'])
+				? $editing_defn['remote_snapshot']
+				: [];
 		}
 
 		if (BaraTables_Source_Type::is_csv($source_type)) {
@@ -483,6 +508,9 @@ class BaraTables_Admin_Form_Context {
 			'csv_attachment_id' => $state['csv_attachment_id'],
 			'csv_has_header' => $state['csv_has_header'],
 			'csv_delimiter' => $state['csv_delimiter'],
+			'remote_url' => $state['remote_url'],
+			'remote_format' => $state['remote_format'],
+			'remote_snapshot' => $state['remote_snapshot'],
 			'should_show_source_hint' => $state['should_show_source_hint'],
 			'custom_columns' => $state['custom_columns'],
 			'custom_rows' => $state['custom_rows'],

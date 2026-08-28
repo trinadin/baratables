@@ -6,13 +6,16 @@ images from the projects listed below. Versioned source links are documented
 in readme.txt.
 
 
-DataTables, DataTables Buttons, DataTables ColReorder, DataTables Responsive
-----------------------------------------------------------------------------
+DataTables, DataTables Buttons, DataTables ColReorder, DataTables Responsive,
+DataTables FixedHeader, DataTables FixedColumns
+-------------------------------------------------
 
 DataTables v3.0.2
 DataTables Buttons v4.0.2
 DataTables ColReorder v3.0.1
 DataTables Responsive v4.0.2
+DataTables FixedHeader v5.0.0
+DataTables FixedColumns v6.0.0
 
 License: MIT
 

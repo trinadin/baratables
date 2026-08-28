@@ -48,6 +48,7 @@ trait BaraTables_Column_State_Trait {
 				$filter_sort = 'asc';
 			}
 			$priority = max(0, (int) ($col['sort_priority'] ?? 0));
+			$data_type = BaraTables_Cell_Semantics::normalize_type($col['data_type'] ?? 'auto');
 
 			$records[$slug] = [
 				'slug' => $slug,
@@ -63,8 +64,11 @@ trait BaraTables_Column_State_Trait {
 				'filter_type_priority' => !empty($col['filter_type_priority']) && is_array($col['filter_type_priority'])
 					? $this->normalize_data_type_priority_list($col['filter_type_priority'])
 					: [],
-				'format_date' => !empty($col['format_date']),
-				'date_format' => !empty($col['date_format']) ? (string) $col['date_format'] : '',
+				'format_date' => $data_type !== 'number' && !empty($col['format_date']),
+				'date_format' => $data_type !== 'number' && !empty($col['date_format']) ? (string) $col['date_format'] : '',
+				'data_type' => $data_type,
+				'conditional_rules' => BaraTables_Cell_Semantics::normalize_rules($col['conditional_rules'] ?? [], $data_type),
+				'footer_aggregate' => BaraTables_Cell_Semantics::normalize_aggregate($col['footer_aggregate'] ?? 'none', $data_type),
 				'hide_title' => !empty($col['hide_title']),
 				'hidden' => !empty($col['hidden']),
 				'searchable' => array_key_exists('searchable', $col) ? (bool) $col['searchable'] : true,
@@ -132,6 +136,8 @@ trait BaraTables_Column_State_Trait {
 				$filter_values = [];
 			}
 			$date_format = (string) ($maps['date_formats'][$slug] ?? '');
+			$data_type = BaraTables_Cell_Semantics::normalize_type($maps['data_types'][$slug] ?? 'auto');
+			$format_date = $data_type !== 'number' && ($date_format !== '' || !empty($maps['format_date_flags'][$slug]));
 			$records[$slug] = [
 				'slug' => $slug,
 				'filter' => $filter,
@@ -149,8 +155,11 @@ trait BaraTables_Column_State_Trait {
 				'sort_direction' => (string) ($maps['sort_direction'][$slug] ?? 'asc'),
 				'sort_enabled' => $sort_enabled,
 				'sortable' => array_key_exists($slug, $maps['sortable']) ? (bool) $maps['sortable'][$slug] : true,
-				'format_date' => $date_format !== '' || !empty($maps['format_date_flags'][$slug]),
-				'date_format' => $date_format,
+				'format_date' => $format_date,
+				'date_format' => $format_date ? $date_format : '',
+				'data_type' => $data_type,
+				'conditional_rules' => BaraTables_Cell_Semantics::parse_rule_text($maps['conditional_rules'][$slug] ?? '', $data_type),
+				'footer_aggregate' => BaraTables_Cell_Semantics::normalize_aggregate($maps['footer_aggregates'][$slug] ?? 'none', $data_type),
 			];
 		}
 		return $records;
@@ -171,6 +180,9 @@ trait BaraTables_Column_State_Trait {
 			'filter_type_priority' => [],
 			'format_date' => false,
 			'date_format' => '',
+			'data_type' => 'auto',
+			'conditional_rules' => [],
+			'footer_aggregate' => 'none',
 			'hide_title' => false,
 			'hidden' => false,
 			'searchable' => true,
@@ -197,6 +209,9 @@ trait BaraTables_Column_State_Trait {
 		$sortable = $this->sanitize_column_flags($raw['sortable'] ?? [], $columns, true);
 		$date_formats = $this->sanitize_date_formats($raw['date_formats'] ?? []);
 		$format_date_flags = $this->sanitize_column_flags($raw['format_date_flags'] ?? [], $columns, false);
+		$data_types = isset($raw['data_types']) && is_array($raw['data_types']) ? $raw['data_types'] : [];
+		$conditional_rules = isset($raw['conditional_rules']) && is_array($raw['conditional_rules']) ? $raw['conditional_rules'] : [];
+		$footer_aggregates = isset($raw['footer_aggregates']) && is_array($raw['footer_aggregates']) ? $raw['footer_aggregates'] : [];
 
 		return compact(
 			'filter_types',
@@ -213,7 +228,10 @@ trait BaraTables_Column_State_Trait {
 			'sort_enabled',
 			'sortable',
 			'date_formats',
-			'format_date_flags'
+			'format_date_flags',
+			'data_types',
+			'conditional_rules',
+			'footer_aggregates'
 		);
 	}
 

@@ -25,6 +25,7 @@ class BaraTables {
 		add_action('init', [$this->repo, 'register_cpt']);
 		add_action('init', [$this->chart_repo, 'register_cpt']);
 		add_action('init', [$this, 'register_blocks'], 20);
+		add_action('before_delete_post', [$this, 'cleanup_table_rate_limits']);
 		add_action('wp_enqueue_scripts', [$this, 'maybe_register_frontend_assets']);
 		add_shortcode('bara_table', [$this, 'render_table_shortcode']);
 		add_shortcode('bara_chart', [$this, 'render_chart_shortcode']);
@@ -67,6 +68,17 @@ class BaraTables {
 
 	public function render_chart_shortcode($atts): string {
 		return $this->frontend()->render_chart_shortcode($atts);
+	}
+
+	/** Remove short-lived public-read buckets immediately when their owning table is deleted. */
+	public function cleanup_table_rate_limits(int $post_id): void {
+		if (get_post_type($post_id) !== BaraTables_Repository::CPT) {
+			return;
+		}
+		$definition = get_post_meta($post_id, BaraTables_Repository::META_KEY, true);
+		if (is_array($definition) && !empty($definition['id'])) {
+			$this->service()->delete_server_side_rate_limits((string) $definition['id']);
+		}
 	}
 
 	/**
@@ -154,6 +166,7 @@ class BaraTables {
 	/** Wire the admin half only for wp-admin, AJAX and WP-CLI requests. */
 	private function load_admin(): void {
 		$service = $this->service();
+		new BaraTables_Server_Side_Endpoint($service);
 		$admin = new BaraTables_Admin($service, $this->repo, $this->plugin_url, $this->plugin_path);
 		new BaraTables_Chart_Admin($this->chart_service(), $this->chart_repo, $service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD, $this->frontend());
 

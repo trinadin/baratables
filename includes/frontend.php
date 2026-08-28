@@ -246,6 +246,12 @@ class BaraTables_Frontend {
 		if (!empty($options['responsive'])) {
 			$features[] = 'responsive';
 		}
+		if (!empty($options['fixedHeader'])) {
+			$features[] = 'fixedheader';
+		}
+		if (!empty($options['fixedColumnsEnabled'])) {
+			$features[] = 'fixedcolumns';
+		}
 		foreach (($definition['columns'] ?? []) as $col) {
 			$filter = is_array($col) && isset($col['filter']) ? (string) $col['filter'] : '';
 			if ($filter === 'dropdown' || $filter === 'dropdown_multi') {
@@ -294,7 +300,37 @@ class BaraTables_Frontend {
 		if (!$definition) {
 			return null;
 		}
-		$result = $this->service->get_row_result($definition);
+		$server_state = $this->service->get_server_side_state($definition, false);
+		if (!empty($server_state['enabled']) && !$this->service->reserve_server_side_initial_page($definition)) {
+			$result = BaraTables_Row_Result::failure('server_side_rate_limited');
+		} elseif (!empty($server_state['enabled'])) {
+			// The rate decision deliberately precedes source verification. A saturated public GET
+			// cannot force an external connection, timeout negotiation, or schema query.
+			$server_state = $this->service->get_server_side_state($definition, true);
+			if (empty($server_state['enabled'])) {
+				$result = $this->service->get_row_result($definition);
+			} else {
+				$options = $this->service->get_table_options($definition);
+				$page = $this->service->get_server_side_page_reserved($definition, [
+					'draw' => 0,
+					'start' => 0,
+					'length' => min(BaraTables_Service::SERVER_SIDE_MAX_PAGE_LENGTH, max(1, (int) ($options['pageLength'] ?? 25))),
+				]);
+				if (is_wp_error($page)) {
+					$result = BaraTables_Row_Result::failure($page->get_error_code());
+				} else {
+					$result = new BaraTables_Row_Result($page['_raw'] ?? []);
+					$definition['__server_side'] = [
+						'enabled' => true,
+						'token' => $this->service->get_server_side_token($definition),
+						'records_total' => (int) ($page['recordsTotal'] ?? 0),
+						'records_filtered' => (int) ($page['recordsFiltered'] ?? 0),
+					];
+				}
+			}
+		} else {
+			$result = $this->service->get_row_result($definition);
+		}
 		$definition = $this->service->definition_with_inferred_columns($definition, $result);
 		return [
 			'definition' => $definition,
@@ -325,6 +361,8 @@ class BaraTables_Frontend {
 				$this->asset_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'buttons']),
 				$this->asset_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '3.0.1', ['table_only' => true, 'feature' => 'colreorder']),
 				$this->asset_spec('baratables-datatables-responsive', 'assets/vendor/datatables/responsive.dataTables.min.css', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'responsive']),
+				$this->asset_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/fixedHeader.dataTables.min.css', ['baratables-datatables'], '5.0.0', ['table_only' => true, 'feature' => 'fixedheader']),
+				$this->asset_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/fixedColumns.dataTables.min.css', ['baratables-datatables'], '6.0.0', ['table_only' => true, 'feature' => 'fixedcolumns']),
 				$this->asset_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.default.min.css', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
 				$this->asset_spec('baratables', 'assets/baratables.css'),
 			];
@@ -345,6 +383,8 @@ class BaraTables_Frontend {
 				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons-excel']),
 				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '3.0.1', ['table_only' => true, 'feature' => 'colreorder']),
 				$this->script_spec('baratables-datatables-responsive', 'assets/vendor/datatables/dataTables.responsive.min.js', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'responsive']),
+				$this->script_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/dataTables.fixedHeader.min.js', ['baratables-datatables'], '5.0.0', ['table_only' => true, 'feature' => 'fixedheader']),
+				$this->script_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/dataTables.fixedColumns.min.js', ['baratables-datatables'], '6.0.0', ['table_only' => true, 'feature' => 'fixedcolumns']),
 				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
 				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.min.js', ['baratables-pdfmake'], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
 				$this->script_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.complete.min.js', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
@@ -390,6 +430,17 @@ class BaraTables_Frontend {
 		// every table control (and the bridged DataTables variables) resolve it.
 		$accent = sanitize_hex_color((string) ($table_options['accentColor'] ?? ''));
 		$wrapper_style = $accent ? ' style="--btbl-accent:' . esc_attr($accent) . '"' : '';
+		$footer_values = [];
+		$has_footer = false;
+		if ($render_table) {
+			foreach ($presentation['columns'] as $column_index => $column_model) {
+				$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+				$footer_values[$column_index] = $aggregate !== 'none'
+					? BaraTables_Cell_Semantics::aggregate_rows($rows, (int) $column_index, $aggregate)
+					: '';
+				$has_footer = $has_footer || $aggregate !== 'none';
+			}
+		}
 
 		$this->enqueue_render_payload($this->build_render_payload(
 			$definition,
@@ -415,8 +466,12 @@ class BaraTables_Frontend {
 					.btbl-table-wrapper.is-loading .btbl-loading-mask { display: none; }
 					.btbl-table-wrapper.is-loading .btbl-filter-wrapper,
 					.btbl-table-wrapper.is-loading .btbl-table { opacity: 1; filter: none; }
+					.btbl-table-noscript[hidden] { display: block !important; }
 				</style>
 			</noscript>
+			<?php if ($render_table && !empty($definition['__server_side']['enabled'])) : ?>
+				<p class="btbl-table-noscript" hidden><?php esc_html_e('Interactive paging and search require JavaScript. The first page is shown below.', 'baratables'); ?></p>
+			<?php endif; ?>
 			<?php
 			$chart_id = 'btbl-chart-' . $table_id;
 			$chart_height = isset($chart_options['height']) ? (int) $chart_options['height'] : 360;
@@ -461,12 +516,28 @@ class BaraTables_Frontend {
 										// 10,000-row ceiling most cells are plain scalars, so this avoids the bulk of
 										// a measurable per-cell cost with no change to output.
 										$cell_html = (strpbrk($cell, '<&') === false) ? $cell : wp_kses_post($cell);
+										$semantic = BaraTables_Cell_Semantics::present_cell($cell_html, $column_model);
+										$cell_class_attr = !empty($semantic['classes']) ? ' class="' . esc_attr(implode(' ', $semantic['classes'])) . '"' : '';
 										?>
-										<td<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: hardcoded HTML attribute string. ?>><?php echo $cell_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- No '<'/'&' means raw == wp_kses_post(); otherwise wp_kses_post() ran. ?></td>
+										<td<?php echo $cell_class_attr . $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Classes escaped; style is a hardcoded attribute. ?>><?php echo $semantic['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Cell was sanitized before an allowlisted wrapper was added. ?></td>
 									<?php endforeach; ?>
 								</tr>
 							<?php endforeach; ?>
 						</tbody>
+						<?php if ($has_footer) : ?>
+							<tfoot><tr>
+								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
+									<?php
+									$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+									$value = (string) ($footer_values[$idx] ?? '');
+									$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
+									$hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : '';
+									$aria = $aggregate !== 'none' ? ' aria-label="' . esc_attr($label . ($value !== '' ? ': ' . $value : '')) . '"' : '';
+									?>
+									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"<?php echo $aria . $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Attribute pieces are escaped or hardcoded. ?>><?php echo esc_html($value); ?></td>
+								<?php endforeach; ?>
+							</tr></tfoot>
+						<?php endif; ?>
 					</table>
 					<div class="btbl-empty-state" aria-live="polite"><?php esc_html_e('No results match these filters.', 'baratables'); ?></div>
 					<?php $edit_url = $this->resolve_admin_edit_url($definition, $table_id); ?>
@@ -588,6 +659,7 @@ class BaraTables_Frontend {
 			'slugToIndex' => $presentation['slug_to_index'],
 			'hiddenColumns' => $presentation['hidden_columns'],
 			'nonSortable' => $presentation['non_sortable'],
+			'typedColumns' => $presentation['typed_columns'],
 			'tableOptions' => $presentation['options'],
 			'tableClasses' => $presentation['style_classes'],
 			'compact' => !empty($presentation['raw_options']['compact']),
@@ -600,6 +672,16 @@ class BaraTables_Frontend {
 			'slugToIndex' => $this->service->map_column_slug_to_index($definition),
 			'chartOnly' => true,
 		];
+		if ($render_table && !empty($definition['__server_side']['enabled'])) {
+			$payload['serverSide'] = [
+				'url' => admin_url('admin-ajax.php'),
+				'action' => 'btbl_server_table',
+				'tableId' => (string) ($definition['id'] ?? ''),
+				'token' => (string) ($definition['__server_side']['token'] ?? ''),
+				'recordsTotal' => (int) ($definition['__server_side']['records_total'] ?? 0),
+				'recordsFiltered' => (int) ($definition['__server_side']['records_filtered'] ?? 0),
+			];
+		}
 		if (!$chart_enabled) {
 			return $payload;
 		}

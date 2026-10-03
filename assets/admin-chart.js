@@ -193,6 +193,34 @@ jQuery(function($) {
 			$requiredStandard.attr('required', 'required');
 		}
 
+		// Each standard-controls field note exists once per chart-type group; keep only the
+		// group matching the selected type visible (same membership rule as render_chart_note():
+		// an empty-list fallback shows only when no specific group matched -- e.g. the server
+		// renders it visible for a saved heatmap/gantt chart, and it must go away the moment a
+		// standard type is chosen).
+		var type = $('#btbl_chart_type').val() || 'bar';
+		// Match per FIELD (each .btbl-control card), mirroring render_chart_note(): the global
+		// count only coincides while every field ships the same type groups -- a future
+		// field-specific variant set would otherwise leave that field with no visible note.
+		$('.btbl-chart-note').closest('.btbl-control').each(function() {
+			var $notes = $(this).find('.btbl-chart-note');
+			var matched = false;
+			$notes.each(function() {
+				var types = String($(this).data('chartTypes') || '').split(/\s+/).filter(Boolean);
+				if (types.length && types.indexOf(type) !== -1) {
+					matched = true;
+				}
+			});
+			$notes.each(function() {
+				var types = String($(this).data('chartTypes') || '').split(/\s+/).filter(Boolean);
+				if (types.length) {
+					$(this).toggleClass('is-hidden', types.indexOf(type) === -1);
+				} else {
+					$(this).toggleClass('is-hidden', matched);
+				}
+			});
+		});
+
 		updateChartStackToggle();
 	}
 

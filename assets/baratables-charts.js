@@ -217,27 +217,31 @@
 			if (item) { items.push(item); }
 		});
 
-		return items.length ? { categories: categories, items: items } : null;
+		// Empty result (no rows, or every row failed date/length validation) is a legitimate
+		// empty chart, not a broken configuration: only the slug failures above may return null,
+		// which init() treats as a runtime error. An empty option renders the bare axes.
+		return { categories: categories, items: items };
 	}
 
-	function formatGanttTooltip(params, escapeHtml) {
+	function formatGanttTooltip(params, escapeHtml, labels) {
+		labels = labels || {};
 		var data = params.data || {};
 		var values = params.value || [];
 		var lines = [escapeHtml(params.name || '')];
 		if (data.group) { lines.push(escapeHtml(data.group)); }
-		if (values[1]) { lines.push('Start: ' + escapeHtml(new Date(values[1]).toLocaleString())); }
-		if (values[2]) { lines.push('End: ' + escapeHtml(new Date(values[2]).toLocaleString())); }
+		if (values[1]) { lines.push(escapeHtml(labels.gantt_start || 'Start') + ': ' + escapeHtml(new Date(values[1]).toLocaleString())); }
+		if (values[2]) { lines.push(escapeHtml(labels.gantt_end || 'End') + ': ' + escapeHtml(new Date(values[2]).toLocaleString())); }
 		if (data.progress !== null && data.progress !== undefined && !isNaN(data.progress)) {
-			lines.push('Progress: ' + escapeHtml(data.progress) + '%');
+			lines.push(escapeHtml(labels.gantt_progress || 'Progress') + ': ' + escapeHtml(data.progress) + '%');
 		}
 		return lines.join('<br/>');
 	}
 
-	function buildGanttOption(prepared, escapeHtml) {
+	function buildGanttOption(prepared, escapeHtml, labels) {
 		return {
 			tooltip: {
 				formatter: function(params) {
-					return formatGanttTooltip(params, escapeHtml);
+					return formatGanttTooltip(params, escapeHtml, labels);
 				}
 			},
 			grid: { containLabel: true, left: '3%', right: '4%', bottom: '3%' },
@@ -493,7 +497,7 @@
 		var mode = context.chartConfig.mode || legacyModes[type] || 'standard';
 		if (mode === 'gantt') {
 			var ganttData = buildGanttData(context);
-			return ganttData ? buildGanttOption(ganttData, context.helpers.escapeHtml) : null;
+			return ganttData ? buildGanttOption(ganttData, context.helpers.escapeHtml, context.chartConfig.labels) : null;
 		}
 		if (mode === 'heatmap') {
 			return buildHeatmapOption(context);
@@ -555,17 +559,37 @@
 			columnsMeta: buildColumnsMeta(chartConfig.columns)
 		};
 
+		var rendered = false;
 		function render() {
 			if (tableInstance && tableInstance.rows) {
 				context.slugToIndex = transposeSlugIndex(tableInstance, baseSlugToIndex);
 			}
 			var option = buildChartOption(context);
 			if (option) {
+				rendered = true;
+				// Lead the series palette with the table's accent so a themed accent colors the
+				// chart too; charts without a resolved accent keep ECharts' default palette.
+				if (!option.color) {
+					var accent = '';
+					try { accent = String(window.getComputedStyle(container).getPropertyValue('--btbl-accent') || '').trim(); } catch (err) { accent = ''; }
+					if (accent) {
+						option.color = [accent, '#91CC75', '#EE6666', '#73C0DE', '#FAC858', '#9A60B4', '#EA7CCC'];
+					}
+				}
 				chart.setOption(option, true);
 			}
 		}
 
 		render();
+		if (!rendered) {
+			// buildChartOption only returns null when the configuration itself is broken (a
+			// plotted column was renamed or deleted after publishing) -- never for merely empty
+			// data. Report that to the caller instead of leaving a blank container: both
+			// consumers (table bootstrap and chart-only bootstrap) surface their runtime error
+			// on a null return.
+			chart.dispose();
+			return null;
+		}
 		if (tableInstance && tableInstance.on) {
 			tableInstance.on('draw', render);
 		}

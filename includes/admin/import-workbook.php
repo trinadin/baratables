@@ -20,6 +20,7 @@ class BaraTables_Import_Workbook {
 	private const ODS_TEXT_NS = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0';
 	private const ODS_STYLE_NS = 'urn:oasis:names:tc:opendocument:xmlns:style:1.0';
 	private const MAX_XML_BYTES = 5242880;
+	private const MAX_PARAGRAPH_BYTES = 65536;
 	private const MAX_SHARED_STRINGS = 100000;
 	private const MAX_WORKSHEETS = 200;
 	private const PARSE_ROWS = 1002; // Header + 1,001 rows lets the shared builder prove truncation.
@@ -103,12 +104,14 @@ class BaraTables_Import_Workbook {
 			$rows = $parsed['rows'];
 			$labels = array_shift($rows);
 			$tables[] = BaraTables_Import_Builder::normalized(
-				$name !== '' ? $name : __('Imported Worksheet', 'baratables'),
+				$name !== '' ? $name : __('Imported worksheet', 'baratables'),
 				is_array($labels) ? $labels : [],
 				$rows,
 				true,
 				[],
-				$parsed['warnings']
+				$parsed['warnings'],
+				[],
+				!empty($parsed['truncated'])
 			);
 			$selected_table_found = true;
 		}
@@ -242,7 +245,10 @@ class BaraTables_Import_Workbook {
 		$valid = empty(libxml_get_errors());
 		libxml_clear_errors();
 		libxml_use_internal_errors($previous);
-		if (!$valid || $too_many) {
+		if ($too_many) {
+			return ['values' => [], 'error' => __('The XLSX shared-string table exceeded the safe import limit.', 'baratables')];
+		}
+		if (!$valid) {
 			return ['values' => [], 'error' => __('The XLSX shared-string data could not be parsed safely.', 'baratables')];
 		}
 		return ['values' => $strings, 'error' => ''];
@@ -309,7 +315,7 @@ class BaraTables_Import_Workbook {
 		return ['values' => $styles, 'error' => ''];
 	}
 
-	/** @return array{rows:array[],warnings:string[],error:string} */
+	/** @return array{rows:array[],warnings:string[],error:string,truncated:bool} */
 	private static function xlsx_sheet(string $raw, array $shared_strings, array $date_styles, bool $date_1904, bool $count_only = false): array {
 		$previous = libxml_use_internal_errors(true);
 		libxml_clear_errors();
@@ -320,6 +326,7 @@ class BaraTables_Import_Workbook {
 			return ['rows' => [], 'warnings' => [], 'error' => __('An XLSX worksheet could not be parsed safely.', 'baratables')];
 		}
 		$rows = [];
+		$rows_truncated = false;
 		$has_formula = false;
 		$missing_formula_cache = false;
 		$has_merge = false;
@@ -344,6 +351,30 @@ class BaraTables_Import_Workbook {
 				continue;
 			}
 			if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'row') {
+				// Row numbers are 1-based and a gap means blank rows the writer omitted entirely,
+				// so pad up to the declared number: a later row keeps its workbook position the
+				// same way an explicit blank row does (cells already honor their own r attribute).
+				$row_number = (int) $reader->getAttribute('r');
+				if ($row_number > 1 && !empty($rows)) {
+					while (count($rows) < $row_number - 1 && count($rows) < self::PARSE_ROWS) {
+						$rows[] = [];
+					}
+				}
+				if ($reader->isEmptyElement) {
+					// A self-closed <row/> never emits an END_ELEMENT event, so treat it as a
+					// completed row here: interior blank rows keep their place in the sheet.
+					if (!empty($rows)) {
+						$rows[] = [];
+						if (!$count_only && count($rows) >= self::PARSE_ROWS) {
+							$rows_truncated = true;
+							break;
+						}
+						if ($count_only) {
+							break;
+						}
+					}
+					continue;
+				}
 				$inside_row = true;
 				$row = [];
 				$last_value = -1;
@@ -403,9 +434,17 @@ class BaraTables_Import_Workbook {
 			if ($inside_row && $reader->nodeType === XMLReader::END_ELEMENT && $reader->localName === 'row') {
 				if ($last_value >= 0) {
 					$rows[] = array_slice($row, 0, $last_value + 1);
+				} elseif (!empty($rows)) {
+					// A blank row inside the sheet keeps its place so row numbering matches the
+					// workbook; blank rows before any data and trailing blanks are dropped.
+					$rows[] = [];
 				}
 				$inside_row = false;
-				if (($count_only && !empty($rows)) || count($rows) >= self::PARSE_ROWS) {
+				if (!$count_only && count($rows) >= self::PARSE_ROWS) {
+					$rows_truncated = true;
+					break;
+				}
+				if ($count_only && !empty($rows)) {
 					break;
 				}
 			}
@@ -417,6 +456,9 @@ class BaraTables_Import_Workbook {
 		if (!$valid) {
 			return ['rows' => [], 'warnings' => [], 'error' => __('An XLSX worksheet could not be parsed safely.', 'baratables')];
 		}
+		while (!empty($rows) && $rows[count($rows) - 1] === []) {
+			array_pop($rows);
+		}
 		$warnings = [];
 		if ($has_formula) {
 			$warnings[] = __('Formula results were imported from cached values; spreadsheet formulas were not executed.', 'baratables');
@@ -427,7 +469,7 @@ class BaraTables_Import_Workbook {
 		if ($has_merge) {
 			$warnings[] = __('Merged spreadsheet cells were flattened into ordinary cells.', 'baratables');
 		}
-		return ['rows' => $rows, 'warnings' => $warnings, 'error' => ''];
+		return ['rows' => $rows, 'warnings' => $warnings, 'error' => '', 'truncated' => $rows_truncated];
 	}
 
 	private static function xlsx_cell_value(string $raw, string $inline, string $type, int $style, array $shared_strings, array $date_styles, bool $date_1904): string {
@@ -619,6 +661,7 @@ class BaraTables_Import_Workbook {
 					$cell_value = self::ods_attribute_value($reader, $cell_type);
 					$cell_has_cache = self::ods_has_cached_attribute($reader, $cell_type);
 					$paragraphs = [];
+					$cell_text_bytes = 0;
 					$paragraph = '';
 					$in_paragraph = false;
 					if ($reader->isEmptyElement) {
@@ -641,7 +684,13 @@ class BaraTables_Import_Workbook {
 				}
 				if ($in_paragraph && $reader->namespaceURI === self::ODS_TEXT_NS && $reader->localName === 's') {
 					$count = max(1, (int) $reader->getAttributeNs('c', self::ODS_TEXT_NS));
-					$paragraph .= str_repeat(' ', min($count, 1000));
+					// Bound the accumulated padding, not just one element: thousands of space-repeat
+					// elements inside one paragraph can otherwise expand a small archive into an
+					// unbounded allocation before any cell budget runs.
+					$room = max(0, self::MAX_PARAGRAPH_BYTES - strlen($paragraph));
+					if ($room > 0) {
+						$paragraph .= str_repeat(' ', min($count, 1000, $room));
+					}
 					continue;
 				}
 				if ($in_paragraph && $reader->namespaceURI === self::ODS_TEXT_NS && $reader->localName === 'tab') {
@@ -661,7 +710,18 @@ class BaraTables_Import_Workbook {
 				continue;
 			}
 			if ($in_paragraph && $reader->namespaceURI === self::ODS_TEXT_NS && $reader->localName === 'p') {
-				$paragraphs[] = $paragraph;
+				// The per-paragraph cap bounds one element run; bound the accumulated cell too,
+				// or thousands of individually legal paragraphs still amplify a small archive
+				// into an unbounded cell before any row/column count budget runs.
+				// The first paragraph is accepted as-is: it is already bounded by the per-paragraph
+				// amplification cap and the raw entry size. The cumulative bound stops the many-
+				// paragraph amplification that no other budget catches.
+				$fits = $cell_text_bytes === 0
+					|| $cell_text_bytes + 1 + strlen($paragraph) <= self::MAX_PARAGRAPH_BYTES;
+				if ($fits) {
+					$paragraphs[] = $paragraph;
+					$cell_text_bytes += strlen($paragraph) + 1;
+				}
 				$in_paragraph = false;
 				continue;
 			}
@@ -711,16 +771,15 @@ class BaraTables_Import_Workbook {
 						if ($has_merge) {
 							$warnings[] = __('Merged spreadsheet cells were flattened into ordinary cells.', 'baratables');
 						}
-						if ($rows_truncated) {
-							$warnings[] = __('Worksheet rows beyond the safe import limit were not read.', 'baratables');
-						}
 						$tables[] = BaraTables_Import_Builder::normalized(
-							$name !== '' ? $name : __('Imported Worksheet', 'baratables'),
+							$name !== '' ? $name : __('Imported worksheet', 'baratables'),
 							$labels,
 							$rows,
 							true,
 							[],
-							$warnings
+							$warnings,
+							[],
+							$rows_truncated
 						);
 						$selected_table_found = true;
 					}

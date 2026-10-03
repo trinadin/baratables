@@ -532,9 +532,11 @@ class BaraTables_Frontend {
 									$value = (string) ($footer_values[$idx] ?? '');
 									$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
 									$hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : '';
-									$aria = $aggregate !== 'none' ? ' aria-label="' . esc_attr($label . ($value !== '' ? ': ' . $value : '')) . '"' : '';
+									// The aggregate name is visible text, not just an aria-label, so the
+									// footer reads as "Sum: 60" on screen instead of an orphaned number.
+									$display = $aggregate !== 'none' && $value !== '' ? $label . ': ' . $value : $value;
 									?>
-									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"<?php echo $aria . $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Attribute pieces are escaped or hardcoded. ?>><?php echo esc_html($value); ?></td>
+									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Attribute pieces are escaped or hardcoded. ?>><?php echo esc_html($display); ?></td>
 								<?php endforeach; ?>
 							</tr></tfoot>
 						<?php endif; ?>
@@ -544,7 +546,7 @@ class BaraTables_Frontend {
 					<?php if ($edit_url !== null) : ?>
 						<div class="btbl-admin-tools" role="group" aria-label="<?php echo esc_attr__('Table admin tools', 'baratables'); ?>">
 							<a class="button button-small btbl-edit-link" href="<?php echo esc_url($edit_url); ?>">
-								<?php esc_html_e('Edit Table', 'baratables'); ?>
+								<?php esc_html_e('Edit table', 'baratables'); ?>
 							</a>
 						</div>
 					<?php endif; ?>
@@ -695,6 +697,13 @@ class BaraTables_Frontend {
 			'rows' => $projection['rows'],
 			'row_slug_index' => $projection['slug_index'],
 			'columns' => $this->sanitize_chart_columns_for_payload($this->service->build_column_slug_label_list($definition['columns'])),
+			// Localized runtime labels (gantt tooltip prefixes); plain strings, safe for the
+			// chart code to interpolate before its own escaping.
+			'labels' => [
+				'gantt_start' => __('Start', 'baratables'),
+				'gantt_end' => __('End', 'baratables'),
+				'gantt_progress' => __('Progress', 'baratables'),
+			],
 		]);
 		return $payload;
 	}
@@ -795,10 +804,30 @@ class BaraTables_Frontend {
 		<?php
 	}
 
+	/**
+	 * Filter options are STORED entity-encoded (the meta layer kses-encodes every '&'), both
+	 * for gear-entered custom values and for auto-derived options built from stored cell HTML.
+	 * Matching happens against the rendered DOM text ("AT&T"), so decode to plain text once
+	 * here -- display then single-encodes correctly through esc_html/esc_attr, and decoded
+	 * search terms equal textContent semantics. A label whose stored form deliberately holds
+	 * "&amp;" renders as "AT&T" -- one level of decode is the contract.
+	 */
+	private function filter_option_plain(array $opt): array {
+		$decode = static function ($text) {
+			return is_string($text) ? html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8') : $text;
+		};
+		return [
+			'label' => $decode($opt['label'] ?? ''),
+			'value' => $decode($opt['value'] ?? ''),
+			'search_terms' => array_map($decode, (array) ($opt['search_terms'] ?? [])),
+		];
+	}
+
 	private function render_filter_option_tags(array $options): void {
 		foreach ($options as $opt) {
+			$plain = $this->filter_option_plain($opt);
 			?>
-			<option value="<?php echo esc_attr($opt['value']); ?>" data-search-terms="<?php echo esc_attr(wp_json_encode($opt['search_terms'])); ?>"><?php echo esc_html($opt['label']); ?></option>
+			<option value="<?php echo esc_attr($plain['value']); ?>" data-search-terms="<?php echo esc_attr(wp_json_encode($plain['search_terms'])); ?>"><?php echo esc_html($plain['label']); ?></option>
 			<?php
 		}
 	}
@@ -819,9 +848,10 @@ class BaraTables_Frontend {
 				</label>
 			<?php endif; ?>
 			<?php foreach ($options as $opt) : ?>
+					<?php $plain = $this->filter_option_plain($opt); ?>
 					<label>
-					<input type="<?php echo esc_attr($input_type); ?>"<?php echo $name_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: name value passed through esc_attr(). ?> value="<?php echo esc_attr($opt['value']); ?>" data-search-terms="<?php echo esc_attr(wp_json_encode($opt['search_terms'])); ?>" />
-					<?php echo esc_html($opt['label']); ?>
+					<input type="<?php echo esc_attr($input_type); ?>"<?php echo $name_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: name value passed through esc_attr(). ?> value="<?php echo esc_attr($plain['value']); ?>" data-search-terms="<?php echo esc_attr(wp_json_encode($plain['search_terms'])); ?>" />
+					<?php echo esc_html($plain['label']); ?>
 				</label>
 			<?php endforeach; ?>
 		</div>

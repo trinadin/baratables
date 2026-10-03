@@ -49,7 +49,7 @@ class BaraTables_Admin {
 	public function register_meta_boxes(): void {
 		add_meta_box(
 			'btbl-table-builder',
-			__('Table Builder', 'baratables'),
+			__('Table builder', 'baratables'),
 			[$this, 'render_table_metabox'],
 			BaraTables_Repository::CPT,
 			'normal',
@@ -58,7 +58,7 @@ class BaraTables_Admin {
 
 		add_meta_box(
 			'btbl-table-preview',
-			__('Table Preview', 'baratables'),
+			__('Table preview', 'baratables'),
 			[$this, 'render_table_preview_metabox'],
 			BaraTables_Repository::CPT,
 			'normal',
@@ -82,7 +82,7 @@ class BaraTables_Admin {
 	public function render_table_preview_metabox(WP_Post $post): void {
 		$definition = $this->get_existing_table_definition_for_post($post) ?: [];
 		if (empty($definition)) {
-			echo '<p>' . esc_html__('Pick a data source and at least one column on the Columns &amp; Filters tab, then save to preview the table here.', 'baratables') . '</p>';
+			echo '<p>' . esc_html__('Pick a data source and at least one column on the Columns &amp; filters tab, then save to preview the table here.', 'baratables') . '</p>';
 			return;
 		}
 
@@ -93,7 +93,7 @@ class BaraTables_Admin {
 		echo '<button type="button" class="button btbl-icon-button" id="btbl-refresh-preview" aria-label="' . esc_attr__('Refresh preview', 'baratables') . '" title="' . esc_attr__('Refresh preview', 'baratables') . '"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>';
 		echo '</p>';
 		echo '<div class="btbl-admin btbl-admin-embed" id="btbl-preview-target">';
-		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error']);
+		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error'], 50, $preview['rows_truncated']);
 		echo '</div>';
 	}
 
@@ -170,7 +170,7 @@ class BaraTables_Admin {
 		$preview = $this->prepare_preview($definition);
 
 		ob_start();
-		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error']);
+		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error'], 50, $preview['rows_truncated']);
 		$html = ob_get_clean();
 
 		wp_send_json_success(['html' => $html]);
@@ -186,7 +186,7 @@ class BaraTables_Admin {
 		}
 		$definition = get_post_meta($post_id, BaraTables_Repository::META_KEY, true);
 		if (!is_array($definition) || !BaraTables_Source_Type::is_remote_snapshot($definition['source_type'] ?? '')) {
-			wp_send_json_error(['message' => __('Save Remote snapshot as the data source before fetching.', 'baratables')]);
+			wp_send_json_error(['message' => __('Save remote snapshot as the data source before fetching.', 'baratables')]);
 		}
 		$config = isset($definition['remote_source']) && is_array($definition['remote_source']) ? $definition['remote_source'] : [];
 		$snapshot = BaraTables_Remote_Snapshot::fetch(
@@ -241,7 +241,7 @@ class BaraTables_Admin {
 		$slug = $identity['slug'];
 		if ($identity['error'] instanceof WP_Error) {
 			BaraTables_Admin_Notice::queue(
-				__('The Table ID could not be saved. The previous ID was kept.', 'baratables'),
+				__('The table ID could not be saved. The previous ID was kept.', 'baratables'),
 				'error'
 			);
 		}
@@ -255,7 +255,7 @@ class BaraTables_Admin {
 			BaraTables_Admin_Notice::queue(
 				$rollback_error
 					? __('The table could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again.', 'baratables')
-					: __('The table could not be saved. Its previous data and Table ID were restored.', 'baratables'),
+					: __('The table could not be saved. Its previous data and table ID were restored.', 'baratables'),
 				'error'
 			);
 			return;
@@ -277,12 +277,12 @@ class BaraTables_Admin {
 						$queue_error
 							? sprintf(
 								/* translators: %s is a comma-separated list of chart post IDs. */
-								__('The Table ID was restored, but linked chart post IDs %s could not be restored or queued for automatic recovery. Retry the save before editing those charts.', 'baratables'),
+								__('The table ID was restored, but linked chart post IDs %s could not be restored or queued for automatic recovery. Retry the save before editing those charts.', 'baratables'),
 								esc_html(implode(', ', $failed_chart_ids))
 							)
 							: sprintf(
 								/* translators: %d is the number of linked charts queued for recovery. */
-								_n('The Table ID was restored. %d linked chart will be restored automatically on the next admin request.', 'The Table ID was restored. %d linked charts will be restored automatically on the next admin request.', count($failed_chart_ids), 'baratables'),
+								_n('The table ID was restored. %d linked chart will be restored automatically on the next admin request.', 'The table ID was restored. %d linked charts will be restored automatically on the next admin request.', count($failed_chart_ids), 'baratables'),
 								count($failed_chart_ids)
 							),
 						'error'
@@ -290,8 +290,8 @@ class BaraTables_Admin {
 				} else {
 					BaraTables_Admin_Notice::queue(
 						$rollback_error
-							? __('The Table ID and linked charts could not be updated consistently. Retry the save before editing them again.', 'baratables')
-							: __('The Table ID change was cancelled because a linked chart could not be updated. Previous data was restored.', 'baratables'),
+							? __('The table ID and linked charts could not be updated consistently. Retry the save before editing them again.', 'baratables')
+							: __('The table ID change was cancelled because a linked chart could not be updated. Previous data was restored.', 'baratables'),
 						'error'
 					);
 				}
@@ -310,7 +310,7 @@ class BaraTables_Admin {
 		$effective = $this->service->resolve_columns($definition);
 		if (empty($effective['columns'])) {
 			BaraTables_Admin_Notice::queue(
-				__('This table has no columns, so it will not display anything. Select at least one column on the Columns &amp; Filters tab, then update.', 'baratables'),
+				__('This table has no columns, so it will not display anything. Select at least one column on the Columns &amp; filters tab, then update.', 'baratables'),
 				'warning'
 			);
 		}
@@ -416,7 +416,7 @@ class BaraTables_Admin {
 			$new_slug,
 			$requested_id,
 			/* translators: 1: the ID the user asked for, 2: the unique ID actually saved. */
-			__('The Table ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
+			__('The table ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
 			/* translators: 1: old Table ID, 2: new Table ID. */
 			__('Table ID changed from "%1$s" to "%2$s". Update any [bara_table id="%1$s"] you have already pasted into your content.', 'baratables'),
 			$suffix
@@ -439,14 +439,19 @@ class BaraTables_Admin {
 			: null;
 	}
 
-	/** @return array{definition:array,rows:array,source_error:string} */
+	/** @return array{definition:array,rows:array,source_error:string,rows_truncated:bool} */
 	private function prepare_preview(array $definition): array {
-		$result = $this->service->get_row_result($definition, 50);
+		// Fetch one row PAST the display cap so an exact-fit source can be told apart from a
+		// truncated one -- the footer-coverage notice is only honest when something was cut.
+		$result = $this->service->get_row_result($definition, 51);
 		$definition = $this->service->definition_with_inferred_columns($definition, $result);
+		$all_rows = $result->rows();
+		$truncated = count($all_rows) > 50;
 		return [
 			'definition' => $definition,
-			'rows' => $this->preview_renderer->sort($result->rows(), $definition),
+			'rows' => $this->preview_renderer->sort($truncated ? array_slice($all_rows, 0, 50) : $all_rows, $definition),
 			'source_error' => $result->has_error() ? $result->error_message() : '',
+			'rows_truncated' => $truncated,
 		];
 	}
 
@@ -494,7 +499,7 @@ class BaraTables_Chart_Admin {
 	public function register_meta_boxes(): void {
 		add_meta_box(
 			'btbl-chart-builder',
-			__('Chart Builder', 'baratables'),
+			__('Chart builder', 'baratables'),
 			[$this, 'render_chart_metabox'],
 			BaraTables_Chart_Repository::CPT,
 			'normal',
@@ -504,7 +509,7 @@ class BaraTables_Chart_Admin {
 		// Provide the chart editor with the same live-preview behavior as the table editor.
 		add_meta_box(
 			'btbl-chart-preview',
-			__('Chart Preview', 'baratables'),
+			__('Chart preview', 'baratables'),
 			[$this, 'render_chart_preview_metabox'],
 			BaraTables_Chart_Repository::CPT,
 			'normal',
@@ -699,7 +704,7 @@ class BaraTables_Chart_Admin {
 		$slug = $identity['slug'];
 		if ($identity['error'] instanceof WP_Error) {
 			BaraTables_Admin_Notice::queue(
-				__('The Chart ID could not be saved. The previous ID was kept.', 'baratables'),
+				__('The chart ID could not be saved. The previous ID was kept.', 'baratables'),
 				'error'
 			);
 		}
@@ -713,7 +718,7 @@ class BaraTables_Chart_Admin {
 			BaraTables_Admin_Notice::queue(
 				$rollback_error
 					? __('The chart could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again.', 'baratables')
-					: __('The chart could not be saved. Its previous data and Chart ID were restored.', 'baratables'),
+					: __('The chart could not be saved. Its previous data and chart ID were restored.', 'baratables'),
 				'error'
 			);
 			return;
@@ -751,7 +756,7 @@ class BaraTables_Chart_Admin {
 			$new_slug,
 			$requested_id,
 			/* translators: 1: the ID the user asked for, 2: the unique ID actually saved. */
-			__('The Chart ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
+			__('The chart ID "%1$s" was already in use, so it was saved as "%2$s".', 'baratables'),
 			/* translators: 1: old Chart ID, 2: new Chart ID. */
 			__('Chart ID changed from "%1$s" to "%2$s". Update any [bara_chart id="%1$s"] you have already pasted into your content.', 'baratables')
 		);

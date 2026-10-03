@@ -12,7 +12,7 @@ class BaraTables_Admin_Preview_Renderer {
 		$this->table_presentation = new BaraTables_Table_Presentation($service);
 	}
 
-	public function render(array $definition, array $rows, string $source_error = ''): void {
+	public function render(array $definition, array $rows, string $source_error = '', int $row_cap = 50, bool $rows_truncated = false): void {
 		$definition['columns'] = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
 		$allowed_inline = BaraTables_Service::allowed_inline_html();
 		$presentation = $this->table_presentation->build($definition, $rows, true);
@@ -103,12 +103,17 @@ class BaraTables_Admin_Preview_Renderer {
 									$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
 									$value = (string) ($footer_values[$idx] ?? '');
 									$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
+									$display = $aggregate !== 'none' && $value !== '' ? $label . ': ' . $value : $value;
 									?>
-									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"<?php echo $aggregate !== 'none' ? ' aria-label="' . esc_attr($label . ($value !== '' ? ': ' . $value : '')) . '"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped aria label. ?>><?php echo esc_html($value); ?></td>
+									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"><?php echo esc_html($display); ?></td>
 								<?php endforeach; ?>
 							</tr></tfoot>
 						<?php endif; ?>
 					</table>
+					<?php if ($has_footer && $rows_truncated && $row_cap > 0 && count($rows) >= $row_cap) : ?>
+						<?php // translators: %d is the number of preview rows shown. ?>
+						<p class="description"><?php printf(esc_html__('Footer totals cover the first %d preview rows.', 'baratables'), absint($row_cap)); ?></p>
+					<?php endif; ?>
 				</div>
 				<div class="btbl-preview-layout-row btbl-preview-layout-bottom">
 					<div class="btbl-preview-layout-zone btbl-preview-layout-start">

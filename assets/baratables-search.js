@@ -168,7 +168,9 @@
 					return;
 				}
 				var headerHtml = (this.header() ? (this.header().innerHTML || this.title() || '') : '').trim();
-				var defaultLabel = 'Column ' + (index + 1);
+				// Localized blank-heading caption (services.php searchColumnFallback), so a
+				// non-English site does not get a hardcoded English "Column N".
+				var defaultLabel = (resolvedOptions.searchColumnFallback || 'Column') + ' ' + (index + 1);
 				// A hidden heading serializes as a literal '&nbsp;', which decodes to plain
 				// whitespace: fall back to "Column N" so the picker shows a caption instead of a
 				// blank entry whose accessible name is spelled "ampersand-n-b-s-p".

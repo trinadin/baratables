@@ -144,7 +144,7 @@ class BaraTables_Import_Builder {
 	}
 
 	/** Create the one normalized-table contract shared by every manual-data adapter. */
-	public static function normalized(string $name, array $columns, array $rows, bool $has_header, array $settings = [], array $warnings = [], array $column_meta = []): array {
+	public static function normalized(string $name, array $columns, array $rows, bool $has_header, array $settings = [], array $warnings = [], array $column_meta = [], bool $rows_beyond_limit = false): array {
 		return [
 			'name' => $name,
 			'columns' => array_values($columns),
@@ -153,6 +153,7 @@ class BaraTables_Import_Builder {
 			'settings' => array_merge(self::blank_settings(), $settings),
 			'column_meta' => array_values($column_meta),
 			'warnings' => array_values($warnings),
+			'rows_beyond_limit' => $rows_beyond_limit,
 		];
 	}
 
@@ -291,7 +292,11 @@ class BaraTables_Import_Builder {
 				$pre_cols
 			);
 		}
-		if ($pre_rows > $rows_count) {
+		if (!empty($norm['rows_beyond_limit'])) {
+			// The parser stopped at its read cap, so the source's true row count is unknown here.
+			// Disclose the cap without fabricating a total the parser never saw.
+			$warnings[] = __('Worksheet rows beyond the safe import limit were not read.', 'baratables');
+		} elseif ($pre_rows > $rows_count) {
 			$warnings[] = sprintf(
 				/* translators: 1: number of rows kept, 2: number of rows in the source file. */
 				__('Only the first %1$d of %2$d rows were imported (maximum %1$d).', 'baratables'),
@@ -302,7 +307,7 @@ class BaraTables_Import_Builder {
 
 		$name = isset($norm['name']) ? sanitize_text_field((string) $norm['name']) : '';
 		if ($name === '') {
-			$name = __('Imported Table', 'baratables');
+			$name = __('Imported table', 'baratables');
 		}
 
 		$definition = [
@@ -616,7 +621,7 @@ class BaraTables_Import_NinjaTables {
 		}
 		$settings = isset($export['settings']) && is_array($export['settings']) ? $export['settings'] : [];
 		$title = isset($export['post']['post_title']) ? sanitize_text_field((string) $export['post']['post_title']) : '';
-		$name = $title !== '' ? $title : __('Imported Table', 'baratables');
+		$name = $title !== '' ? $title : __('Imported table', 'baratables');
 		$table_options = BaraTables_Import_Builder::apply_table_settings(
 			$service->get_default_table_options(),
 			self::map_display_settings($settings)
@@ -716,8 +721,9 @@ class BaraTables_Import_NinjaTables {
 					// The render path (build_filter_definitions) only reads the
 					// label/value/search_terms shape -- the same shape the wp_query branch below
 					// saves. A flat string list is silently skipped there, and the dropdown
-					// falls back to the column's row values.
-					$manual_values[] = ['label' => $text, 'value' => $text, 'search_terms' => [$text]];
+					// falls back to the column's row values. sanitize_filter_option_entry stores
+					// the meta layer's exact fixpoint form, so imported '&' labels persist.
+					$manual_values[] = BaraTables_Service::sanitize_filter_option_entry(['label' => $text, 'value' => $text, 'search_terms' => [$text]]);
 				}
 				if (!empty($manual_values)) {
 					$column_meta[(int) $index]['filter_values'] = $manual_values;
@@ -904,11 +910,11 @@ class BaraTables_Import_NinjaTables {
 						if ($label_opt === '') {
 							$label_opt = $value_opt;
 						}
-						$manual_values[] = [
+						$manual_values[] = BaraTables_Service::sanitize_filter_option_entry([
 							'label' => $label_opt,
 							'value' => $value_opt,
 							'search_terms' => [$label_opt, $value_opt],
-						];
+						]);
 					}
 					if (!empty($manual_values)) {
 						$mapped_columns[$col_idx]['filter_values'] = $manual_values;
@@ -1254,7 +1260,7 @@ class BaraTables_Import_Spreadsheet {
 	private static function name_from_filename(string $filename): string {
 		$base = $filename !== '' ? pathinfo($filename, PATHINFO_FILENAME) : '';
 		$base = trim(str_replace(['_', '-'], ' ', (string) $base));
-		return $base !== '' ? $base : __('Imported Table', 'baratables');
+		return $base !== '' ? $base : __('Imported table', 'baratables');
 	}
 }
 

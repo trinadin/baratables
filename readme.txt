@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.3
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,25 +46,25 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 CSV files, manual data entry, WordPress content, external MySQL/MariaDB databases, and stored snapshots from public CSV, JSON-record, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only. Save the public HTTPS URL and format, then click Fetch snapshot. Published tables and charts use the last successful stored snapshot and never contact the source. CSV and Google Sheets endpoints must return `text/csv` or `application/csv`; generic `text/plain` downloads are rejected. Authentication, private Sheets, scheduled refresh, and schema-changing refreshes are not supported; create a new table when remote column headings change.
+Remote snapshots are manual and administrator-only. Save the public HTTPS URL and format, then click Fetch snapshot. Published tables and charts use the last stored snapshot and never contact the source. CSV and Google Sheets endpoints must return `text/csv` or `application/csv`; `text/plain` downloads are rejected. Authentication, private Sheets, scheduled refresh, and schema-changing refreshes are not supported; create a new table when remote column headings change.
 
 = Which table plugin exports can I import? =
 
 Use a TablePress single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports work; export an externally connected Ninja table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and wpDataTables or Tablesome data-only CSV also import, as do HTML tables. A ZIP imports the first supported table and reports how many were found.
 
-Imports rebuild table data and compatible display settings, not plugin-specific styling, formulas, macros, shortcodes, charts, or external data connections. XLSX and ODS formulas use stored cached results and are never executed; save legacy XLS or encrypted workbooks as XLSX, ODS, or CSV first.
+Imports rebuild table data and compatible display settings, not plugin-specific styling, formulas, macros, shortcodes, charts, or external data connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks as XLSX, ODS, or CSV first.
 
 Uploads and pasted imports can be up to 5 MB. A ZIP can hold 50 entries of up to 5 MB each, and up to 20 MB expanded.
 
 = How many rows can a table load? =
 
-Each table loads up to 1,000 rows by default. The Options tab sets a limit from 1 to 10,000 rows for tables and charts on every data source.
+Each table loads up to 1,000 rows by default. The Options tab sets a limit from 1 to 10,000 rows on every data source.
 
-External MySQL/MariaDB tables can instead opt into large database performance mode. It loads at most 100 rows per request and lets the database page, sort, and perform literal search across up to 100,000 addressable results. It requires selected database columns, pagination, and a non-null single-column primary or unique key. Row access rules, value/date transforms, column filter controls, footer calculations, data exports, print, and charts keep using standard loading so their whole-table meaning does not silently change. Database search follows the source collation, which controls case and accent matching.
+External MySQL/MariaDB tables can instead opt into large database performance mode. It loads at most 100 rows per request and lets the database page, sort, and literally search within your Rows to load limit of at most 100,000 addressable results. It requires selected columns, pagination, and a non-null single-column primary or unique key. Row access rules, value/date transforms, filter controls, footer calculations, exports, print, and charts keep standard loading, preserving their meaning. Database search follows the source collation, which controls case and accent matching.
 
 = Can I link to a filtered view of a table? =
 
-Yes. Filtering or searching updates the page address, so you can share that exact view. You can also build the link yourself with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
+Yes. Filtering or searching updates the page address, so you can share that exact view, or build the link yourself with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
 
 = How do I add a chart? =
 
@@ -72,11 +72,11 @@ Create a table first, then go to Charts and create a new chart linked to that ta
 
 = Can I customize the table appearance? =
 
-Yes. The Options tab provides controls for striping, hover, borders, compact mode, pagination style, button labels, search text, and info display, and layout zones control where controls appear.
+Yes. The Options tab provides controls for striping, hover, borders, compact mode, pagination style, button labels, search text, and info display; layout zones control where controls appear.
 
 = How do numeric rules and footer calculations work? =
 
-Choose Number in a column's settings. Plain decimals such as -12.5 participate in numeric sorting, conditional styles, and footer calculations. Currency symbols, percentages, grouping separators, words, blank cells, and values outside the supported range stay visible but are excluded. Footers calculate every loaded row matching the current search and filters, not only the current page; they do not calculate rows beyond the table's row limit and are not added to exports.
+Choose Number in a column's settings. Plain decimals such as -12.5 participate in numeric sorting, conditional styles, and footer calculations. Currency symbols, percentages, grouping separators, words, blank cells, and out-of-range values stay visible but are excluded. Footers calculate every loaded row matching the current search and filters, not only the current page; rows beyond the table's row limit and exports are excluded.
 
 = Can I style BaraTables with custom CSS? =
 
@@ -84,7 +84,7 @@ Yes. BaraTables ships minimal frontend styles so your theme stays in control; ad
 
 = Where can I see examples? =
 
-Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance, or use Live Preview on the WordPress.org page for an interactive demo.
+Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance, or try the Live Preview demo on WordPress.org.
 
 == Screenshots ==
 
@@ -96,7 +96,7 @@ Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styl
 
 == Changelog ==
 
-= 1.3.3 =
+= 1.4.0 =
 New:
 
 * Import XLSX and ODS workbooks, including stored results for formulas without executing them.
@@ -104,6 +104,17 @@ New:
 * Keep headers visible and freeze leading columns while a wide table scrolls.
 * Add strict numeric sorting, conditional color rules, and filtered footer calculations.
 * Page, sort, and search large external MySQL/MariaDB tables on demand with bounded queries.
+* Table summaries and the per-page selector say "rows" instead of "entries".
+* Charts follow the table's accent color.
+
+Fixes:
+
+* Filter labels containing an ampersand render correctly.
+* Table and chart block pickers list every item instead of the first 20.
+
+Security:
+
+* Exported and copied table content neutralizes spreadsheet formulas, so cells from imported or remotely sourced tables no longer execute when the file is opened.
 
 = 1.3.2 =
 * The table preview now clearly indicates when it needs refreshing, stays unavailable until refreshed, and recognizes when changes are undone.
@@ -308,8 +319,8 @@ Security:
 
 == Upgrade Notice ==
 
-= 1.3.3 =
-Adds workbook imports, remote snapshots, fixed headers and columns, numeric rules and footers, and bounded database paging.
+= 1.4.0 =
+Adds workbook imports, remote snapshots, fixed headers and columns, numeric rules and footers, and bounded database paging. Exports now neutralize spreadsheet formulas.
 
 = 1.3.2 =
 Makes table preview refreshes reliable and clarifies which options have additional settings.

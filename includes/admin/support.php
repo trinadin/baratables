@@ -1150,7 +1150,7 @@ class BaraTables_Admin_List_Columns extends BaraTables_Admin_List_Columns_Base {
 	protected function get_column_labels(): array {
 		return [
 			'post_type' => __('Post type', 'baratables'),
-			'data_source' => __('Data Source', 'baratables'),
+			'data_source' => __('Data source', 'baratables'),
 			'taxonomy' => __('Taxonomy', 'baratables'),
 			'fields' => __('Fields', 'baratables'),
 			'shortcode' => __('Shortcode', 'baratables'),

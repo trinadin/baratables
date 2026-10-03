@@ -56,6 +56,16 @@ trait BaraTables_Server_Side_Trait {
 			$state['reason'] = __('The source needs a non-null, single-column primary or unique key.', 'baratables');
 			return $state;
 		}
+		$auto_conflict = $this->server_side_auto_order_conflict($source['db'], $source['table'], $definition);
+		if ($auto_conflict !== '') {
+			$state['reason'] = $auto_conflict;
+			return $state;
+		}
+		$size_conflict = $this->server_side_cell_size_conflict($source['db'], $source['table'], $definition);
+		if ($size_conflict !== '') {
+			$state['reason'] = $size_conflict;
+			return $state;
+		}
 		$state['enabled'] = true;
 		$state['key'] = $key;
 		if ($cache_key !== '') {
@@ -66,7 +76,7 @@ trait BaraTables_Server_Side_Trait {
 
 	private function server_side_definition_reason(array $definition, array $options): string {
 		if (!BaraTables_Source_Type::is_external_db($definition['source_type'] ?? '')) {
-			return __('Server paging is available only for External Database tables.', 'baratables');
+			return __('Server paging is available only for external database tables.', 'baratables');
 		}
 		$columns = isset($definition['columns']) && is_array($definition['columns']) ? $definition['columns'] : [];
 		if (empty($columns)) {
@@ -175,8 +185,13 @@ trait BaraTables_Server_Side_Trait {
 		foreach ($columns as $column) {
 			$column_map[$this->resolve_column_slug($column)] = $this->sanitize_external_identifier((string) $column['key']);
 		}
+		// Only min(count, window) is ever reported, so the counts are window-bounded: the
+		// inner LIMIT lets the DB stop scanning at the window instead of COUNT(*)-ing the
+		// whole (possibly multi-million-row) table on every draw. Verified min-identical on
+		// MySQL 8.0 and MariaDB 11.4 (derived-table materialization honors LIMIT).
+		$window = $this->server_side_effective_window($definition);
 
-		$total_sql = $db->prepare('SELECT COUNT(*) FROM %i', $table);
+		$total_sql = $db->prepare('SELECT COUNT(*) FROM (SELECT 1 FROM %i LIMIT %d) c', $table, $window);
 		$total = $this->server_side_get_count($db, $total_sql);
 		if ($total === null) {
 			return new WP_Error('server_side_read_failed');
@@ -192,7 +207,16 @@ trait BaraTables_Server_Side_Trait {
 				}
 			}
 			if (empty($search_columns)) {
-				return new WP_Error('server_side_bad_request');
+				// Standard mode searches only searchable columns, so a term with none of them
+				// simply matches nothing. Answer the draw with an empty page instead of an Ajax
+				// error on every keystroke.
+				return [
+					'draw' => $parsed['draw'],
+					'recordsTotal' => min($total, $window),
+					'recordsFiltered' => 0,
+					'data' => [],
+					'_raw' => [],
+				];
 			}
 			$like = '%' . $db->esc_like($parsed['term']) . '%';
 			$parts = [];
@@ -207,7 +231,7 @@ trait BaraTables_Server_Side_Trait {
 		$filtered = $total;
 		if ($where !== '') {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic text contains literal placeholders only; every value is bound below.
-			$count_sql = $db->prepare('SELECT COUNT(*) FROM %i' . $where, ...array_merge([$table], $where_values));
+			$count_sql = $db->prepare('SELECT COUNT(*) FROM (SELECT 1 FROM %i' . $where . ' LIMIT %d) c', ...array_merge([$table], $where_values, [$window]));
 			$filtered = $this->server_side_get_count($db, $count_sql);
 			if ($filtered === null) {
 				return new WP_Error('server_side_read_failed');
@@ -221,37 +245,29 @@ trait BaraTables_Server_Side_Trait {
 		if (!isset($order[$state['key']])) {
 			$order[$state['key']] = 'ASC';
 		}
-		$order_parts = [];
-		$order_values = [];
-		foreach ($order as $column_name => $direction) {
-			// Qualify the source column: selected byte-capped expressions intentionally reuse the
-			// source name as their alias, and an unqualified ORDER BY would sort that BINARY alias
-			// lexically (for example 102 before 3) instead of using the database column's type.
-			$order_parts[] = '%i.%i ' . $direction;
-			$order_values[] = $table;
-			$order_values[] = $column_name;
-		}
 
 		// Bound bytes on the database side, before mysqli buffers the result. Fetch one byte over
 		// the effective per-cell budget so PHP can distinguish an exact fit from truncation.
 		$cell_count = max(1, $parsed['length'] * count($column_map));
 		$raw_cell_budget = min(self::SERVER_SIDE_MAX_CELL_BYTES, max(1, intdiv(self::SERVER_SIDE_MAX_RESPONSE_BYTES, $cell_count)));
-		$select_parts = [];
-		$select_values = [];
-		foreach ($column_map as $column_name) {
-			$select_parts[] = 'LEFT(CAST(%i AS BINARY), %d) AS %i';
-			$select_values[] = $column_name;
-			$select_values[] = $raw_cell_budget + 1;
-			$select_values[] = $column_name;
-		}
-		$sql_values = array_merge($select_values, [$table], $where_values, $order_values, [$parsed['length'], $parsed['start']]);
-		$sql_format = 'SELECT ' . implode(', ', $select_parts) . ' FROM %i' . $where
-			. ' ORDER BY ' . implode(', ', $order_parts) . ' LIMIT %d OFFSET %d';
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic text contains literal placeholders and allowlisted ASC/DESC only.
-		$page_sql = $db->prepare($sql_format, ...$sql_values);
-		$raw_rows = $this->server_side_get_results($db, $page_sql, true);
+		$raw_rows = $this->fetch_server_side_page_rows($db, $table, $column_map, $where, $where_values, $order, $raw_cell_budget, $parsed['length'], $parsed['start']);
 		if (is_wp_error($raw_rows)) {
-			return $raw_rows;
+			// The cached stable key may name a column the source no longer has: a schema change
+			// inside the schema transient's TTL leaves every paging draw ordering by a dead
+			// column. The materialized path already treats a stale key as recoverable (it purges
+			// the transient and re-reads); recover here too -- purge, re-derive, and when the
+			// fresh key differs retry once with it (or without any stable-key ordering).
+			$fresh_key = $this->recover_external_stable_key($db, $table);
+			if ($fresh_key !== $state['key']) {
+				unset($order[$state['key']]);
+				if ($fresh_key !== '' && !isset($order[$fresh_key])) {
+					$order[$fresh_key] = 'ASC';
+				}
+				$raw_rows = $this->fetch_server_side_page_rows($db, $table, $column_map, $where, $where_values, $order, $raw_cell_budget, $parsed['length'], $parsed['start']);
+			}
+			if (is_wp_error($raw_rows)) {
+				return $raw_rows;
+			}
 		}
 		$ordered = $this->reorder_external_rows_by_slug_map($raw_rows, $columns, $column_map);
 		$models = (new BaraTables_Table_Presentation($this))->build($definition, [])['columns'];
@@ -266,11 +282,53 @@ trait BaraTables_Server_Side_Trait {
 
 		return [
 			'draw' => $parsed['draw'],
-			'recordsTotal' => min($total, self::SERVER_SIDE_MAX_WINDOW),
-			'recordsFiltered' => min($filtered, self::SERVER_SIDE_MAX_WINDOW),
+			'recordsTotal' => min($total, $window),
+			'recordsFiltered' => min($filtered, $window),
 			'data' => $presented,
 			'_raw' => $ordered,
 		];
+	}
+
+	/**
+	 * Build and run one bounded page read. An empty order map omits ORDER BY entirely (the
+	 * degraded stale-key retry), which is valid SQL and still bounded by LIMIT/OFFSET.
+	 */
+	private function fetch_server_side_page_rows($db, string $table, array $column_map, string $where, array $where_values, array $order, int $raw_cell_budget, int $length, int $start) {
+		$order_parts = [];
+		$order_values = [];
+		foreach ($order as $column_name => $direction) {
+			// Qualify the source column: selected byte-capped expressions intentionally reuse the
+			// source name as their alias, and an unqualified ORDER BY would sort that BINARY alias
+			// lexically (for example 102 before 3) instead of using the database column's type.
+			$order_parts[] = '%i.%i ' . $direction;
+			$order_values[] = $table;
+			$order_values[] = $column_name;
+		}
+		$select_parts = [];
+		$select_values = [];
+		foreach ($column_map as $column_name) {
+			$select_parts[] = 'LEFT(CAST(%i AS BINARY), %d) AS %i';
+			$select_values[] = $column_name;
+			$select_values[] = $raw_cell_budget + 1;
+			$select_values[] = $column_name;
+		}
+		$sql_values = array_merge($select_values, [$table], $where_values, $order_values, [$length, $start]);
+		$sql_format = 'SELECT ' . implode(', ', $select_parts) . ' FROM %i' . $where
+			. (empty($order_parts) ? '' : ' ORDER BY ' . implode(', ', $order_parts)) . ' LIMIT %d OFFSET %d';
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic text contains literal placeholders and allowlisted ASC/DESC only.
+		$page_sql = $db->prepare($sql_format, ...$sql_values);
+		return $this->server_side_get_results($db, $page_sql, true);
+	}
+
+	/** Purge a stale stable-key cache entry and re-derive the key from the live schema. */
+	private function recover_external_stable_key($db, string $table): string {
+		delete_transient($this->external_stable_key_transient_key($db, $table));
+		return $this->find_external_stable_key($db, $table);
+	}
+
+	private function external_stable_key_transient_key($db, string $table): string {
+		$connection_identity = method_exists($db, 'btbl_connection_identity') ? $db->btbl_connection_identity() : '';
+		return 'btbl_ss_schema_' . md5($connection_identity . '|' . $table);
 	}
 
 	/** Reserve the shared public-read budget before an SSR path verifies or connects its source. */
@@ -393,9 +451,20 @@ trait BaraTables_Server_Side_Trait {
 		// The value is a prepared LIKE operand, never markup or an identifier. Preserve it byte for
 		// byte so "literal search" does not silently rewrite strings such as <tag> or %2F.
 		$term = $raw_term;
-		if ($draw < 0 || $start < 0 || $length < 1 || $length > self::SERVER_SIDE_MAX_PAGE_LENGTH || $start + $length > self::SERVER_SIDE_MAX_WINDOW) {
+		// The visitor may only page within the table's own row ceiling: "Rows to load" bounds the
+		// standard path, and paging must not quietly widen it to the protocol window. A page
+		// length larger than the remaining window is clamped rather than rejected, because
+		// DataTables keeps requesting its configured page size even at the last short page; an
+		// offset beyond the window (a remembered table state or shareable link from before the
+		// limit shrank) recovers onto the final page instead of failing every draw.
+		$window = $this->server_side_effective_window($definition);
+		if ($draw < 0 || $start < 0 || $length < 1 || $length > self::SERVER_SIDE_MAX_PAGE_LENGTH) {
 			return new WP_Error('server_side_bad_request');
 		}
+		if ($start >= $window) {
+			$start = max(0, $window - $length);
+		}
+		$length = min($length, $window - $start);
 		if (isset($request['search']) && !is_array($request['search'])) {
 			return new WP_Error('server_side_bad_request');
 		}
@@ -555,6 +624,11 @@ trait BaraTables_Server_Side_Trait {
 		if (!$enforced) {
 			$dialect = '';
 		}
+		if ($enforced && method_exists($db, 'btbl_set_session_timeout')) {
+			// Remember the verified statement on the connection itself: a mid-request reconnect
+			// starts a fresh session, and the connection re-asserts the bound there.
+			$db->btbl_set_session_timeout($dialect === 'mariadb' ? 'SET SESSION max_statement_time = 3' : 'SET SESSION max_execution_time = 3000');
+		}
 		if ($key !== '') {
 			$this->server_side_timeout_connections[$key] = $dialect;
 		}
@@ -562,8 +636,7 @@ trait BaraTables_Server_Side_Trait {
 	}
 
 	private function find_external_stable_key($db, string $table): string {
-		$connection_identity = method_exists($db, 'btbl_connection_identity') ? $db->btbl_connection_identity() : '';
-		$schema_cache_key = 'btbl_ss_schema_' . md5($connection_identity . '|' . $table);
+		$schema_cache_key = $this->external_stable_key_transient_key($db, $table);
 		$cached = get_transient($schema_cache_key);
 		if (is_array($cached) && array_key_exists('key', $cached)) {
 			return $this->sanitize_external_identifier((string) $cached['key']);
@@ -600,6 +673,215 @@ trait BaraTables_Server_Side_Trait {
 		}
 		set_transient($schema_cache_key, ['key' => ''], 60);
 		return '';
+	}
+
+	/** The paging window is the table's own row limit, never wider than the protocol ceiling. */
+	private function server_side_effective_window(array $definition): int {
+		$limit = (int) ($this->get_table_options($definition)['rowLimit'] ?? self::DEFAULT_ROW_LIMIT);
+		$limit = max(1, min(self::MAX_ROW_LIMIT, $limit));
+		return min(self::SERVER_SIDE_MAX_WINDOW, $limit);
+	}
+
+	/**
+	 * SQL orders an untyped column by the database's text comparison, while standard mode
+	 * detects numeric or date-like values and orders them as numbers or dates. Sampling a few
+	 * rows keeps that silent divergence out of the mode: a column whose stored values look
+	 * numeric or chronological keeps standard loading with its exact semantics. Cached beside
+	 * the schema probe because both read the same slowly changing shape of the source.
+	 */
+	private function server_side_auto_order_conflict($db, string $table, array $definition): string {
+		$headings = [];
+		foreach (array_values($definition['columns'] ?? []) as $column) {
+			if (!is_array($column) || BaraTables_Cell_Semantics::normalize_type((string) ($column['data_type'] ?? 'auto')) !== 'auto') {
+				continue;
+			}
+			$key = $this->sanitize_external_identifier((string) ($column['key'] ?? ''));
+			if ($key !== '') {
+				$headings[$key] = (string) ($column['label'] ?? '');
+			}
+		}
+		if (!$headings) {
+			return '';
+		}
+		$connection_identity = method_exists($db, 'btbl_connection_identity') ? $db->btbl_connection_identity() : '';
+		// The verdict depends on which columns THIS definition displays: two tables sharing one
+		// source must not share a scan that looked at a different column set.
+		$scan_keys = array_keys($headings);
+		sort($scan_keys);
+		// Headings are baked into the cached reason, so they belong in the key: two tables over
+		// one source must not read each other's column labels for up to five minutes.
+		$scan_labels = [];
+		foreach ($scan_keys as $scan_key) {
+			$scan_labels[] = (string) $headings[$scan_key];
+		}
+		$cache_key = 'btbl_ss_schema_' . md5($connection_identity . '|' . $table . '|auto|' . implode(',', $scan_keys) . '|' . implode('|', $scan_labels));
+		$cached = get_transient($cache_key);
+		if (is_array($cached) && array_key_exists('conflict', $cached)) {
+			return (string) $cached['conflict'];
+		}
+		// A database numeric or date column already orders the way the front end detects, so
+		// only text-typed columns can diverge; those are the only ones worth sampling.
+		$column_rows = $this->server_side_get_results($db, $db->prepare('SHOW COLUMNS FROM %i', $table), false);
+		$text_keys = [];
+		if (is_array($column_rows)) {
+			foreach ($column_rows as $column_row) {
+				if (!is_array($column_row)) {
+					continue;
+				}
+				$name = $this->sanitize_external_identifier((string) ($column_row['Field'] ?? ''));
+				$type = strtolower((string) ($column_row['Type'] ?? ''));
+				if ($name === '' || !isset($headings[$name])) {
+					continue;
+				}
+				if (preg_match('/int|decimal|float|double|numeric|fixed|year|date|time/', $type) === 1) {
+					continue;
+				}
+				$text_keys[$name] = true;
+			}
+		} else {
+			// The column types could not be read: sample every auto column rather than trust an
+			// unknown shape.
+			$text_keys = array_fill_keys(array_keys($headings), true);
+		}
+		$conflicting = [];
+		if ($text_keys) {
+			$select_parts = [];
+			$values = [];
+			foreach (array_keys($text_keys) as $key) {
+				$select_parts[] = 'LEFT(CAST(%i AS BINARY), 64) AS %i';
+				$values[] = $key;
+				$values[] = $key;
+			}
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Literal placeholders only; identifiers are allowlisted above.
+			$sql = $db->prepare('SELECT ' . implode(', ', $select_parts) . ' FROM %i LIMIT 8', ...array_merge($values, [$table]));
+			$rows = $this->server_side_get_results($db, $sql, false);
+			if (is_array($rows)) {
+				foreach ($rows as $row) {
+					if (!is_array($row)) {
+						continue;
+					}
+					foreach (array_keys($text_keys) as $key) {
+						$value = trim((string) ($row[$key] ?? ''));
+						if ($value === '' || isset($conflicting[$key])) {
+							continue;
+						}
+						if ($this->server_side_value_diverges_from_text_order($value)) {
+							$conflicting[$key] = true;
+						}
+					}
+				}
+			}
+		}
+		$conflict = '';
+		if ($conflicting) {
+			$conflict_key = (string) array_key_first($conflicting);
+			$heading = $headings[$conflict_key] !== '' ? $headings[$conflict_key] : $conflict_key;
+			$conflict = sprintf(
+				/* translators: %s: a column heading. */
+				__('Column "%s" stores numeric or date-like text, which database paging would sort as plain text.', 'baratables'),
+				$heading
+			);
+		}
+		set_transient($cache_key, ['conflict' => $conflict], $conflicting ? 300 : 60);
+		return $conflict;
+	}
+
+	/**
+	 * Every server-paged cell is byte-capped at a budget derived from the page geometry, and a
+	 * cell over the cap fails its whole draw. A column whose stored values cannot fit the
+	 * worst-case budget (the protocol's longest page, so a visitor's page-length choice cannot
+	 * outgrow the verdict) keeps the table on standard loading with a named reason, exactly
+	 * like the auto-order scan -- instead of an eligible-looking table breaking publicly the
+	 * first time a long value reaches a draw. The runtime cell budget remains as the backstop
+	 * for values that grow after this verdict; a probe that cannot run is advisory only and
+	 * also defers to that backstop.
+	 */
+	private function server_side_cell_size_conflict($db, string $table, array $definition): string {
+		$columns = [];
+		foreach (array_values($definition['columns'] ?? []) as $column) {
+			if (!is_array($column)) {
+				continue;
+			}
+			$key = $this->sanitize_external_identifier((string) ($column['key'] ?? ''));
+			if ($key !== '') {
+				$columns[$key] = (string) ($column['label'] ?? '');
+			}
+		}
+		if (!$columns) {
+			return '';
+		}
+		$keys = array_keys($columns);
+		sort($keys);
+		// Headings are baked into the cached reason, so they belong in the key beside the
+		// other schema-family verdicts (the auto-order scan key does the same).
+		$labels = [];
+		foreach ($keys as $key) {
+			$labels[] = (string) $columns[$key];
+		}
+		$connection_identity = method_exists($db, 'btbl_connection_identity') ? $db->btbl_connection_identity() : '';
+		$cache_key = 'btbl_ss_schema_' . md5($connection_identity . '|' . $table . '|cellcap|' . implode(',', $keys) . '|' . implode('|', $labels));
+		$cached = get_transient($cache_key);
+		if (is_array($cached) && array_key_exists('conflict', $cached)) {
+			return (string) $cached['conflict'];
+		}
+		$budget = min(self::SERVER_SIDE_MAX_CELL_BYTES, max(1, intdiv(self::SERVER_SIDE_MAX_RESPONSE_BYTES, self::SERVER_SIDE_MAX_PAGE_LENGTH * count($columns))));
+		$window = $this->server_side_effective_window($definition);
+		$inner_parts = [];
+		$values = [];
+		foreach ($keys as $index => $key) {
+			$inner_parts[] = '%i AS c' . $index;
+			$values[] = $key;
+		}
+		$outer_parts = [];
+		foreach ($keys as $index => $key) {
+			$outer_parts[] = 'MAX(OCTET_LENGTH(x.c' . $index . ')) AS m' . $index;
+		}
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Literal placeholders only; identifiers are allowlisted above.
+		$sql = $db->prepare('SELECT ' . implode(', ', $outer_parts) . ' FROM (SELECT ' . implode(', ', $inner_parts) . ' FROM %i LIMIT %d) x', ...array_merge($values, [$table, $window]));
+		$aggregates = $this->server_side_get_results($db, $sql, false);
+		$conflict = '';
+		if (is_array($aggregates) && isset($aggregates[0]) && is_array($aggregates[0])) {
+			foreach ($keys as $index => $key) {
+				if ((int) ($aggregates[0]['m' . $index] ?? 0) > $budget) {
+					$heading = $columns[$key] !== '' ? $columns[$key] : $key;
+					$conflict = sprintf(
+						/* translators: %s: a column heading. */
+						__('Column "%s" holds values too large for database paging; the table keeps standard loading.', 'baratables'),
+						$heading
+					);
+					break;
+				}
+			}
+		}
+		set_transient($cache_key, ['conflict' => $conflict], $conflict !== '' ? 300 : 60);
+		return $conflict;
+	}
+
+	/**
+	 * Mirror the front end's value detectors narrowly enough to keep formatted numbers and
+	 * human dates out of database paging: the browser sorts '1,234', '$99', '45%', '10k', and
+	 * 'March 3, 2025' as numbers or dates, while SQL orders the stored text lexically.
+	 */
+	private function server_side_value_diverges_from_text_order(string $value): bool {
+		if (preg_match('/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/', $value) === 1
+			|| preg_match('/^\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/', $value) === 1
+			|| preg_match('#^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$#', $value) === 1
+			|| preg_match('#^\d{4}[./-]\d{1,2}[./-]\d{1,2}$#', $value) === 1) {
+			return true;
+		}
+		// The front end's formatted-number detector strips grouping, currency, and multiplier
+		// marks (case-insensitively -- '4K' sorts like '4') before recognizing a number. This
+		// set is deliberately conservative rather than an exact mirror: over-flagging only keeps
+		// a table on standard loading, while missing a shape would silently change its sort
+		// order under database paging.
+		$stripped = preg_replace('/[\'),\s\x{00A0}\x{2009}\x{202F}$£€¥%\x{20BD}\x{20A9}\x{20BA}rfkɃΞ]/ui', '', $value);
+		if (is_string($stripped) && preg_match('/^[+-]?\d+(?:\.\d+)?$/', $stripped) === 1) {
+			return true;
+		}
+		$months = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
+		return preg_match('/^(' . $months . ')[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}$/i', $value) === 1
+			|| preg_match('/^\d{1,2}(?:st|nd|rd|th)?\s+(' . $months . ')[a-z]*\.?,?\s+\d{4}$/i', $value) === 1
+			|| preg_match('/^(' . $months . ')[a-z]*\.?,?\s+\d{4}$/i', $value) === 1;
 	}
 
 	private function server_side_get_count($db, $sql): ?int {

@@ -8,10 +8,12 @@
 	var useState = wp.element.useState;
 	var useEffect = wp.element.useEffect;
 	var __ = wp.i18n.__;
+	var sprintf = wp.i18n.sprintf;
 	var Placeholder = wp.components.Placeholder;
 	var SelectControl = wp.components.SelectControl;
 	var Spinner = wp.components.Spinner;
 	var ExternalLink = wp.components.ExternalLink;
+var Notice = wp.components.Notice;
 	var config = window.BaraTablesBlockConfig || {};
 
 	// Fetch the picker's table list once per editor session, straight from admin-ajax. The
@@ -19,6 +21,24 @@
 	// query; the nonce is injected server-side next to this script. check_ajax_referer()
 	// only reads _ajax_nonce or _wpnonce -- a "nonce" param dies as 403 and the picker
 	// shows "no tables" even when tables exist.
+	// The endpoint pages at 20 tables; pull follow-up pages while `more` holds so a site with
+	// 21+ tables can still embed any of them (cap: 5 pages / 100 tables). When the cap stops
+	// the walk early the list is truncated, and the caller must not report a selection that
+	// simply sits beyond the cap as deleted.
+	function fetchTablePage(page, collected) {
+		return window.fetch(config.ajaxUrl + '?action=btbl_block_tables&_ajax_nonce=' + encodeURIComponent(config.nonce) + '&page=' + page)
+			.then(function (response) { return response.json(); })
+			.then(function (json) {
+				var data = json && json.success && json.data ? json.data : {};
+				var results = collected.concat(data.results || []);
+				var more = !!data.more;
+				if (more && page < 5) {
+					return fetchTablePage(page + 1, results);
+				}
+				return { results: results, truncated: more };
+			});
+	}
+
 	function useTables() {
 		var pair = useState(null);
 		var tables = pair[0];
@@ -28,13 +48,10 @@
 			if (tables !== null || !config.ajaxUrl || !config.nonce) {
 				return;
 			}
-			window.fetch(config.ajaxUrl + '?action=btbl_block_tables&_ajax_nonce=' + encodeURIComponent(config.nonce))
-				.then(function (response) { return response.json(); })
-				.then(function (json) {
-					setTables(json && json.success && json.data ? (json.data.results || []) : []);
-				})
+			fetchTablePage(1, [])
+				.then(function (list) { setTables(list); })
 				.catch(function () {
-					setTables([]);
+					setTables({ results: [], truncated: false });
 				});
 		}, []);
 
@@ -42,36 +59,54 @@
 	}
 
 	function TableEdit(props) {
-		var tables = useTables();
+		var list = useTables();
 		var selectedId = props.attributes.id || '';
 
-		if (tables === null) {
+		if (list === null) {
 			return createElement(
 				Placeholder,
-				{ icon: 'grid-view', label: __('BaraTables Table', 'baratables') },
+				{ icon: 'grid-view', label: __('BaraTables table', 'baratables') },
 				createElement(Spinner, null)
 			);
 		}
 
-		if (tables.length === 0) {
+		if (list.results.length === 0) {
 			return createElement(
 				Placeholder,
-				{ icon: 'grid-view', label: __('BaraTables Table', 'baratables') },
+				{ icon: 'grid-view', label: __('BaraTables table', 'baratables') },
 				createElement('p', null, __('No tables yet. Create a table first, then pick it here.', 'baratables')),
 				createElement(ExternalLink, {
 					href: 'edit.php?post_type=btbl_table'
-				}, __('Go to Tables', 'baratables'))
+				}, __('Go to tables', 'baratables'))
 			);
 		}
 
 		var options = [{ value: '', label: __('Select a table...', 'baratables') }];
-		for (var i = 0; i < tables.length; i++) {
-			options.push({ value: tables[i].id, label: tables[i].text });
+		var selectionExists = false;
+		for (var i = 0; i < list.results.length; i++) {
+			options.push({ value: list.results[i].id, label: list.results[i].text });
+			if (list.results[i].id === selectedId) {
+				selectionExists = true;
+			}
+		}
+
+		// A saved table that was deleted would otherwise render as an empty, silent picker --
+		// but only claim deletion when the walk actually reached the end of the list.
+		var staleNotice = null;
+		if (selectedId !== '' && !selectionExists) {
+			staleNotice = createElement(
+				Notice,
+				{ status: 'warning', isDismissible: false },
+				list.truncated
+					? sprintf(__('The picker lists only the first %d tables; the selected one may exist beyond them.', 'baratables'), list.results.length)
+					: __('The selected table no longer exists. Pick another table.', 'baratables')
+			);
 		}
 
 		return createElement(
 			Placeholder,
-			{ icon: 'grid-view', label: __('BaraTables Table', 'baratables') },
+			{ icon: 'grid-view', label: __('BaraTables table', 'baratables') },
+			staleNotice,
 			createElement(SelectControl, {
 				label: __('Table', 'baratables'),
 				value: selectedId,
@@ -86,7 +121,7 @@
 
 	wp.blocks.registerBlockType('baratables/table', {
 		apiVersion: 2,
-		title: __('BaraTables Table', 'baratables'),
+		title: __('BaraTables table', 'baratables'),
 		description: __('Embed an interactive, searchable BaraTables table.', 'baratables'),
 		icon: 'grid-view',
 		category: 'widgets',

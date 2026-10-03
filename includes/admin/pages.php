@@ -51,7 +51,7 @@ class BaraTables_Admin_Pages {
 					<p>
 						<strong><?php esc_html_e('New table:', 'baratables'); ?></strong>
 						<?php esc_html_e('1. Pick a data source on the Source tab.', 'baratables'); ?>
-						<?php esc_html_e('2. Choose at least one column on Columns &amp; Filters.', 'baratables'); ?>
+						<?php esc_html_e('2. Choose at least one column on Columns &amp; filters.', 'baratables'); ?>
 						<?php esc_html_e('3. Publish.', 'baratables'); ?>
 					</p>
 				</div>
@@ -59,7 +59,7 @@ class BaraTables_Admin_Pages {
 			<div class="btbl-tab-wrapper">
 				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist">
 					<a href="#btbl-tab-general" id="btbl-tab-general-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-general' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-general')); ?>" data-target="btbl-tab-general"><?php esc_html_e('Source', 'baratables'); ?></a>
-					<a href="#btbl-tab-columns" id="btbl-tab-columns-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-columns' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & Filters', 'baratables'); ?></a>
+					<a href="#btbl-tab-columns" id="btbl-tab-columns-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-columns' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & filters', 'baratables'); ?></a>
 					<a href="#btbl-tab-table" id="btbl-tab-table-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-table' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-table')); ?>" data-target="btbl-tab-table"><?php esc_html_e('Options', 'baratables'); ?></a>
 					<a href="#btbl-tab-advanced" id="btbl-tab-advanced-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-advanced' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-advanced')); ?>" data-target="btbl-tab-advanced"><?php esc_html_e('Advanced', 'baratables'); ?></a>
 				</h2>
@@ -84,7 +84,7 @@ class BaraTables_Admin_Pages {
 		<?php
 	}
 
-	/** Render just the Columns & Filters panel (used by the no-reload field refresh). */
+	/** Render just the Columns & filters panel (used by the no-reload field refresh). */
 	public function render_columns_panel(array $context): string {
 		ob_start();
 		$this->tab_columns->render($context);

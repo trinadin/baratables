@@ -134,13 +134,15 @@ final class BaraTables_Source_Type {
 	}
 
 	public static function labels(): array {
+		// Same words the editor's Data source dropdown uses, so a table never changes what its
+		// source is called between the editor and the list screens.
 		return [
-			self::WP_QUERY => __('WP Query', 'baratables'),
-			self::CSV => __('CSV', 'baratables'),
-			self::EXTERNAL_DB => __('External DB', 'baratables'),
+			self::WP_QUERY => __('WP query builder', 'baratables'),
+			self::CSV => __('CSV file', 'baratables'),
+			self::EXTERNAL_DB => __('External database', 'baratables'),
 			self::REMOTE_SNAPSHOT => __('Remote snapshot', 'baratables'),
-			self::CUSTOM_QUERY => __('Custom Query', 'baratables'),
-			self::CUSTOM_DATA => __('Custom Data', 'baratables'),
+			self::CUSTOM_QUERY => __('Custom WP query', 'baratables'),
+			self::CUSTOM_DATA => __('Manual data', 'baratables'),
 		];
 	}
 

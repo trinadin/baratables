@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BaraTables
  * Description: Build searchable, sortable tables and charts from files, public snapshots, WordPress content, or databases.
- * Version: 1.3.3
+ * Version: 1.4.0
  * Author: Nathan Noom
  * Author URI: https://profiles.wordpress.org/nathannoom/
  * License: GPL-2.0-or-later

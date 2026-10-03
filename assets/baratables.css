@@ -21,7 +21,14 @@
 	width: 100%;
 }
 
+/* The aggregate footer reads as part of the table: a strong top rule and a quiet tint, so
+   "Sum: 60" lands as a footer row rather than a stray number under the last row. The tint
+   pairs an explicit dark text color — a dark theme's inherited white text would otherwise
+   land on the light surface at ~1:1. */
 .btbl-table tfoot td[data-btbl-aggregate]:not([data-btbl-aggregate="none"]) {
+	border-top: 2px solid var(--btbl-border);
+	background: #f6f8fa;
+	color: #1f2328;
 	font-weight: 600;
 }
 
@@ -73,6 +80,12 @@
 	width: 100%;
 }
 
+/* Native selects (the plain dropdown variants) match the Tom Select controls' full-width
+   rhythm; unstyled, they collapsed to their option text width next to full-width siblings. */
+.btbl-filter .btbl-filter-control {
+	width: 100%;
+}
+
 .btbl-filter .ts-control {
 	border: 1px solid var(--btbl-border);
 	border-radius: 4px;
@@ -101,6 +114,22 @@
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 8px;
+}
+
+/* Toolbar polish on top of DataTables' own layout: DT renders one start cell (left, via its
+   own auto margins) and one end cell (right), so the macro grouping is already correct. What
+   is missing is graceful narrow-width behavior: let the row wrap instead of squeezing, keep a
+   consistent gap, and never break the "Show N rows" label across lines. Margin overrides are
+   deliberately absent -- vendor's div-qualified selectors outrank wrapper-scoped ones, and
+   vendor's grouping is what we want. */
+.btbl-table-wrapper .dt-layout-row {
+	column-gap: 16px;
+	flex-wrap: wrap;
+	row-gap: 8px;
+}
+
+.btbl-table-wrapper .dt-length {
+	white-space: nowrap;
 }
 
 .btbl-table-wrapper .dt-search label {
@@ -135,7 +164,9 @@
 /* Self-contained front-end control styling. The "Clear filters" and "Edit Table" controls carry
    wp-admin's .button classes, which only exist on the front end if the active theme happens to
    define them -- on themes that don't, they rendered as unstyled UA buttons right next to this
-   fully-styled toggle. The wp classes stay on the markup as progressive enhancement. */
+   fully-styled toggle. The wp classes stay on the markup as progressive enhancement. The white
+   surface pairs an explicit dark text color: with plain `color: inherit`, a dark theme's white
+   text landed on the white background and vanished. */
 .btbl-search-columns-toggle,
 .btbl-reset-button,
 .btbl-edit-link {
@@ -147,7 +178,7 @@
 	cursor: pointer;
 	line-height: 1.2;
 	display: inline-block;
-	color: inherit;
+	color: #1f2328;
 	text-decoration: none;
 }
 
@@ -158,18 +189,25 @@
 	outline-offset: 1px;
 }
 
+/* Anchored to the inline END, not a physical right edge: in RTL the search control sits at the
+   wrapper's other side, and a physical right:0 pushed the panel out of (and under) the wrapper's
+   scroll area. max-height + internal scroll keeps a short table from clipping the panel bottom
+   into the wrapper's own scrollbar. */
 .btbl-search-columns-dropdown {
 	position: absolute;
-	right: 0;
+	inset-inline-end: 0;
 	top: calc(100% + 5px);
 	padding: 10px 10px 10px 12px;
 	border: 1px solid var(--btbl-border);
 	border-radius: 6px;
 	background: var(--btbl-surface);
+	color: #1f2328;
 	box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
 	display: none;
 	z-index: 20;
 	white-space: nowrap;
+	max-height: 60vh;
+	overflow-y: auto;
 }
 
 .btbl-search-columns-dropdown.is-open {

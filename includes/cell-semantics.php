@@ -142,10 +142,26 @@ final class BaraTables_Cell_Semantics {
 		if ($value === null) {
 			return '';
 		}
-		foreach (self::normalize_rules($rules, 'number') as $rule) {
-			$threshold = (float) $rule['value'];
+		return self::matching_preset_normalized($value, self::normalize_rules($rules, 'number'));
+	}
+
+	/**
+	 * Compare against ALREADY-normalized rules.
+	 *
+	 * normalize_rules() re-parses every threshold (regex + entity decode + canonical round)
+	 * per call; the column models handed to present_cell() carry rules normalized once at
+	 * model build (table-presentation build_column_models), so the render hot path calls this
+	 * directly -- re-normalizing per cell cost ~58ms per 10k rule cells at the row ceiling.
+	 * matching_preset() stays the normalizing entry point for raw rule arrays.
+	 */
+	public static function matching_preset_normalized(?float $value, array $normalized_rules): string {
+		if ($value === null) {
+			return '';
+		}
+		foreach ($normalized_rules as $rule) {
+			$threshold = (float) ($rule['value'] ?? '');
 			$matches = false;
-			switch ($rule['operator']) {
+			switch ($rule['operator'] ?? '') {
 				case 'lt': $matches = $value < $threshold; break;
 				case 'lte': $matches = $value <= $threshold; break;
 				case 'eq': $matches = $value === $threshold; break;
@@ -154,7 +170,7 @@ final class BaraTables_Cell_Semantics {
 				case 'gt': $matches = $value > $threshold; break;
 			}
 			if ($matches) {
-				return $rule['preset'];
+				return (string) ($rule['preset'] ?? '');
 			}
 		}
 		return '';
@@ -197,7 +213,8 @@ final class BaraTables_Cell_Semantics {
 			return ['html' => $safe_html, 'classes' => ['btbl-typed-number', 'btbl-number-invalid'], 'number' => null];
 		}
 		$canonical = self::canonical_number($value);
-		$preset = self::matching_preset($value, $column['conditional_rules'] ?? []);
+		// The column model's rules are normalized at model build; skip the per-cell re-parse.
+		$preset = self::matching_preset_normalized($value, is_array($column['conditional_rules'] ?? null) ? $column['conditional_rules'] : []);
 		$classes = ['btbl-typed-number'];
 		$marker_classes = ['btbl-number-marker'];
 		if ($preset !== '') {

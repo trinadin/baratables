@@ -74,7 +74,9 @@ trait BaraTables_Column_State_Trait {
 				'searchable' => array_key_exists('searchable', $col) ? (bool) $col['searchable'] : true,
 				'sort_priority' => $priority,
 				'sort_direction' => isset($col['sort_direction']) && $col['sort_direction'] === 'desc' ? 'desc' : 'asc',
-				'sort_enabled' => !empty($col['sort_enabled']) || $priority > 0,
+				// The explicit flag alone: a legacy sort_enabled=false with a stale priority must not
+			// silently start sorting again on an editor round-trip (runtime honors the flag).
+			'sort_enabled' => !empty($col['sort_enabled']),
 				'sortable' => array_key_exists('sortable', $col) ? (bool) $col['sortable'] : true,
 			];
 		}

@@ -825,7 +825,8 @@ jQuery(function($) {
 			};
 		}
 
-		var order = ($input.val() || '').split(',').filter(function(val) { return val; });
+		// Slugs are newline-separated: a slug's key half may legally contain a comma.
+		var order = ($input.val() || '').split('\n').filter(function(val) { return val; });
 		var currentMap = {};
 		var dragSlug = null;
 
@@ -833,11 +834,15 @@ jQuery(function($) {
 			// Fire change so listeners (e.g. the Refresh-preview reveal) notice a reorder --
 			// jQuery .val() alone is silent. Safe during init: the reveal handler binds later,
 			// so the initial sync's change is a no-op until a real user reorder.
-			$input.val(order.join(',')).trigger('change');
+			$input.val(order.join('\n')).trigger('change');
 		}
 
 		function renderList() {
 			$list.empty();
+			// The keyboard hint is translated markup shipped on the list element
+			// (data-keyboard-hint in ui.php); no English fallback here or non-English
+			// locales would get a hardcoded tooltip.
+			var keyboardHint = String(config.keyboardHint || $list.attr('data-keyboard-hint') || '');
 			order.forEach(function(slug) {
 				if (!Object.prototype.hasOwnProperty.call(currentMap, slug)) {
 					return;
@@ -848,8 +853,10 @@ jQuery(function($) {
 					.attr('data-slug', slug)
 					.attr('tabindex', '0')
 					.attr('role', 'listitem')
-					.attr('title', config.keyboardHint || 'Use the up and down arrow keys to reorder.')
 					.html(label);
+				if (keyboardHint) {
+					$item.attr('title', keyboardHint);
+				}
 				$list.append($item);
 			});
 		}
@@ -1118,6 +1125,11 @@ jQuery(function($) {
 		// but only once the value is committed, never on each keystroke while it is being typed.
 		var isExternalDbControl = $target.closest('[data-btbl-source~="external_db"]').length > 0;
 		var isExternalSchemaField = $target.is('#btbl_external_table, #btbl_external_name, #btbl_external_host, #btbl_external_port');
+		// A remote snapshot's retained rows are the table data; typing a URL or picking a format
+		// changes where the NEXT fetch comes from, never which columns the stored snapshot has
+		// (the fetch-time schema guard rejects drift). Resetting here would destroy the column
+		// configuration on every keystroke and the forced pre-fetch save would persist the wipe.
+		var isRemoteSnapshotControl = $target.closest('[data-btbl-source~="remote_snapshot"]').length > 0;
 		if (source === 'wp_query' && isWpQueryControl) {
 			return;
 		}
@@ -1125,6 +1137,9 @@ jQuery(function($) {
 			return;
 		}
 		if (source === 'custom_data' && isCustomDataControl) {
+			return;
+		}
+		if (source === 'remote_snapshot' && isRemoteSnapshotControl) {
 			return;
 		}
 		if (source === 'external_db' && isExternalDbControl) {

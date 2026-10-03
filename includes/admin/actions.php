@@ -217,7 +217,7 @@ class BaraTables_Admin_Action_Handler {
 	public function apply_request_to_definition(array $request, ?array $definition = null, bool $is_update = false): array {
 		$defn = $definition ?? [];
 
-		$defn['name'] = $request['name'] !== '' ? $request['name'] : __('Untitled Table', 'baratables');
+		$defn['name'] = $request['name'] !== '' ? $request['name'] : __('Untitled table', 'baratables');
 		$defn['post_type'] = $request['post_type'];
 		$defn['post_types'] = $request['post_types'];
 		$defn['source_type'] = $request['source_type'];
@@ -278,6 +278,13 @@ class BaraTables_Admin_Action_Handler {
 		}
 
 		$defn['table_options'] = $request['table_options'];
+		if ($request['source_type'] !== BaraTables_Source_Type::EXTERNAL_DB) {
+			// The paging checkbox lives in the external-database panel, but it keeps posting 1
+			// after a no-reload switch to another source because the panel is only hidden. Left
+			// set, the editor shows a permanent incompatibility warning whose only clearable
+			// control is inside the hidden panel.
+			$defn['table_options']['serverSide'] = false;
+		}
 		$defn['filter_order'] = $request['filter_order'];
 
 		// searchable_raw was dead state: nothing ever read the top-level map (per-column

@@ -8,10 +8,12 @@
 	var useState = wp.element.useState;
 	var useEffect = wp.element.useEffect;
 	var __ = wp.i18n.__;
+	var sprintf = wp.i18n.sprintf;
 	var Placeholder = wp.components.Placeholder;
 	var SelectControl = wp.components.SelectControl;
 	var Spinner = wp.components.Spinner;
 	var ExternalLink = wp.components.ExternalLink;
+var Notice = wp.components.Notice;
 	var config = window.BaraTablesChartBlockConfig || {};
 
 	// Fetch the picker's chart list once per editor session, straight from admin-ajax. The
@@ -19,6 +21,24 @@
 	// query; the nonce is injected server-side next to this script. check_ajax_referer() only
 	// reads _ajax_nonce or _wpnonce -- anything else dies as 403 and the picker shows "no
 	// charts" even when charts exist.
+	// The endpoint pages at 20 charts; pull follow-up pages while `more` holds so a site with
+	// 21+ charts can still embed any of them (cap: 5 pages / 100 charts). When the cap stops
+	// the walk early the list is truncated, and the caller must not report a selection that
+	// simply sits beyond the cap as deleted.
+	function fetchChartPage(page, collected) {
+		return window.fetch(config.ajaxUrl + '?action=btbl_block_charts&_ajax_nonce=' + encodeURIComponent(config.nonce) + '&page=' + page)
+			.then(function (response) { return response.json(); })
+			.then(function (json) {
+				var data = json && json.success && json.data ? json.data : {};
+				var results = collected.concat(data.results || []);
+				var more = !!data.more;
+				if (more && page < 5) {
+					return fetchChartPage(page + 1, results);
+				}
+				return { results: results, truncated: more };
+			});
+	}
+
 	function useCharts() {
 		var pair = useState(null);
 		var charts = pair[0];
@@ -28,13 +48,10 @@
 			if (charts !== null || !config.ajaxUrl || !config.nonce) {
 				return;
 			}
-			window.fetch(config.ajaxUrl + '?action=btbl_block_charts&_ajax_nonce=' + encodeURIComponent(config.nonce))
-				.then(function (response) { return response.json(); })
-				.then(function (json) {
-					setCharts(json && json.success && json.data ? (json.data.results || []) : []);
-				})
+			fetchChartPage(1, [])
+				.then(function (list) { setCharts(list); })
 				.catch(function () {
-					setCharts([]);
+					setCharts({ results: [], truncated: false });
 				});
 		}, []);
 
@@ -42,36 +59,54 @@
 	}
 
 	function ChartEdit(props) {
-		var charts = useCharts();
+		var list = useCharts();
 		var selectedId = props.attributes.id || '';
 
-		if (charts === null) {
+		if (list === null) {
 			return createElement(
 				Placeholder,
-				{ icon: 'chart-bar', label: __('BaraTables Chart', 'baratables') },
+				{ icon: 'chart-bar', label: __('BaraTables chart', 'baratables') },
 				createElement(Spinner, null)
 			);
 		}
 
-		if (charts.length === 0) {
+		if (list.results.length === 0) {
 			return createElement(
 				Placeholder,
-				{ icon: 'chart-bar', label: __('BaraTables Chart', 'baratables') },
+				{ icon: 'chart-bar', label: __('BaraTables chart', 'baratables') },
 				createElement('p', null, __('No charts yet. Create a chart first, then pick it here.', 'baratables')),
 				createElement(ExternalLink, {
 					href: 'edit.php?post_type=btbl_chart'
-				}, __('Go to Charts', 'baratables'))
+				}, __('Go to charts', 'baratables'))
 			);
 		}
 
 		var options = [{ value: '', label: __('Select a chart...', 'baratables') }];
-		for (var i = 0; i < charts.length; i++) {
-			options.push({ value: charts[i].id, label: charts[i].text });
+		var selectionExists = false;
+		for (var i = 0; i < list.results.length; i++) {
+			options.push({ value: list.results[i].id, label: list.results[i].text });
+			if (list.results[i].id === selectedId) {
+				selectionExists = true;
+			}
+		}
+
+		// A saved chart that was deleted would otherwise render as an empty, silent picker --
+		// but only claim deletion when the walk actually reached the end of the list.
+		var staleNotice = null;
+		if (selectedId !== '' && !selectionExists) {
+			staleNotice = createElement(
+				Notice,
+				{ status: 'warning', isDismissible: false },
+				list.truncated
+					? sprintf(__('The picker lists only the first %d charts; the selected one may exist beyond them.', 'baratables'), list.results.length)
+					: __('The selected chart no longer exists. Pick another chart.', 'baratables')
+			);
 		}
 
 		return createElement(
 			Placeholder,
-			{ icon: 'chart-bar', label: __('BaraTables Chart', 'baratables') },
+			{ icon: 'chart-bar', label: __('BaraTables chart', 'baratables') },
+			staleNotice,
 			createElement(SelectControl, {
 				label: __('Chart', 'baratables'),
 				value: selectedId,
@@ -86,7 +121,7 @@
 
 	wp.blocks.registerBlockType('baratables/chart', {
 		apiVersion: 2,
-		title: __('BaraTables Chart', 'baratables'),
+		title: __('BaraTables chart', 'baratables'),
 		description: __('Embed a BaraTables chart.', 'baratables'),
 		icon: 'chart-bar',
 		category: 'widgets',

@@ -101,18 +101,39 @@ trait BaraTables_Filter_Options_Trait {
 					$parts = array_filter(array_map('trim', explode(',', $value)), static function ($part) {
 						return $part !== '';
 					});
+					// The split exists for multi-value cells ("Doe, Jane", "East, West"). A number
+					// fragment means this is one FORMATTED NUMBER ("1,234.50"), not a list -- offer
+					// the whole value as a single option rather than splitting it into junk.
+					$number_shaped = static function (string $part): bool {
+						return preg_match('/^[\d.,\-+() ]+$/', $part) === 1 && preg_match('/\d/', $part) === 1;
+					};
+					$is_list = true;
 					foreach ($parts as $part) {
-						// Options are keyed by value, so duplicates collapse to one slot. Normalize
-						// only the first occurrence of each distinct value: at the configured row limit
-						// (up to 10,000) a low-cardinality column would otherwise rebuild the same
-						// option once per row.
-						if (!isset($filter['options'][$part])) {
-							$filter['options'][$part] = $this->normalize_filter_option([
-								'label' => $part,
-								'value' => $part,
-								'search_terms' => [$part],
-							]);
+						if ($number_shaped($part)) {
+							$is_list = false;
+							break;
 						}
+					}
+					if ($is_list) {
+						foreach ($parts as $part) {
+							// Options are keyed by value, so duplicates collapse to one slot. Normalize
+							// only the first occurrence of each distinct value: at the configured row limit
+							// (up to 10,000) a low-cardinality column would otherwise rebuild the same
+							// option once per row.
+							if (!isset($filter['options'][$part])) {
+								$filter['options'][$part] = $this->normalize_filter_option([
+									'label' => $part,
+									'value' => $part,
+									'search_terms' => [$part],
+								]);
+							}
+						}
+					} elseif (!isset($filter['options'][$value])) {
+						$filter['options'][$value] = $this->normalize_filter_option([
+							'label' => $value,
+							'value' => $value,
+							'search_terms' => [$value],
+						]);
 					}
 				} elseif (!isset($filter['options'][$value])) {
 					$filter['options'][$value] = $this->normalize_filter_option([
@@ -467,7 +488,10 @@ trait BaraTables_Filter_Options_Trait {
 		$has_letters = preg_match('/[a-z]/i', $value);
 		$date_like = preg_match('/^(?:\\d{4}[-\\/]\\d{1,2}[-\\/]\\d{1,2}|\\d{1,2}[-\\/]\\d{1,2}[-\\/]\\d{4})(?:[ T]\\d{1,2}:\\d{2}(?::\\d{2})?)?$/', $value);
 		if (!$date_like && $has_letters) {
-			$date_like = preg_match('/\\b\\d{4}\\b/', $value);
+			// Text dates carry a month name (strtotime parses English); a bare 4-digit number
+			// inside prose ("Room 2024 available") is not a date and must not sort options by
+			// that year. parse_date_option()'s year fallback still serves the month-name cases.
+			$date_like = preg_match('/\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\b/i', $value);
 		}
 		if ($date_like && $this->parse_date_option($value) !== null) {
 			return 'date';

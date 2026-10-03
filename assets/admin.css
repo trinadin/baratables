@@ -33,6 +33,14 @@
 	color: #8a1f11;
 }
 
+/* Match the front end's aggregate-footer treatment (baratables.css): rule + tint + weight, so
+   the preview reads "Sum: 60" as a footer row, not a stray number. */
+.btbl-preview-table tfoot td[data-btbl-aggregate]:not([data-btbl-aggregate="none"]) {
+	border-top: 2px solid var(--btbl-border-medium);
+	background: var(--btbl-bg-muted);
+	font-weight: 600;
+}
+
 .btbl-admin .btbl-small-heading {
 	display: block;
 	margin-bottom: 6px;
@@ -41,7 +49,9 @@
 
 .btbl-admin .btbl-small-heading-row {
 	display: flex;
-	align-items: flex-start;
+	/* Centered like the gear rows (.btbl-checkbox-top): a single-line heading and its icon sit
+	   on one visual line instead of the icon hanging from the top edge. */
+	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
 	margin-bottom: 6px;
@@ -57,7 +67,7 @@
 	gap: 16px;
 }
 
-/* Columns & Filters: split a column group's boxes into two INDEPENDENT stacks on desktop, so a
+/* Columns & filters: split a column group's boxes into two INDEPENDENT stacks on desktop, so a
    single column never spans the full width and expanding one box's options doesn't push or gap
    the column beside it (each stack flows on its own — no shared grid-row height, no rebalancing).
    Below this breakpoint the stacks fall back to a single natural column. */
@@ -91,6 +101,7 @@
 }
 
 .btbl-tab-panel > .btbl-control-grid:not(:first-child),
+.btbl-tab-panel > .btbl-flag-grid:not(:first-child),
 .btbl-tab-panel > .btbl-control:not(:first-child) {
 	margin-top: 12px;
 }
@@ -783,7 +794,8 @@
 	cursor: default;
 }
 
-.btbl-options-toggle .dashicons {
+.btbl-options-toggle .dashicons,
+.btbl-chart-preview-trigger .dashicons {
 	font-size: 18px;
 	width: 18px;
 	height: 18px;
@@ -907,14 +919,10 @@
 .btbl-chart-preview-trigger {
 	display: inline-flex;
 	align-items: center;
-	justify-content: center;
 	color: var(--btbl-color-primary);
 	text-decoration: none;
 	line-height: 1;
-	padding: 4px;
-	min-width: 28px;
-	min-height: 28px;
-	border-radius: 3px;
+	cursor: pointer;
 }
 
 .btbl-chart-modal {
@@ -1140,9 +1148,11 @@
 	line-height: 1;
 	vertical-align: middle;
 }
-/* Both WP's .button and the inline-flex above outrank the UA [hidden] rule, so re-assert hiding
-   for the gated icon buttons (grid / query / reset) at higher specificity than the flex rule. */
-.wp-core-ui .button.btbl-icon-button[hidden] {
+/* Both WP's .button (display:inline-block) and the inline-flex above outrank the UA [hidden]
+   rule, so re-assert hiding for every gated plugin button (icon buttons and labeled ones like
+   "Update grid") at higher specificity than those display rules. */
+.wp-core-ui .button.btbl-icon-button[hidden],
+.wp-core-ui .btbl-admin button.button[hidden] {
 	display: none;
 }
 /* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */

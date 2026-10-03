@@ -30,12 +30,16 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 		$rate_value_like = $GLOBALS['wpdb']->esc_like('_transient_btbl_ss_rate_') . '%';
 		$rate_timeout_like = $GLOBALS['wpdb']->esc_like('_transient_timeout_btbl_ss_rate_') . '%';
 		$rate_legacy_like = $GLOBALS['wpdb']->esc_like('btbl_ss_rate_') . '%';
+		$schema_value_like = $GLOBALS['wpdb']->esc_like('_transient_btbl_ss_schema_') . '%';
+		$schema_timeout_like = $GLOBALS['wpdb']->esc_like('_transient_timeout_btbl_ss_schema_') . '%';
 		$rate_cleanup_sql = $GLOBALS['wpdb']->prepare(
-			'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s',
+			'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s',
 			$GLOBALS['wpdb']->options,
 			$rate_value_like,
 			$rate_timeout_like,
-			$rate_legacy_like
+			$rate_legacy_like,
+			$schema_value_like,
+			$schema_timeout_like
 		);
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery -- Prepared cleanup of plugin-owned transient prefixes during uninstall.
 		$GLOBALS['wpdb']->query($rate_cleanup_sql);
@@ -65,6 +69,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 	//   - 'btbl_data_schema_version' option  (current consolidated data-schema gate)
 	//   - 'btbl_chart_link_recovery' option (retry journal for an interrupted linked-chart rollback)
 	//   - '_transient_[timeout_]btbl_ss_rate_*' options (bounded public table-read buckets)
+	//   - '_transient_[timeout_]btbl_ss_schema_*' options (cached stable-key and order-shape probes)
 	//   - 'btbl_hide_help' user meta         (support.php BaraTables_Help::META_KEY, all users)
 	// Per-user transients are not cleaned, because both self-expire well before anyone would
 	// notice them: 'btbl_admin_notice_*' after 60s, and 'btbl_import_handoff_*' (the analyzed

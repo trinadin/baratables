@@ -144,7 +144,7 @@
 					context.apply(getSearchTerms(selected, value));
 				}
 				context.changed();
-			});
+			}, { signal: context.signal });
 			if (context.preset) {
 				select.value = asArray(context.preset)[0];
 				select.dispatchEvent(new Event('change', {bubbles: true}));
@@ -192,7 +192,7 @@
 					}
 				});
 				applyTerms(context, compactValues(terms));
-			});
+			}, { signal: context.signal });
 			if (context.preset) {
 				var presetValues = asArray(context.preset).map(String);
 				Array.prototype.forEach.call(select.options, function(option) {
@@ -228,7 +228,7 @@
 						}
 					});
 					applyTerms(context, terms);
-				});
+				}, { signal: context.signal });
 			});
 			if (context.preset) {
 				var values = asArray(context.preset).map(String);
@@ -269,7 +269,7 @@
 						context.apply(getSearchTerms(radio, radio.value));
 					}
 					context.changed();
-				});
+				}, { signal: context.signal });
 			});
 			if (context.preset) {
 				var preset = String(asArray(context.preset)[0]);
@@ -333,6 +333,11 @@
 		var initialDrawNeeded = false;
 		var contexts = [];
 		var wrapper = options.wrapper || document;
+		// Filter controls are server-rendered markup OUTSIDE the DataTable, so they survive the
+		// destroy+re-init that a page builder or AJAX swap triggers; without an abort signal the
+		// re-run would stack a second set of listeners (with stale table references) on the same
+		// nodes. baratables.js aborts the previous controller before creating a new controller.
+		var signal = options.signal || null;
 
 		// Integer column selectors address CURRENT positions; filter controls are rendered with
 		// ORIGINAL indexes, so transpose before touching the column.
@@ -378,6 +383,7 @@
 			var context = {
 				filter: filter,
 				type: type,
+				signal: signal,
 				preset: (options.presets || {})[slug] || null,
 				apply: function(terms) {
 					search(index, buildMultiValuePattern(terms));

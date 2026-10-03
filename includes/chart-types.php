@@ -24,7 +24,7 @@ class BaraTables_Chart_Types {
 	public static function all(): array {
 		return [
 			'bar'            => self::type(__('Bar', 'baratables'), 'bar-simple.webp', 'chart-bar'),
-			'horizontal_bar' => self::type(__('Horizontal Bar', 'baratables'), 'bar-y-category.webp', 'chart-bar'),
+			'horizontal_bar' => self::type(__('Horizontal bar', 'baratables'), 'bar-y-category.webp', 'chart-bar'),
 			'line'           => self::type(__('Line', 'baratables'), 'line-simple.webp', 'chart-line'),
 			'area'           => self::type(__('Area', 'baratables'), 'area-basic.webp', 'chart-area'),
 			'radar'          => self::type(__('Radar', 'baratables'), 'radar.svg', 'chart-area', 'radar', false),

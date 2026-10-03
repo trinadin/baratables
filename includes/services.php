@@ -310,7 +310,7 @@ class BaraTables_Service {
 		return self::ALLOWED_INLINE_HTML;
 	}
 
-	private function sanitize_inline_html($value): string {
+	private static function sanitize_inline_html($value): string {
 		if (!is_scalar($value)) {
 			return '';
 		}
@@ -326,7 +326,7 @@ class BaraTables_Service {
 		$out = [];
 		foreach ($labels_raw as $key => $label) {
 			$clean_key = sanitize_text_field($key);
-			$clean_label = $this->sanitize_inline_html($label);
+			$clean_label = self::sanitize_inline_html($label);
 			if ($clean_key === '' || $clean_label === '') {
 				continue;
 			}
@@ -425,7 +425,7 @@ class BaraTables_Service {
 			if ($clean_key === '') {
 				continue;
 			}
-			$out[$clean_key] = $this->sanitize_inline_html($label);
+			$out[$clean_key] = self::sanitize_inline_html($label);
 		}
 		return $out;
 	}
@@ -474,17 +474,40 @@ class BaraTables_Service {
 				}
 				$first_term = (string) $search_terms[0];
 				$value = $first_term !== '' ? $first_term : $label;
-				$values[] = [
+				// Entity-encode to the meta layer's exact stored form (see the helper); a bare
+				// '&' here used to fail persist()'s strict verify and roll the whole save back.
+				$values[] = $this->sanitize_filter_option_entry([
 					'label' => $label,
 					'value' => $value,
 					'search_terms' => $search_terms,
-				];
+				]);
 			}
 			if (!empty($values)) {
 				$out[$clean_slug] = $values;
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * One custom filter option's stored form.
+	 *
+	 * Filter labels and search terms are plain text, but the meta layer sanitizes every
+	 * non-raw string with wp_kses on read, which entity-encodes a bare '&'. Collector output
+	 * must already BE that form, or persist()'s strict write-verify fails and the table can
+	 * never save (a label like "AT&T" used to brick saves). Both the gear collector and the
+	 * importer paths funnel through here so the fixpoint is defined in exactly one place.
+	 */
+	public static function sanitize_filter_option_entry(array $entry): array {
+		$clean = [
+			'label' => self::sanitize_inline_html((string) ($entry['label'] ?? '')),
+			'value' => wp_kses(sanitize_text_field((string) ($entry['value'] ?? '')), []),
+			'search_terms' => [],
+		];
+		foreach ((array) ($entry['search_terms'] ?? []) as $term) {
+			$clean['search_terms'][] = wp_kses(sanitize_text_field((string) $term), []);
+		}
+		return $clean;
 	}
 
 	public function sanitize_table_options($options_raw): array {
@@ -515,6 +538,14 @@ class BaraTables_Service {
 				$options['fixedColumnsEnabled'] = false;
 			} else {
 				$options['fixedColumnsStart'] = min((int) $options['fixedColumnsStart'], $visible_columns - 1);
+				// FixedColumns operates on DataTables' horizontally scrolling viewport and is not
+				// compatible with Responsive's collapsed-row presentation. Derive this at read
+				// time only, while freezing actually applies: storing the derivation would bake
+				// the forced presentation into the definition, so a later clamp (hiding columns
+				// down to one) could not restore the scrolling and mobile stacking the admin
+				// actually chose. The editor enforces the same contract client-side.
+				$options['scrollX'] = true;
+				$options['responsive'] = false;
 			}
 		}
 		return $options;
@@ -540,15 +571,16 @@ class BaraTables_Service {
 		return [
 			'searchText'           => __('Search:', 'baratables'),
 			'lengthMenuPrefix'     => __('Show', 'baratables'),
-			'lengthMenuSuffix'     => __('entries', 'baratables'),
+			'lengthMenuSuffix'     => __('rows', 'baratables'),
 			'filtersTitleText'     => __('Filters', 'baratables'),
 			// The result summary. These were the last visitor-facing labels still absent here, so
 			// they shipped blank and DataTables rendered its OWN English -- while the editor
 			// placeholder and the admin preview both showed the plugin's translated string. Same
-			// screen, two answers, and English on every localized site.
-			'infoText'             => __('Showing _START_ to _END_ of _TOTAL_ entries', 'baratables'),
-			'infoEmpty'            => __('Showing 0 to 0 of 0 entries', 'baratables'),
-			'infoFiltered'         => __('(filtered from _MAX_ total entries)', 'baratables'),
+			// screen, two answers, and English on every localized site. "rows" not "entries":
+			// the product says rows everywhere else.
+			'infoText'             => __('Showing _START_ to _END_ of _TOTAL_ rows', 'baratables'),
+			'infoEmpty'            => __('Showing 0 to 0 of 0 rows', 'baratables'),
+			'infoFiltered'         => __('(filtered from _MAX_ total rows)', 'baratables'),
 			'searchColumnsLabel'   => __('Columns', 'baratables'),
 			'searchColumnsHeading' => __('Search in', 'baratables'),
 			'buttonTextCopy'       => __('Copy', 'baratables'),
@@ -558,6 +590,11 @@ class BaraTables_Service {
 			'buttonTextPrint'      => __('Print', 'baratables'),
 			'buttonTextColvis'     => __('Column visibility', 'baratables'),
 			'buttonTextPagelength' => __('Page length', 'baratables'),
+			// Label of the folded column-visibility + page-length collection. Not a stored
+			// option (no editor field): this default only feeds the front-end payload.
+			'buttonTextTableOptions' => __('Table options', 'baratables'),
+			// Fallback caption for a search-picker column whose heading is blank.
+			'searchColumnFallback' => __('Column', 'baratables'),
 		];
 	}
 
@@ -745,7 +782,7 @@ class BaraTables_Service {
 					$options[$key] = min(max($value, $min), $max);
 				}
 			} elseif ($type === 'text_html') {
-				$options[$key] = $this->sanitize_inline_html($options_raw[$key]);
+				$options[$key] = self::sanitize_inline_html($options_raw[$key]);
 			} elseif ($type === 'color') {
 				// Empty string means "inherit the theme's primary color"; anything that is not
 				// a valid 3- or 6-digit hex collapses back to that inherited state.
@@ -760,16 +797,6 @@ class BaraTables_Service {
 		// (0 = off); when the flag is absent, derive it so those tables keep their behavior.
 		if (!array_key_exists('scrollYEnabled', $options_raw)) {
 			$options['scrollYEnabled'] = ((int) ($options_raw['scrollY'] ?? 0)) > 0;
-		}
-
-		// FixedColumns operates on DataTables' horizontally scrolling viewport and is not
-		// compatible with Responsive's collapsed-row presentation. Normalize this server-side as
-		// well as in the editor so imported definitions and direct API callers cannot create an
-		// unsupported combination. The explicit feature wins because enabling it is the more
-		// specific request; both related defaults remain unchanged for existing tables.
-		if (!empty($options['fixedColumnsEnabled'])) {
-			$options['scrollX'] = true;
-			$options['responsive'] = false;
 		}
 
 		return $options;
@@ -911,7 +938,9 @@ class BaraTables_Service {
 	public function prepare_columns_from_request(array $columns_raw, string $custom_meta_raw, string $column_order_raw = ''): array {
 		$columns = $columns_raw;
 
-		$custom_meta = array_filter(array_map('trim', explode(',', $custom_meta_raw)));
+		// One key per line: a comma is a legal character INSIDE a meta key (price,in_eur), so
+		// the comma-separated input used to split legal keys in two and lose them.
+		$custom_meta = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $custom_meta_raw)));
 		foreach ($custom_meta as $meta_key) {
 			// Meta keys are case-sensitive free-form strings (e.g. "Price_USD", "product.price").
 			// sanitize_key() would lowercase and strip them into a key that matches no stored meta,
@@ -944,7 +973,9 @@ class BaraTables_Service {
 	}
 
 	public function sanitize_order_list(string $raw): array {
-		$order_list = array_filter(array_map('trim', explode(',', $raw)));
+		// Slugs are newline-separated (a slug's key half may legally contain a comma; it can
+		// never contain a line break -- sanitize_text_field strips control characters).
+		$order_list = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $raw)));
 		$out = [];
 		foreach ($order_list as $slug) {
 			$clean_slug = sanitize_text_field($slug);
@@ -1008,14 +1039,14 @@ class BaraTables_Service {
 
 		$has_explicit_label = array_key_exists('label', $record);
 		$label_raw = $has_explicit_label ? (string) $record['label'] : ($custom_label !== '' ? $custom_label : $default_label);
-		$label = $this->sanitize_inline_html($label_raw);
+		$label = self::sanitize_inline_html($label_raw);
 		if ($label === '' && !$has_explicit_label) {
 			$label = $default_label;
 			$auto_label = ($source === 'custom');
 		}
 		$filter_label = array_key_exists('filter_label', $record) ? $record['filter_label'] : null;
 		$filter_label_raw = $filter_label === null ? $label : (string) $filter_label;
-		$filter_label_clean = $this->sanitize_inline_html($filter_label_raw);
+		$filter_label_clean = self::sanitize_inline_html($filter_label_raw);
 		$filter_label_value = $filter_label === null ? ($filter_label_clean !== '' ? $filter_label_clean : $label) : $filter_label_clean;
 
 		$filter_sort = (string) ($record['filter_sort'] ?? 'asc');
@@ -1190,7 +1221,7 @@ class BaraTables_Service {
 			// Store an empty string for unnamed columns rather than baking "Column N":
 			// the positional default is supplied at render. Keeping it empty preserves the
 			// "the user gave no name" signal so the column is flagged auto_label at save.
-			$columns[] = $this->sanitize_inline_html((string) $label_raw);
+			$columns[] = self::sanitize_inline_html((string) $label_raw);
 			$slugs[] = 'custom:col_' . ($i + 1);
 		}
 
@@ -1542,6 +1573,7 @@ class BaraTables_Service {
 
 		$external_db = new class($user, $password, $dbname, $host) extends wpdb {
 			private bool $btbl_transport_timeouts = false;
+			private string $btbl_session_timeout_sql = '';
 
 			public function __construct($dbuser, $dbpassword, $dbname, $dbhost) {
 				$this->dbuser = $dbuser;
@@ -1598,7 +1630,19 @@ class BaraTables_Service {
 				$this->ready = true;
 				$this->set_sql_mode();
 				$this->select($this->dbname, $this->dbh);
+				if ($this->btbl_session_timeout_sql !== '') {
+					// wpdb::check_connection() reaches this again after a mid-request drop; the
+					// statement bound is per-session, so re-assert it on the new session.
+					$suppressed = $this->suppress_errors(true);
+					$this->query($this->btbl_session_timeout_sql);
+					$this->suppress_errors($suppressed);
+				}
 				return true;
+			}
+
+			/** Records the verified statement bound so reconnects can re-assert it. */
+			public function btbl_set_session_timeout(string $sql): void {
+				$this->btbl_session_timeout_sql = $sql;
 			}
 
 			// Overrides wpdb::bail(); the signature is fixed by core, and neither argument is
@@ -2321,9 +2365,16 @@ class BaraTables_Service {
 		// value, including each column name, is bound by prepare(). Kept as a single call so the
 		// suite's first-party-DB-call tripwire stays tight (see local-tests/run-tests.sh).
 		$select_list = empty($columns) ? '*' : implode(', ', array_fill(0, count($columns), '%i'));
-		$args = array_merge($columns, [$table, $fetch_limit]);
+		// Deterministic order: charts and the standard loading path read "the first N rows" of
+		// the same stable key the paging window pages through, so every view of the table
+		// agrees on which rows those are instead of trusting storage-engine return order.
+		// Cached per connection and table by the schema probe.
+		$stable_key = $this->find_external_stable_key($ext_db, $table);
+		$order_sql = $stable_key !== '' ? ' ORDER BY %i' : '';
+		$order_args = $stable_key !== '' ? [$stable_key] : [];
+		$args = array_merge($columns, [$table], $order_args, [$fetch_limit]);
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Format string is built only from literal '%i' placeholders; all values are bound.
-		$sql = $ext_db->prepare('SELECT ' . $select_list . ' FROM %i LIMIT %d', ...$args);
+		$sql = $ext_db->prepare('SELECT ' . $select_list . ' FROM %i' . $order_sql . ' LIMIT %d', ...$args);
 		if (!is_string($sql) || $sql === '') {
 			return new WP_Error('external_read_failed');
 		}
@@ -2335,6 +2386,22 @@ class BaraTables_Service {
 		$results = $ext_db->get_results($sql, ARRAY_A);
 		$failed = $ext_db->last_error !== '';
 		$ext_db->suppress_errors($suppressed);
+		if ($failed && $order_sql !== '') {
+			// The cached stable key can outlive a schema change by its TTL. Drop the stale cache
+			// and read once without the ordering rather than fail the render: an unordered page
+			// is the documented degradation for a drifted definition, a broken table is not.
+			$connection_identity = method_exists($ext_db, 'btbl_connection_identity') ? $ext_db->btbl_connection_identity() : '';
+			delete_transient('btbl_ss_schema_' . md5($connection_identity . '|' . $table));
+			$order_sql = '';
+			$args = array_merge($columns, [$table, $fetch_limit]);
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Literal '%i' placeholders only; values are bound.
+			$sql = $ext_db->prepare('SELECT ' . $select_list . ' FROM %i LIMIT %d', ...$args);
+			$suppressed = $ext_db->suppress_errors(true);
+			$ext_db->last_error = '';
+			$results = is_string($sql) && $sql !== '' ? $ext_db->get_results($sql, ARRAY_A) : null;
+			$failed = $ext_db->last_error !== '';
+			$ext_db->suppress_errors($suppressed);
+		}
 		if ($failed) {
 			return new WP_Error('external_read_failed');
 		}
@@ -2710,9 +2777,9 @@ class BaraTables_Service {
 
 		$schema = self::build_table_option_schema();
 		$schema['caption']['label'] = __('Table caption', 'baratables');
-		$schema['caption']['description'] = __('Short heading shown with the table. Screen readers announce it with the table.', 'baratables');
+		$schema['caption']['description'] = __('Shown with the table and announced to screen readers.', 'baratables');
 		$schema['serverSide']['label'] = __('Page large database tables on demand', 'baratables');
-		$schema['serverSide']['description'] = __('External databases only. Loads up to 100 rows per request with bounded database queries.', 'baratables');
+		$schema['serverSide']['description'] = __('Loads up to 100 rows per request with bounded queries, within the Rows to load limit.', 'baratables');
 		$schema['serverSide']['editor_group'] = 'server_side';
 		$schema['paging']['label'] = __('Enable pagination', 'baratables');
 		$schema['lengthChange']['label'] = __('Show per page selector', 'baratables');
@@ -2720,7 +2787,7 @@ class BaraTables_Service {
 		$schema['pagingFirstLast']['label'] = __('Show first/last', 'baratables');
 		$schema['pagingPreviousNext']['label'] = __('Show previous/next', 'baratables');
 		$schema['searchBox']['label'] = __('Show search box', 'baratables');
-		$schema['searchColumns']['label'] = __('Show "Search In" dropdown', 'baratables');
+		$schema['searchColumns']['label'] = __('Show "Search in" dropdown', 'baratables');
 		$schema['info']['label'] = __('Show result summary', 'baratables');
 		$schema['infoText']['label'] = __('Summary text', 'baratables');
 		$schema['infoEmpty']['label'] = __('Summary (no results)', 'baratables');
@@ -2737,9 +2804,9 @@ class BaraTables_Service {
 		$schema['autoWidth']['label'] = __('Auto-size columns', 'baratables');
 		$schema['fixedHeader']['label'] = __('Keep header visible', 'baratables');
 		$schema['responsive']['label'] = __('Collapse columns on mobile', 'baratables');
-		$schema['responsive']['description'] = __('Wide tables stack their remaining columns into an expandable row instead of requiring horizontal scrolling. This replaces horizontal scrolling when enabled.', 'baratables');
+		$schema['responsive']['description'] = __('Wide tables stack their remaining columns into an expandable row instead of horizontal scrolling.', 'baratables');
 		$schema['scrollX']['label'] = __('Enable horizontal scrolling', 'baratables');
-		$schema['fixedColumnsEnabled']['label'] = __('Freeze leading columns', 'baratables');
+		$schema['fixedColumnsEnabled']['label'] = __('Freeze first columns', 'baratables');
 		$schema['fixedColumnsStart']['label'] = __('Columns to freeze', 'baratables');
 		$schema['scrollYEnabled']['label'] = __('Fixed scroll height', 'baratables');
 		$schema['scrollY']['label'] = __('Height (px)', 'baratables');
@@ -2754,20 +2821,19 @@ class BaraTables_Service {
 		$schema['accentColor']['description'] = __('Color for focus rings, sorted columns, and paging highlights. Off follows your theme\'s primary color automatically.', 'baratables');
 		$schema['pageLength']['label'] = __('Rows per page', 'baratables');
 		$schema['rowLimit']['label'] = __('Maximum rows', 'baratables');
-		$schema['rowLimit']['description'] = __('Rows fetched and rendered, on every data source. Maximum 10,000. Pre-filter larger datasets at the source.', 'baratables');
+		$schema['rowLimit']['description'] = __('Rows fetched and rendered, on every data source. Pre-filter larger datasets at the source.', 'baratables');
 		$schema['lengthMenuPrefix']['label'] = __('Selector prefix', 'baratables');
 		$schema['lengthMenuSuffix']['label'] = __('Selector suffix', 'baratables');
-		$schema['paginateFirst']['label'] = __('Pagination label: First', 'baratables');
-		$schema['paginatePrevious']['label'] = __('Pagination label: Previous', 'baratables');
-		$schema['paginateNext']['label'] = __('Pagination label: Next', 'baratables');
-		$schema['paginateLast']['label'] = __('Pagination label: Last', 'baratables');
+		$schema['paginateFirst']['label'] = __('Pagination label: first', 'baratables');
+		$schema['paginatePrevious']['label'] = __('Pagination label: previous', 'baratables');
+		$schema['paginateNext']['label'] = __('Pagination label: next', 'baratables');
+		$schema['paginateLast']['label'] = __('Pagination label: last', 'baratables');
 		$schema['searchText']['label'] = __('Search text', 'baratables');
 		$schema['searchPlaceholder']['label'] = __('Search placeholder', 'baratables');
 		$schema['searchColumnsLabel']['label'] = __('Dropdown text', 'baratables');
 		$schema['searchColumnsHeading']['label'] = __('Dropdown heading', 'baratables');
 
 		$schema['buttons']['label'] = __('Table buttons', 'baratables');
-		$schema['buttons']['description'] = __('Add export and column-visibility buttons to the table.', 'baratables');
 		$schema['buttons']['choices'] = [
 			'copy' => __('Copy', 'baratables'),
 			'csv' => __('Export CSV', 'baratables'),
@@ -2861,7 +2927,10 @@ class BaraTables_Service {
 		}
 
 		$layout_features = [
-			'pagelength' => __('Page length', 'baratables'),
+			// "Per-page selector", not "Page length": the Table buttons card has a choice with the
+			// latter name, and the layout chip depends on the "Show per page selector" control --
+			// the chip label must not read as depending on the button.
+			'pagelength' => __('Per-page selector', 'baratables'),
 			'buttons' => __('Buttons', 'baratables'),
 			'search' => __('Search', 'baratables'),
 			'info' => __('Result summary', 'baratables'),

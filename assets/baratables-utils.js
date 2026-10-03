@@ -25,6 +25,12 @@
 	function parseOptionalNumber(value) {
 		var text = extractText(value);
 		if (text === '') { return null; }
+		// Typographic dashes must not silently become no sign: the strip below would turn the
+		// en-dash in "\u20135" into a bare "5" and sort a visibly negative value among the
+		// positives. U+2212 is a real minus sign, so it keeps its sign; en/em dashes (U+2013,
+		// U+2014) make the value unparseable, matching the server-side strict grammar's verdict.
+		text = text.replace(/\u2212/g, '-');
+		if (/[\u2013\u2014]/.test(text)) { return null; }
 		// European decimal-comma values ("1.234,56", "980,50", "12,34") lose the comma to the strip
 		// below and shift magnitude (1.23456 instead of 1234.56); normalize those shapes to
 		// dot-decimal first. "1,234" (US thousands: exactly three digits after the comma) is

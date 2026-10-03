@@ -38,6 +38,11 @@ final class BaraTables_Remote_Snapshot {
 			|| $host === 'localhost'
 			|| substr($host, -10) === '.localhost'
 			|| (preg_match('/^[0-9.]+$/', $host) === 1 && filter_var($host, FILTER_VALIDATE_IP) === false)
+			// Hex/decimal-integer shorthands ("0x7f000001") are IP literals in disguise: the
+			// notation dodges FILTER_VALIDATE_IP, so reject any digit-bearing host made only of
+			// hex digits and dots that is not a valid public IP. wp_http_validate_url re-checks
+			// per hop; this keeps stage 1 honest on its own.
+			|| (preg_match('/^[0-9a-fA-FxX.]+$/', $host) === 1 && preg_match('/\\d/', $host) === 1 && $public_ip === false)
 			|| (filter_var($host, FILTER_VALIDATE_IP) !== false && $public_ip === false)
 		) {
 			return '';
@@ -75,28 +80,59 @@ final class BaraTables_Remote_Snapshot {
 		if ($configured_url === '') {
 			return new WP_Error('remote_url_invalid', __('Enter a valid public HTTPS URL without embedded credentials.', 'baratables'));
 		}
-		$fetch_url = $format === self::FORMAT_GOOGLE_SHEETS ? self::google_sheets_export_url($configured_url) : $configured_url;
-		if ($fetch_url === '') {
+		$fetch_url_for_hops = $format === self::FORMAT_GOOGLE_SHEETS ? self::google_sheets_export_url($configured_url) : $configured_url;
+		if ($fetch_url_for_hops === '') {
 			return new WP_Error('remote_google_url_invalid', __('Enter a public Google Sheets URL from docs.google.com with an optional numeric gid.', 'baratables'));
 		}
-		if (!wp_http_validate_url($fetch_url)) {
+		if (!wp_http_validate_url($fetch_url_for_hops)) {
 			return self::kept_error('remote_url_unsafe', __('The remote URL did not resolve to a safe public address.', 'baratables'));
 		}
-		$response = wp_safe_remote_get($fetch_url, [
-			'timeout' => 10,
-			'redirection' => 3,
-			'reject_unsafe_urls' => true,
-			'limit_response_size' => self::MAX_BYTES + 1,
-			'headers' => [
-				'Accept' => $format === self::FORMAT_JSON ? 'application/json' : 'text/csv,text/plain;q=0.9',
-				'Accept-Encoding' => 'identity',
-			],
-			'user-agent' => 'BaraTables WordPress plugin',
-		]);
-		if (is_wp_error($response)) {
-			return self::kept_error('remote_fetch_failed', __('The remote source could not be reached safely.', 'baratables'));
+		// Follow redirects manually so every hop is re-held to the same contract as the first
+		// request: HTTPS, port 443, no credentials, public address. Core's redirect follower
+		// validates hops for safety but still accepts an http:// (and port 80/8080) downgrade
+		// after the first request, which would move the snapshot content to a plaintext hop.
+		$request_args = static function () use ($format): array {
+			return [
+				'timeout' => 10,
+				'redirection' => 0,
+				'reject_unsafe_urls' => true,
+				'limit_response_size' => self::MAX_BYTES + 1,
+				'headers' => [
+					'Accept' => $format === self::FORMAT_JSON ? 'application/json' : 'text/csv,text/plain;q=0.9',
+					'Accept-Encoding' => 'identity',
+				],
+				'user-agent' => 'BaraTables WordPress plugin',
+			];
+		};
+		$response = null;
+		$status = 0;
+		for ($hop = 0; $hop <= 3; $hop++) {
+			$response = wp_safe_remote_get($fetch_url_for_hops, $request_args());
+			if (is_wp_error($response)) {
+				return self::kept_error('remote_fetch_failed', __('The remote source could not be reached safely.', 'baratables'));
+			}
+			$status = (int) wp_remote_retrieve_response_code($response);
+			if ($status < 301 || $status > 308) {
+				break;
+			}
+			$location = trim((string) wp_remote_retrieve_header($response, 'location'));
+			$next = $location === '' ? '' : WP_Http::make_absolute_url($location, $fetch_url_for_hops);
+			if ($next === '' || self::sanitize_url($next) === '' || !wp_http_validate_url($next)) {
+				return self::kept_error('remote_redirect_unsafe', __('The remote source redirected to an address that is not a safe public HTTPS URL.', 'baratables'));
+			}
+			if ($hop === 3) {
+				return self::kept_error('remote_fetch_failed', __('The remote source used too many redirects.', 'baratables'));
+			}
+			$fetch_url_for_hops = $next;
 		}
-		$status = (int) wp_remote_retrieve_response_code($response);
+		// The request sends Accept-Encoding: identity, so any content-coding on the response
+		// means the source ignored it. Refuse coded responses so a compressed body is never
+		// retained or parsed as a snapshot. (On the cURL transport libcurl transparently decodes
+		// and strips the header, so this fires only where the coding is visible -- chiefly the
+		// fsockopen transport, where expansion happens before size caps apply.)
+		if (trim((string) wp_remote_retrieve_header($response, 'content-encoding')) !== '') {
+			return self::kept_error('remote_content_encoded', __('The remote source returned compressed content, which is not supported.', 'baratables'));
+		}
 		if ($status !== 200 || trim((string) wp_remote_retrieve_header($response, 'content-range')) !== '') {
 			return self::kept_error('remote_http_error', sprintf(
 				/* translators: %d is an HTTP status code. */
@@ -155,7 +191,7 @@ final class BaraTables_Remote_Snapshot {
 	/** Merge only a successful same-schema snapshot into a latest stored definition. */
 	public static function merge_into_definition(array $definition, array $snapshot, BaraTables_Service $service) {
 		if (!BaraTables_Source_Type::is_remote_snapshot($definition['source_type'] ?? '')) {
-			return new WP_Error('remote_source_not_saved', __('Save Remote snapshot as the data source before fetching.', 'baratables'));
+			return new WP_Error('remote_source_not_saved', __('Save remote snapshot as the data source before fetching.', 'baratables'));
 		}
 		$previous = isset($definition['remote_snapshot']) && is_array($definition['remote_snapshot']) ? $definition['remote_snapshot'] : [];
 		$previous_columns = isset($previous['data']['columns']) && is_array($previous['data']['columns'])

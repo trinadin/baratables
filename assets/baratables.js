@@ -110,10 +110,22 @@
 
 	function btblTypedNumber(data) {
 		if (typeof data !== 'string') { return null; }
-		var match = data.match(/data-btbl-number=(['"])([+-]?(?:\d+(?:\.\d*)?|\.\d+))\1/);
+		// Anchor to the server-emitted marker span so ordinary cell text that merely contains
+		// the attribute name cannot pose as a typed value and skew sorting and footer sums.
+		var match = data.match(/<span\b[^>]*\bbtbl-number-marker[^>]*\bdata-btbl-number=(['"])([+-]?(?:\d+(?:\.\d*)?|\.\d+))\1/);
 		if (!match) { return null; }
 		var value = Number(match[2]);
 		return Number.isFinite(value) && Math.abs(value) <= 1000000000000 ? value : null;
+	}
+
+	function btblPlainCellText(data) {
+		if (typeof data !== 'string') { return data; }
+		// Strip the markup only (the hidden marker span above all) and normalize raw non-breaking
+		// spaces, but leave entity spellings alone: DataTables decodes entities itself when a
+		// string contains "&", so decoding here as well would make visible spellings like "AT&amp;T"
+		// unsearchable. Tags can be removed by pattern because the string is server-sanitized
+		// markup: any literal "<" in text is already escaped to &lt;.
+		return data.replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
 	}
 
 	var btblNumberTypeRegistered = false;
@@ -123,9 +135,28 @@
 		btblNumberTypeRegistered = true;
 		ext.type.order['btbl-number-pre'] = function(data) {
 			var value = btblTypedNumber(data);
+			if (value === null) {
+				// Values outside the strict grammar ("1,234") carry no marker: the grammar still
+				// governs rules and footer sums, but ordering them after every valid value would
+				// leave a typed column sorted worse than it was before it was typed. Fall back to
+				// the locale-tolerant reader for relative order, under the same magnitude and
+				// finiteness bounds as the strict parse; still never a fake zero.
+				var fallback = btblParseOptionalNumber(btblPlainCellText(data));
+				if (fallback === null || fallback === undefined || !Number.isFinite(fallback) || Math.abs(fallback) > 1000000000000) {
+					fallback = null;
+				}
+				value = fallback;
+			}
 			// Empty and malformed display values sort after valid values in ascending order and
 			// before them when the visitor reverses that order. They never become a fake zero.
 			return value === null ? Number.POSITIVE_INFINITY : value;
+		};
+		// DataTables caches per-column search data through the type's search formatter only when
+		// one is registered; without it the raw cell markup (including the hidden marker span)
+		// becomes the search text, so anchored column filters match nothing and words like
+		// "hidden" match every typed cell.
+		ext.type.search['btbl-number'] = function(data) {
+			return btblPlainCellText(data);
 		};
 	}
 
@@ -350,6 +381,41 @@
 			colvis:     { extend: 'colvis',     defaultText: 'Column visibility', optionKey: 'buttonTextColvis' },
 			pagelength: { extend: 'pageLength', defaultText: 'Page length',       optionKey: 'buttonTextPagelength' }
 		};
+		// Spreadsheet formula injection (CWE-1236): cell text comes from imported CSVs, external
+		// databases, and remote snapshots -- the last of which a sheet's other collaborators can
+		// edit -- so no cell of the exported artifact may become a live formula. A leading
+		// apostrophe defuses the payload. =, @, tab, and CR always defuse; + and - defuse too
+		// because spreadsheet apps treat any leading sign as the start of a formula -- except
+		// when the whole cell is a plain number, so ordinary negative values (including grouped
+		// and exponent forms) still export verbatim.
+		var FORMULA_CELL = /^[\t\r=]|^@/;
+		var PLAIN_NUMBER_CELL = /^[+-](?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+|(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?|,\d+)(?:[eE][+-]?\d+)?%?$/;
+		function isFormulaCell(cell) {
+			return FORMULA_CELL.test(cell) || (/^[+-]/.test(cell) && !PLAIN_NUMBER_CELL.test(cell));
+		}
+		function defuseFormulaCells(data) {
+			var defuse = function(cell) {
+				return isFormulaCell(cell) ? "'" + cell : cell;
+			};
+			// Header/footer cells serialize from the structure objects (cell.title), not the
+			// string arrays, so both need covering -- headings come from the same untrusted
+			// sources and are cells in the exported artifact like any other.
+			[data.headerStructure, data.footerStructure].forEach(function(structure) {
+				(structure || []).forEach(function(row) {
+					row.forEach(function(cell) {
+						if (cell && typeof cell.title === 'string') {
+							cell.title = defuse(cell.title);
+						}
+					});
+				});
+			});
+			if (data.header) {
+				data.header = data.header.map(defuse);
+			}
+			data.body = data.body.map(function(row) {
+				return row.map(defuse);
+			});
+		}
 		var keys = buttonList.map(function(button) {
 			return typeof button === 'string' ? button.toLowerCase() : '';
 		}).filter(Boolean);
@@ -368,14 +434,27 @@
 			if (['copy', 'csv', 'excel', 'pdf', 'print'].indexOf(key) !== -1) {
 				definition.footer = false;
 			}
+			if (['copy', 'csv', 'excel'].indexOf(key) !== -1) {
+				// PDF and print render as inert text, so only the file/paste exports need the guard.
+				// customizeData lives INSIDE exportOptions in DataTables 3's Buttons (a top-level
+				// property is silently ignored). The exportOptions object shallow-replaces the
+				// button defaults, which turns OFF the CSV button's built-in escapeExcelFormula
+				// pass -- so defuseFormulaCells below is the ONLY defusal these exports apply,
+				// which is why its rule is a superset (/^[=@\t\r]/ plus any leading sign that
+				// does not begin a whole-cell number) of the built-in one and covers headers,
+				// footers, and body alike.
+				definition.exportOptions = { customizeData: defuseFormulaCells };
+			}
 			var buttonText = resolveLabelHtml(options[registry[key].optionKey] || '', registry[key].defaultText);
 			if (buttonText !== '') { definition.text = buttonText; }
 			(utilityKeys.indexOf(key) !== -1 ? utilityDefinitions : definitions).push(definition);
 		});
 		if (groupUtilities && utilityDefinitions.length === utilityKeys.length) {
+			// Label arrives translated via tableOptions.buttonTextTableOptions (services.php
+			// frontend_label_defaults); the plain string is only a last-resort fallback.
 			definitions.push({
 				extend: 'collection',
-				text: 'Table options',
+				text: resolveLabelHtml(options.buttonTextTableOptions || '', 'Table options'),
 				buttons: utilityDefinitions
 			});
 		} else {
@@ -555,9 +634,19 @@
 
 	function formatAggregateNumber(value) {
 		if (!Number.isFinite(value)) { return ''; }
-		// Match PHP_ROUND_HALF_UP: ties round away from zero on both signs.
-		var magnitude = Math.floor((Math.abs(value) * 1000000) + 0.5 + 0.000000001);
-		var rounded = (value < 0 ? -magnitude : magnitude) / 1000000;
+		// Match PHP_ROUND_HALF_UP: ties round away from zero on both signs. The *1e6 tie-break
+		// only stays exact while |value| * 1e6 is below 2^53 (~9.0e9); past that the multiply
+		// itself corrupts the sum (999999999999 came back as 999999999999.000122), so fall back
+		// to plain decimal rounding -- PHP's round($v, 6) has no scale-up either. At those
+		// magnitudes the 5e-7 tie window is far below double spacing, so no ties exist to break.
+		var scaled = Math.abs(value) * 1000000;
+		var rounded;
+		if (scaled > Number.MAX_SAFE_INTEGER) {
+			rounded = parseFloat(value.toFixed(6));
+		} else {
+			var magnitude = Math.floor(scaled + 0.5 + 0.000000001);
+			rounded = (value < 0 ? -magnitude : magnitude) / 1000000;
+		}
 		if (Math.abs(rounded) < 0.0000005) { rounded = 0; }
 		return rounded.toFixed(6).replace(/\.?0+$/, '');
 	}
@@ -602,9 +691,12 @@
 			var text = result === null ? '' : formatAggregateNumber(result);
 			var footerRoot = tableEl.closest('.btbl-table-wrapper') || tableEl;
 			footerRoot.querySelectorAll('tfoot [data-btbl-footer-column="' + index + '"]').forEach(function(footer) {
-				footer.textContent = text;
+				// Visible text matches what the server rendered ("Sum: 60"), so screen readers
+				// and sighted visitors read the same footer.
 				var label = footer.getAttribute('data-btbl-aggregate-label') || '';
-				footer.setAttribute('aria-label', label + (text ? ': ' + text : ''));
+				var display = text && label ? label + ': ' + text : text;
+				footer.textContent = display;
+				footer.removeAttribute('aria-label');
 			});
 		});
 	}
@@ -748,10 +840,15 @@
 		};
 		table.on('draw', refreshTypedFooters);
 		refreshTypedFooters();
-		table.on('draw responsive-display', function() {
+		// Markers only exist when a column carries number semantics, so skip the per-draw
+		// whole-tbody sweep entirely on tables without them (it would probe every cell of a
+		// large unpaged table on every draw for a marker that can never be there).
+		if (config.typedColumns && Object.keys(config.typedColumns).length > 0) {
+			table.on('draw responsive-display', function() {
+				syncResponsiveTypedStyles(wrapper);
+			});
 			syncResponsiveTypedStyles(wrapper);
-		});
-		syncResponsiveTypedStyles(wrapper);
+		}
 		if (resolvedOptions.fixedHeader === true && table.fixedHeader && typeof table.fixedHeader.headerOffset === 'function') {
 			// WordPress changes the admin bar from fixed to absolute at narrow widths. Recompute
 			// after a responsive viewport change, and remove the listener with the table so AJAX
@@ -902,10 +999,19 @@
 			updateFilterStateClass(filters, currentSearch);
 		}
 
+		// A page-builder/AJAX re-init re-runs this block while the server-rendered filter
+		// controls (outside the destroyed table) keep their old bindings. Aborting the previous
+		// run's controller removes them before the fresh bindings land, so a change is applied
+		// and URL-synced exactly once.
+		if (wrapper && wrapper.__btblFilterAbort) {
+			wrapper.__btblFilterAbort.abort();
+		}
+		var filterAbort = wrapper ? (wrapper.__btblFilterAbort = new AbortController()) : new AbortController();
 		filterController = window.BaraTablesFilters.create({
 			wrapper: wrapper,
 			table: table,
 			presets: presetFilters,
+			signal: filterAbort.signal,
 			onChange: syncStateToUrl
 		});
 
@@ -921,7 +1027,7 @@
 				}
 				table.draw();
 				syncStateToUrl();
-			});
+			}, { signal: filterAbort.signal });
 		}
 
 		var needsInitialDraw = filterController ? filterController.needsInitialDraw() : false;

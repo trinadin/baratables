@@ -95,7 +95,7 @@ class BaraTables_Chart_Service {
 		$chart_options = $this->table_service->sanitize_chart_options($chart_raw, $columns);
 
 		$chart = $existing_chart ?? [];
-		$chart['name'] = $name !== '' ? $name : __('Untitled Chart', 'baratables');
+		$chart['name'] = $name !== '' ? $name : __('Untitled chart', 'baratables');
 		$chart['table_id'] = $table_definition['id'] ?? $table_id;
 		$chart['chart'] = $chart_options;
 		if (empty($chart['id'])) {

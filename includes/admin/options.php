@@ -62,7 +62,7 @@ class BaraTables_Admin_Options {
 		$parent = 'edit.php?post_type=' . BaraTables_Repository::CPT;
 		$hook = add_submenu_page(
 			$parent,
-			__('Import a Table', 'baratables'),
+			__('Import a table', 'baratables'),
 			__('Import', 'baratables'),
 			'manage_options',
 			self::PAGE_SLUG,
@@ -252,14 +252,14 @@ class BaraTables_Admin_Options {
 
 		?>
 		<div class="wrap btbl-admin">
-			<h1><?php esc_html_e('Import a Table', 'baratables'); ?></h1>
+			<h1><?php esc_html_e('Import a table', 'baratables'); ?></h1>
 			<?php
 			// The "hide help text" preference is global (admin_body_class) and the CSS blanks every
 			// .description inside .btbl-admin. Without the toggle rendered here, a user who hid help
 			// in the table editor lost this page's guidance with no way to bring it back.
 			BaraTables_Help::render_toggle();
 			?>
-			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. Accepts JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
+			<p class="description"><?php esc_html_e('Create a table from another plugin\'s export. A spreadsheet needs a header row followed by data rows. Charts are not imported.', 'baratables'); ?></p>
 			<?php foreach ($errors as $message) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php echo esc_html($message); ?></p></div>
 			<?php endforeach; ?>
@@ -310,13 +310,18 @@ class BaraTables_Admin_Options {
 						// reflects the saved options -- reuse it instead of describing the shape in prose.
 						$import_definition = $analysis['definition'] ?? null;
 						if (is_array($import_definition)) {
-							$row_result = $this->service->get_row_result($import_definition, 25);
-							$import_rows = $row_result->rows();
+							$row_result = $this->service->get_row_result($import_definition, 26);
 							$import_definition = $this->service->definition_with_inferred_columns($import_definition, $row_result);
 							if (!empty($import_definition['columns'])) {
 								$preview_renderer = new BaraTables_Admin_Preview_Renderer($this->service);
+								// Match the editor preview: a source that declares a default sort
+								// shows its sorted rows here too, not raw file order. One row is
+								// fetched past the cap so the footer notice only fires on a real cut.
+								$all_import_rows = $row_result->rows();
+								$import_truncated = count($all_import_rows) > 25;
+								$import_rows = $preview_renderer->sort($import_truncated ? array_slice($all_import_rows, 0, 25) : $all_import_rows, $import_definition);
 								echo '<div class="btbl-admin btbl-admin-embed">';
-								$preview_renderer->render($import_definition, $import_rows, $row_result->has_error() ? $row_result->error_message() : '');
+								$preview_renderer->render($import_definition, $import_rows, $row_result->has_error() ? $row_result->error_message() : '', 25, $import_truncated);
 								echo '</div>';
 							}
 						}
@@ -336,10 +341,10 @@ class BaraTables_Admin_Options {
 				<?php endif; ?>
 				<p class="btbl-submit-row">
 					<?php if ($analysis) : ?>
-						<button type="submit" class="button button-primary"><?php esc_html_e('Create Table from Import', 'baratables'); ?></button>
+						<button type="submit" class="button button-primary"><?php esc_html_e('Create table from import', 'baratables'); ?></button>
 						<button type="submit" class="button" name="btbl_options_action" value="import_analyze"><?php esc_html_e('Re-analyze', 'baratables'); ?></button>
 					<?php else : ?>
-						<button type="submit" class="button button-primary"><?php esc_html_e('Analyze Import', 'baratables'); ?></button>
+						<button type="submit" class="button button-primary"><?php esc_html_e('Analyze import', 'baratables'); ?></button>
 					<?php endif; ?>
 				</p>
 			</form>
@@ -355,7 +360,7 @@ class BaraTables_Admin_Options {
 	private function persist_definition(array $definition): array {
 		$name = isset($definition['name']) && $definition['name'] !== ''
 			? (string) $definition['name']
-			: __('Imported Table', 'baratables');
+			: __('Imported table', 'baratables');
 		$slug_base = sanitize_title($name);
 		if ($slug_base === '') {
 			$slug_base = 'imported-table';

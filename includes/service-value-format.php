@@ -216,6 +216,11 @@ trait BaraTables_Value_Format_Trait {
 		}
 
 		if (is_numeric($value)) {
+			// A real timestamp is never written with leading zeros; account/reference numbers
+			// routinely are ("00123456789"). Keep them verbatim instead of dating them to 1973.
+			if (preg_match('/^[+-]?0\\d/', (string) $value) === 1) {
+				return (string) $value;
+			}
 			$intVal = (int) $value;
 			// Treat very large integers as JS millisecond timestamps. The threshold
 			// (1e11) sits well above any plausible seconds-timestamp date (1e11 s ~ year

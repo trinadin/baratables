@@ -186,7 +186,7 @@ class BaraTables {
 			BaraTables_Admin_Notice::queue(
 				sprintf(
 					/* translators: %d is the number of linked charts still awaiting recovery. */
-					_n('BaraTables is still restoring %d linked chart after a cancelled Table ID change. It will retry automatically.', 'BaraTables is still restoring %d linked charts after a cancelled Table ID change. It will retry automatically.', max(1, $recovery['remaining']), 'baratables'),
+					_n('BaraTables is still restoring %d linked chart after a cancelled table ID change. It will retry automatically.', 'BaraTables is still restoring %d linked charts after a cancelled table ID change. It will retry automatically.', max(1, $recovery['remaining']), 'baratables'),
 					max(1, $recovery['remaining'])
 				),
 				'error'
@@ -195,7 +195,7 @@ class BaraTables {
 			BaraTables_Admin_Notice::queue(
 				sprintf(
 					/* translators: %d is the number of linked charts restored. */
-					_n('BaraTables restored %d linked chart after a cancelled Table ID change.', 'BaraTables restored %d linked charts after a cancelled Table ID change.', $recovery['recovered'], 'baratables'),
+					_n('BaraTables restored %d linked chart after a cancelled table ID change.', 'BaraTables restored %d linked charts after a cancelled table ID change.', $recovery['recovered'], 'baratables'),
 					$recovery['recovered']
 				),
 				'success'

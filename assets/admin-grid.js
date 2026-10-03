@@ -4,6 +4,7 @@ jQuery(function($) {
 	var $customRowsInput = $('#btbl_custom_rows_count');
 	var $customLimitMessage = $('.btbl-custom-grid-limit');
 	var $customRefresh = $('#btbl_custom_grid_refresh');
+	var $customUndo = $('#btbl_custom_grid_undo');
 
 	function clampNumber(val, min, max) {
 		var num = parseInt(val, 10);
@@ -68,6 +69,44 @@ jQuery(function($) {
 	var gridConfirmShrinkMany = $customGrid.data('confirm-shrink-many') || 'Reducing the grid will remove %d filled cells. Continue?';
 	var gridAtRowCap = $customGrid.data('at-row-cap') || 'The grid is at its maximum of %d rows.';
 	var gridPasteCapped = $customGrid.data('paste-capped') || '';
+
+	// One-level undo for the restructure actions (delete/insert/duplicate and multi-cell
+	// paste). Those re-render the grid, which kills the browser's native input undo, so the
+	// pre-action shape+values are captured and the hidden button reveals -- same reveal
+	// convention as "Update grid". Reshape (the count inputs) keeps its own confirm and is
+	// deliberately NOT covered here.
+	var gridUndoSnapshot = null;
+	function captureGridUndo() {
+		gridUndoSnapshot = {
+			rows: readCustomGridValues().map(function(row) { return row.slice(); }),
+			cols: getRenderedCounts().cols,
+			rowCount: getRenderedCounts().rows,
+		};
+		if ($customUndo.length) {
+			$customUndo.prop('hidden', false);
+		}
+	}
+	function undoGridChange() {
+		if (gridUndoSnapshot === null) {
+			return;
+		}
+		var snapshot = gridUndoSnapshot;
+		gridUndoSnapshot = null;
+		renderCustomGrid(readCustomGridHeaders().slice(0, snapshot.cols), snapshot.rows, { cols: snapshot.cols, rows: snapshot.rowCount });
+		$(document).trigger('btbl:preview-state-change');
+		if ($customUndo.length) {
+			$customUndo.prop('hidden', true);
+		}
+		// The click was on a button OUTSIDE the re-rendered grid, so focus survives the click
+		// itself but the hiding button drops it -- park it on the grid's first input.
+		$customGrid.find('input[name^="btbl_custom_data"]').first().trigger('focus');
+	}
+	if ($customUndo.length) {
+		$customUndo.on('click', function(e) {
+			e.preventDefault();
+			undoGridChange();
+		});
+	}
 
 	// Read the current header labels from the DOM so resizes preserve them
 	// instead of resetting to the generic "Column N" placeholders.
@@ -181,6 +220,13 @@ jQuery(function($) {
 			}
 		}
 		renderCustomGrid(headers.slice(0, counts.cols), values, counts);
+		// A reshape is its own confirmed checkpoint, so any pending one-level undo snapshot
+		// predates it: restoring that snapshot would silently revert the confirmed reshape
+		// with no prompt of its own. Retire the stale undo instead of keeping it armed.
+		gridUndoSnapshot = null;
+		if ($customUndo.length) {
+			$customUndo.prop('hidden', true);
+		}
 		return true;
 	}
 
@@ -243,8 +289,10 @@ jQuery(function($) {
 		$customGrid.on('click', '.btbl-row-delete, .btbl-row-insert, .btbl-row-duplicate', function() {
 			var $button = $(this);
 			var idx = $(this).closest('tr').index();
+			captureGridUndo();
 			var rows = readCustomGridValues();
-			if ($button.hasClass('btbl-row-delete')) {
+			var deleting = $button.hasClass('btbl-row-delete');
+			if (deleting) {
 				if (rows.length <= 1) {
 					rows = [[]];
 				} else {
@@ -264,6 +312,17 @@ jQuery(function($) {
 				rows.splice(idx + 1, 0, inserted);
 			}
 			renderRows(rows);
+			// renderRows() destroyed the clicked button; keyboard users would otherwise fall
+			// out to <body>. Same restore pattern as focusMovedRow(): the same action on the
+			// affected row (delete clamps at the old last row), falling back to its first input.
+			var targetIdx = deleting ? Math.min(idx, rows.length - 1) : idx + 1;
+			var actionClass = deleting ? '.btbl-row-delete' : ($button.hasClass('btbl-row-duplicate') ? '.btbl-row-duplicate' : '.btbl-row-insert');
+			var $row = $customGrid.find('tbody tr').eq(targetIdx);
+			var $btn = $row.find(actionClass);
+			if (!$btn.length) {
+				$btn = $row.find('input[name^="btbl_custom_data"]').first();
+			}
+			$btn.trigger('focus');
 		});
 		// Paste tab/newline-delimited data from a spreadsheet.
 		$customGrid.on('paste', 'input[name^="btbl_custom_data"]', function(e) {
@@ -274,6 +333,7 @@ jQuery(function($) {
 			var hasNewline = /\r|\n/.test(text);
 			if (!hasTab && !hasNewline) { return; } // single cell -- default paste
 			e.preventDefault();
+			captureGridUndo();
 			var lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
 			var $cell = $(this);
 			var $row = $cell.closest('tr');

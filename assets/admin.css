@@ -1360,3 +1360,166 @@ body.btbl-help-hidden .btbl-admin .description,
 body.btbl-help-hidden .btbl-admin .btbl-field-hint {
 	display: none !important;
 }
+
+/* ------------------------------------------------------------------
+   Design tab (2.0): the style designer. Reuses .btbl-flag-grid card
+   layout; what is new is the color/size control pairs, the preset row,
+   and the style-output fieldset.
+   ------------------------------------------------------------------ */
+
+/* Design cards read as label-over-control rather than the checkbox row
+   the flag grid usually carries, so the name gets block spacing and the
+   control row a consistent height. */
+.btbl-admin .btbl-design-field .btbl-field-name {
+	display: block;
+	margin-bottom: 4px;
+	font-weight: 600;
+}
+
+.btbl-admin .btbl-design-field select {
+	min-width: 10em;
+}
+
+/* Preset chips: full-width buttons in the shared grid so the labels set
+   the visual rhythm, not a fixed count per row. */
+.btbl-admin .btbl-preset-grid {
+	grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.btbl-admin .btbl-preset-grid .btbl-preset-button {
+	justify-content: center;
+}
+
+/* Style output: the two modes render as the editor's standard flag cards; Copy CSS and
+   the Additional CSS textarea follow with real spacing between the rows. */
+.btbl-admin .btbl-style-mode-grid {
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.btbl-admin .btbl-style-mode-card .btbl-checkbox-main {
+	cursor: pointer;
+}
+
+.btbl-admin .btbl-style-mode-card .btbl-style-mode-hint {
+	margin: 6px 0 0;
+	color: #646970;
+}
+
+.btbl-admin .btbl-copy-css-row {
+	margin-top: 12px;
+}
+
+.btbl-admin .btbl-custom-css-row {
+	margin-top: 16px;
+}
+
+.btbl-admin .btbl-custom-css-row .btbl-small-label {
+	display: block;
+	margin-bottom: 4px;
+}
+
+.btbl-admin textarea[data-btbl-custom-css] {
+	font-family: Consolas, Monaco, monospace;
+	max-width: 60em;
+	margin-top: 2px;
+}
+
+.btbl-admin .btbl-external-note {
+	border-left: 4px solid #dba617;
+	background: #fff8e5;
+	padding: 6px 10px;
+	margin: 10px 0;
+}
+
+/* The note sits in .btbl-control, whose `.description` rule forces display:block; author
+   origin beats the UA's [hidden] rule, so hide it explicitly or it shows "persistently". */
+.btbl-admin .btbl-external-note[hidden] {
+	display: none;
+}
+
+/* Chart Design tab (2.0): the series palette editor. Chips are draggable swatches with
+   their hex beside them; the add row reuses .btbl-color-field. */
+.btbl-admin .btbl-palette-editor {
+	max-width: 480px;
+}
+
+.btbl-admin .btbl-palette-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-height: 28px;
+}
+
+.btbl-admin .btbl-palette-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 2px 4px 2px 2px;
+	border: 1px solid var(--btbl-color-border, #c3c4c7);
+	border-radius: 3px;
+	background: #fff;
+	cursor: grab;
+	line-height: 1;
+}
+
+.btbl-admin .btbl-palette-chip:active {
+	cursor: grabbing;
+}
+
+.btbl-admin .btbl-palette-swatch {
+	width: 18px;
+	height: 18px;
+	border-radius: 2px;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+	display: inline-block;
+}
+
+.btbl-admin .btbl-palette-chip code {
+	font-size: 11px;
+	color: #1f2328;
+}
+
+.btbl-admin .btbl-palette-chip-remove {
+	border: 0;
+	background: none;
+	cursor: pointer;
+	padding: 0 2px;
+	font-size: 14px;
+	line-height: 1;
+	color: #646970;
+}
+
+.btbl-admin .btbl-palette-chip-remove:hover {
+	color: #d63638;
+}
+
+.btbl-admin .btbl-palette-add {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/* Copy CSS fallback: the generated block is shown selected on the page when the async
+   clipboard API is unavailable (non-secure origins, some webviews). */
+.btbl-admin .btbl-copy-css-output {
+	max-height: 240px;
+	overflow: auto;
+	margin: 8px 0 0;
+	padding: 10px 12px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 3px;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 12px;
+	white-space: pre;
+}
+
+/* Additional CSS in "Theme CSS" mode: read-only and visibly inert. Readonly (not the
+   native disabled attribute) so saves keep submitting the stored content and the text
+   stays selectable for manual copying. */
+.btbl-admin textarea[data-btbl-custom-css].is-mode-disabled {
+	background: #f6f7f7;
+	color: #8c8f94;
+	cursor: not-allowed;
+}

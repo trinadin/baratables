@@ -13,6 +13,8 @@ class BaraTables_Frontend {
 	private bool $assets_registered = false;
 	private ?array $style_specs = null;
 	private ?array $script_specs = null;
+	/** Payload captured by the preview render (see render_table_preview). */
+	private ?array $last_preview_payload = null;
 
 	public function __construct(BaraTables_Service $service, BaraTables_Chart_Service $chart_service, string $plugin_url, string $plugin_path) {
 		$this->service = $service;
@@ -199,6 +201,60 @@ class BaraTables_Frontend {
 		return $this->render_table_view($definition, $rows, $chart_options, $chart_enabled, $instance_id, false, $chart_aria_label);
 	}
 
+	/**
+	 * Editor preview: the same markup and payload the public shortcode render produces, with
+	 * presentation-only overrides applied (no access-control cache headers, no server-side
+	 * paging, no state saving, no fixed header, no admin tools). Returns the payload next to
+	 * the HTML so the AJAX refresh can boot the freshly swapped table client-side; the
+	 * initial page-load render also pushes the payload inline as usual, and this extra copy
+	 * is simply unused on that path.
+	 *
+	 * @param array $definition Definition from the live (unsaved) editor pipeline.
+	 * @param array $rows       Preview rows, already capped by the caller.
+	 * @return array{html: string, payload: array}
+	 */
+	public function render_table_preview(array $definition, array $rows): array {
+		$this->last_preview_payload = null;
+		if (empty($definition['columns']) || empty($rows)) {
+			return ['html' => '', 'payload' => []];
+		}
+		$this->enqueue_frontend_assets(true, false, $this->get_table_asset_features($definition));
+		$chart_options = $this->service->get_default_chart_options();
+		$instance_id = $this->get_render_instance_id((string) ($definition['id'] ?? 'table'));
+		$html = $this->render_table_view($definition, $rows, $chart_options, false, $instance_id, true, '', true);
+		return [
+			'html' => $html,
+			'payload' => $this->last_preview_payload ?? [],
+		];
+	}
+
+	/** The payload captured by the most recent preview render; null before the first one. */
+	public function lastPreviewPayload(): ?array {
+		return $this->last_preview_payload;
+	}
+
+	/**
+	 * Editor screens print stylesheets in <head> only; anything enqueued after admin_head
+	 * lands in the footer at best. The preview metaboxes render during the body, so the
+	 * editor screens pre-enqueue the front-end stylesheets here. Gating mirrors the front
+	 * end exactly: a table preview pulls the DataTables chrome plus that table's
+	 * feature-gated vendor CSS, a chart preview needs only the base stylesheet. Scripts stay
+	 * on the render path, where footer printing works.
+	 *
+	 * @param string[] $features     Optional-library features (see get_table_asset_features);
+	 *                               vendor CSS carrying a 'feature' loads only when listed.
+	 * @param bool     $table_assets Whether the screen renders a table preview (vs chart-only).
+	 */
+	public function enqueue_preview_styles(bool $table_assets = false, array $features = []): void {
+		$this->ensure_assets_registered();
+		foreach ($this->get_style_specs() as $style) {
+			if (!empty($style['table_only']) && (!$table_assets || (!empty($style['feature']) && !in_array($style['feature'], $features, true)))) {
+				continue;
+			}
+			wp_enqueue_style($style['handle']);
+		}
+	}
+
 	private function get_render_instance_id(string $base): string {
 		$base = sanitize_html_class(sanitize_title($base));
 		if ($base === '') {
@@ -226,7 +282,7 @@ class BaraTables_Frontend {
 	 * pdfmake (plus its fonts) only with PDF, rather than with every Copy/CSV/Print/visibility
 	 * control.
 	 */
-	private function get_table_asset_features(array $definition): array {
+	public function get_table_asset_features(array $definition): array {
 		$features = [];
 		$options = $this->service->get_table_options($definition);
 
@@ -412,8 +468,15 @@ class BaraTables_Frontend {
 		return array_merge($this->asset_spec($handle, $relative, $deps, $version, $flags), ['in_footer' => true]);
 	}
 
-	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $table_id, bool $render_table, string $chart_aria_label = ''): string {
-		$this->prevent_access_control_caching($definition);
+	private function render_table_view(array $definition, array $rows, array $chart_options, bool $chart_enabled, string $table_id, bool $render_table, string $chart_aria_label = '', bool $preview = false): string {
+		if (!$preview) {
+			$this->prevent_access_control_caching($definition);
+		} else {
+			// The preview must not page through the server-side endpoint or persist table
+			// state: it shows whatever rows the caller fetched, and its DOM id lives under
+			// /wp-admin, where a saved state would be meaningless anyway.
+			unset($definition['__server_side']);
+		}
 
 		// Only the table markup consumes $filters. A [bara_chart] render always passes
 		// $render_table = false, so building them there walks every row, normalizes, decorates and
@@ -426,10 +489,37 @@ class BaraTables_Frontend {
 		$table_class_attr = $render_table
 			? implode(' ', array_merge(['btbl-table'], $presentation['style_classes']))
 			: '';
-		// An explicit accent color overrides the theme-palette cascade at the wrapper, where
-		// every table control (and the bridged DataTables variables) resolve it.
-		$accent = sanitize_hex_color((string) ($table_options['accentColor'] ?? ''));
-		$wrapper_style = $accent ? ' style="--btbl-accent:' . esc_attr($accent) . '"' : '';
+		// The Design tab's tokens print as one inline custom-property block on the wrapper,
+		// where every rule in baratables.css (and the bridged DataTables variables) resolve
+		// them. Empty keys are skipped, so an unstyled table renders exactly as before.
+		// External mode prints nothing: the admin copied the block into their theme, and an
+		// inline style attribute would beat any stylesheet CSS they manage there.
+		$wrapper_style = '';
+		if (($table_options['styleMode'] ?? 'inline') !== 'external') {
+			$pairs = [];
+			foreach (BaraTables_Service::style_vars_from_options($table_options) as $property => $value) {
+				$pairs[] = $property . ':' . $value;
+			}
+			if (!empty($pairs)) {
+				$wrapper_style = ' style="' . esc_attr(implode(';', $pairs)) . '"';
+			}
+		}
+		// Per-table Additional CSS prints as its own <style> block, auto-scoped to this table
+		// so the admin can write plain selectors ("td { ... }") without leaking across
+		// tables. External mode prints nothing at all -- "external" means the plugin emits
+		// zero style output -- and the sanitizer is reapplied here so the sink stays safe
+		// however the value reached storage. The scope keys on the base definition id with a
+		// prefix match, covering every render instance on the page.
+		$custom_css = ($table_options['styleMode'] ?? 'inline') !== 'external'
+			? BaraTables_Service::sanitize_custom_css((string) ($table_options['customCss'] ?? ''))
+			: '';
+		if ($custom_css !== '') {
+			$scope_id = (string) ($definition['id'] ?? '');
+			$custom_css = BaraTables_Service::scope_table_css($custom_css, $scope_id !== '' ? $scope_id : $table_id);
+		}
+		$custom_css_tag = $custom_css !== ''
+			? '<style data-btbl-css="' . esc_attr($table_id) . '">' . $custom_css . '</style>'
+			: '';
 		$footer_values = [];
 		$has_footer = false;
 		if ($render_table) {
@@ -442,7 +532,7 @@ class BaraTables_Frontend {
 			}
 		}
 
-		$this->enqueue_render_payload($this->build_render_payload(
+		$payload = $this->build_render_payload(
 			$definition,
 			$rows,
 			$chart_options,
@@ -450,10 +540,21 @@ class BaraTables_Frontend {
 			$render_table,
 			$table_id,
 			$presentation
-		));
+		);
+		if ($preview) {
+			// Presentation-only overrides: the preview is disposable, so it never remembers
+			// state and never floats a fixed header over the metaboxes.
+			if ($render_table && isset($payload['tableOptions']) && is_array($payload['tableOptions'])) {
+				$payload['tableOptions']['stateSave'] = false;
+				$payload['tableOptions']['fixedHeader'] = false;
+			}
+			$this->last_preview_payload = $payload;
+		}
+		$this->enqueue_render_payload($payload);
 
 		ob_start();
 		?>
+		<?php echo $custom_css_tag; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Admin-authored CSS, sanitized by sanitize_custom_css() above; the sink cannot be escaped early. ?>
 		<div class="btbl-table-wrapper is-loading<?php echo !$render_table ? ' is-chart-only' : ''; ?><?php echo esc_attr($wrapper_compact_class); ?>" data-table-id="<?php echo esc_attr($table_id); ?>"<?php echo $wrapper_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- assembled from esc_attr() pieces above. ?>>
 			<div class="btbl-loading-mask" role="status" aria-live="polite">
 				<span class="btbl-spinner" aria-hidden="true"></span>
@@ -475,7 +576,16 @@ class BaraTables_Frontend {
 			<?php
 			$chart_id = 'btbl-chart-' . $table_id;
 			$chart_height = isset($chart_options['height']) ? (int) $chart_options['height'] : 360;
-			$chart_style = $chart_height > 0 ? ' style="height:' . esc_attr((string) $chart_height) . 'px;"' : '';
+			// Height plus the chart's own design tokens on one style attribute. The background
+			// token paints the container behind ECharts' transparent canvas (image exports
+			// capture it too); the remaining chart tokens travel through the JS payload
+			// because they restyle canvas-drawn content, which CSS cannot reach.
+			$chart_style_parts = $chart_height > 0 ? ['height:' . (string) $chart_height . 'px'] : [];
+			$chart_background = $chart_enabled ? sanitize_hex_color((string) ($chart_options['styleBackground'] ?? '')) : '';
+			if ($chart_background) {
+				$chart_style_parts[] = '--btbl-chart-bg:' . $chart_background;
+			}
+			$chart_style = !empty($chart_style_parts) ? ' style="' . esc_attr(implode(';', $chart_style_parts)) . '"' : '';
 			// Built once: the chart container is emitted from three mutually exclusive branches
 			// (above the table, below it, and the chart-only render). Every interpolation is
 			// escaped here, so the echo sites need no further escaping. The noscript fallback is
@@ -542,7 +652,7 @@ class BaraTables_Frontend {
 						<?php endif; ?>
 					</table>
 					<div class="btbl-empty-state" aria-live="polite"><?php esc_html_e('No results match these filters.', 'baratables'); ?></div>
-					<?php $edit_url = $this->resolve_admin_edit_url($definition, $table_id); ?>
+					<?php $edit_url = $preview ? null : $this->resolve_admin_edit_url($definition, $table_id); ?>
 					<?php if ($edit_url !== null) : ?>
 						<div class="btbl-admin-tools" role="group" aria-label="<?php echo esc_attr__('Table admin tools', 'baratables'); ?>">
 							<a class="button button-small btbl-edit-link" href="<?php echo esc_url($edit_url); ?>">

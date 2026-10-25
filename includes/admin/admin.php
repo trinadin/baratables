@@ -15,14 +15,16 @@ class BaraTables_Admin {
 	private BaraTables_Admin_Pages $pages;
 	private BaraTables_Admin_Preview_Renderer $preview_renderer;
 	private BaraTables_Entity_Persistence $persistence;
+	private ?BaraTables_Frontend $frontend;
 
-	public function __construct(BaraTables_Service $service, BaraTables_Repository $repo, string $plugin_url, string $plugin_path) {
+	public function __construct(BaraTables_Service $service, BaraTables_Repository $repo, string $plugin_url, string $plugin_path, ?BaraTables_Frontend $frontend = null) {
 		$this->service = $service;
 		$this->repo = $repo;
-		$this->assets = new BaraTables_Admin_Assets($plugin_url, $plugin_path);
+		$this->assets = new BaraTables_Admin_Assets($plugin_url, $plugin_path, $frontend);
 		$this->actions = new BaraTables_Admin_Action_Handler($service);
 		$this->pages = new BaraTables_Admin_Pages(self::NONCE_ACTION, self::NONCE_FIELD);
 		$this->preview_renderer = new BaraTables_Admin_Preview_Renderer($service);
+		$this->frontend = $frontend;
 		$this->persistence = BaraTables_Entity_Persistence::from_descriptor(BaraTables_Entity_Descriptor::table());
 		$list_columns = new BaraTables_Admin_List_Columns();
 		$slug_manager = new BaraTables_Admin_Slug_Manager($repo);
@@ -93,8 +95,50 @@ class BaraTables_Admin {
 		echo '<button type="button" class="button btbl-icon-button" id="btbl-refresh-preview" aria-label="' . esc_attr__('Refresh preview', 'baratables') . '" title="' . esc_attr__('Refresh preview', 'baratables') . '"><span class="dashicons dashicons-update" aria-hidden="true"></span></button>';
 		echo '</p>';
 		echo '<div class="btbl-admin btbl-admin-embed" id="btbl-preview-target">';
-		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error'], 50, $preview['rows_truncated']);
+		$this->render_preview_embed($preview);
 		echo '</div>';
+	}
+
+	/**
+	 * The preview embed: the exact front-end render (same markup, payload, and asset pipeline
+	 * as the shortcode), so styling and behavior changes can never diverge from what visitors
+	 * see. The mock renderer this replaced could not show DataTables' stripes, hover, sorted
+	 * tint, or control chrome, which made it useless as a style preview. Without a frontend
+	 * wired in, fall back to the mock renderer.
+	 */
+	private function render_preview_embed(array $preview): void {
+		if ($this->frontend === null) {
+			$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error'], 50, $preview['rows_truncated']);
+			return;
+		}
+		if ($preview['source_error'] !== '') {
+			echo '<div class="notice notice-error inline"><p>' . esc_html($preview['source_error']) . '</p></div>';
+			return;
+		}
+		if (empty($preview['definition']['columns'])) {
+			echo '<p>' . esc_html__('No columns selected yet for this table.', 'baratables') . '</p>';
+			return;
+		}
+		if (empty($preview['rows'])) {
+			echo '<p>' . esc_html__('No data available for this table yet.', 'baratables') . '</p>';
+			return;
+		}
+		$rendered = $this->frontend->render_table_preview($preview['definition'], $preview['rows']);
+		echo $rendered['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Front-end renderer output; escaped at every sink.
+		if (!empty($preview['rows_truncated']) && $this->preview_has_footer($preview['definition'])) {
+			// The aggregate footer is computed server-side over the capped preview rows, so the
+			// note from the mock preview stays honest here too.
+			echo '<p class="description">' . esc_html__('Footer totals cover the first 50 preview rows.', 'baratables') . '</p>';
+		}
+	}
+
+	private function preview_has_footer(array $definition): bool {
+		foreach ((array) ($definition['columns'] ?? []) as $column) {
+			if (is_array($column) && ($column['footer_aggregate'] ?? 'none') !== 'none') {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public function ajax_refresh_fields(): void {
@@ -170,10 +214,14 @@ class BaraTables_Admin {
 		$preview = $this->prepare_preview($definition);
 
 		ob_start();
-		$this->preview_renderer->render($preview['definition'], $preview['rows'], $preview['source_error'], 50, $preview['rows_truncated']);
+		$this->render_preview_embed($preview);
 		$html = ob_get_clean();
+		// The real render also captures its JS payload (render_table_preview); the client uses
+		// it to boot the freshly swapped markup. Empty for the notice fallbacks and the legacy
+		// mock renderer.
+		$payload = $this->frontend !== null ? ($this->frontend->lastPreviewPayload() ?? []) : [];
 
-		wp_send_json_success(['html' => $html]);
+		wp_send_json_success(['html' => $html, 'payload' => $payload]);
 	}
 
 	/** Fetch only the already-saved remote config, then atomically replace only its snapshot. */
@@ -471,6 +519,7 @@ class BaraTables_Chart_Admin {
 	private string $nonce_field;
 	private BaraTables_Entity_Persistence $persistence;
 	private ?BaraTables_Frontend $frontend;
+	private BaraTables_Admin_Tab_Chart_Design $tab_chart_design;
 
 	public function __construct(BaraTables_Chart_Service $chart_service, BaraTables_Chart_Repository $chart_repo, BaraTables_Service $table_service, string $nonce_action, string $nonce_field, ?BaraTables_Frontend $frontend = null) {
 		$this->chart_service = $chart_service;
@@ -478,6 +527,7 @@ class BaraTables_Chart_Admin {
 		$this->table_service = $table_service;
 		$this->frontend = $frontend;
 		$this->tab_chart = new BaraTables_Admin_Tab_Chart();
+		$this->tab_chart_design = new BaraTables_Admin_Tab_Chart_Design();
 		$this->nonce_action = $nonce_action;
 		$this->nonce_field = $nonce_field;
 		$this->persistence = BaraTables_Entity_Persistence::from_descriptor(BaraTables_Entity_Descriptor::chart());
@@ -646,9 +696,11 @@ class BaraTables_Chart_Admin {
 			<div class="btbl-tab-wrapper">
 				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist">
 					<a href="#btbl-tab-chart" id="btbl-tab-chart-label" role="tab" aria-selected="true" class="nav-tab nav-tab-active btbl-tab-link" data-target="btbl-tab-chart"><?php esc_html_e('Chart', 'baratables'); ?></a>
+					<a href="#btbl-tab-chart-design" id="btbl-tab-chart-design-label" role="tab" aria-selected="false" class="nav-tab btbl-tab-link" data-target="btbl-tab-chart-design"><?php esc_html_e('Design', 'baratables'); ?></a>
 				</h2>
 				<?php
 				$this->tab_chart->render($panel, $panel['column_choices']);
+				$this->tab_chart_design->render($panel);
 				?>
 			</div>
 		<?php
@@ -778,7 +830,24 @@ class BaraTables_Chart_Admin {
 			'heatmap_x'      => $p::raw('btbl_chart_heatmap_x'),
 			'heatmap_y'      => $p::raw('btbl_chart_heatmap_y'),
 			'heatmap_value'  => $p::raw('btbl_chart_heatmap_value'),
+			// Design tab (2.0): the palette arrives as a JSON array of hex strings from the
+			// chip editor; merge_chart_options() re-sanitizes every value, so decode is the
+			// only step needed here.
+			'stylePalette'   => self::decode_palette_input($p::raw('btbl_chart_style_palette')),
+			'styleBackground' => $p::raw('btbl_chart_style_background'),
+			'styleTextColor' => $p::raw('btbl_chart_style_text_color'),
+			'styleGridColor' => $p::raw('btbl_chart_style_grid_color'),
+			'styleFontSize'  => $p::raw('btbl_chart_style_font_size'),
 		];
+	}
+
+	/** The palette chip editor serializes its colors as JSON; malformed input is just "no palette". */
+	private static function decode_palette_input($raw): array {
+		if (is_array($raw)) {
+			return array_values($raw);
+		}
+		$decoded = json_decode((string) $raw, true);
+		return is_array($decoded) ? array_values($decoded) : [];
 	}
 
 }

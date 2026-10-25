@@ -167,7 +167,7 @@ class BaraTables {
 	private function load_admin(): void {
 		$service = $this->service();
 		new BaraTables_Server_Side_Endpoint($service);
-		$admin = new BaraTables_Admin($service, $this->repo, $this->plugin_url, $this->plugin_path);
+		$admin = new BaraTables_Admin($service, $this->repo, $this->plugin_url, $this->plugin_path, $this->frontend());
 		new BaraTables_Chart_Admin($this->chart_service(), $this->chart_repo, $service, BaraTables_Admin::NONCE_ACTION, BaraTables_Admin::NONCE_FIELD, $this->frontend());
 
 		// Run durable, idempotent data upgrades only in the admin. One autoloaded schema gate keeps

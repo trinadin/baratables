@@ -11,6 +11,7 @@ class BaraTables_Admin_Pages {
 	private BaraTables_Admin_Tab_General $tab_general;
 	private BaraTables_Admin_Tab_Columns $tab_columns;
 	private BaraTables_Admin_Tab_Table $tab_table;
+	private BaraTables_Admin_Tab_Design $tab_design;
 	private BaraTables_Admin_Tab_Advanced $tab_advanced;
 
 	public function __construct(string $nonce_action, string $nonce_field) {
@@ -19,6 +20,7 @@ class BaraTables_Admin_Pages {
 		$this->tab_general = new BaraTables_Admin_Tab_General();
 		$this->tab_columns = new BaraTables_Admin_Tab_Columns();
 		$this->tab_table = new BaraTables_Admin_Tab_Table();
+		$this->tab_design = new BaraTables_Admin_Tab_Design();
 		$this->tab_advanced = new BaraTables_Admin_Tab_Advanced();
 	}
 
@@ -61,6 +63,7 @@ class BaraTables_Admin_Pages {
 					<a href="#btbl-tab-general" id="btbl-tab-general-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-general' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-general')); ?>" data-target="btbl-tab-general"><?php esc_html_e('Source', 'baratables'); ?></a>
 					<a href="#btbl-tab-columns" id="btbl-tab-columns-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-columns' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & filters', 'baratables'); ?></a>
 					<a href="#btbl-tab-table" id="btbl-tab-table-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-table' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-table')); ?>" data-target="btbl-tab-table"><?php esc_html_e('Options', 'baratables'); ?></a>
+					<a href="#btbl-tab-design" id="btbl-tab-design-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-design' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-design')); ?>" data-target="btbl-tab-design"><?php esc_html_e('Design', 'baratables'); ?></a>
 					<a href="#btbl-tab-advanced" id="btbl-tab-advanced-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-advanced' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-advanced')); ?>" data-target="btbl-tab-advanced"><?php esc_html_e('Advanced', 'baratables'); ?></a>
 				</h2>
 
@@ -68,6 +71,7 @@ class BaraTables_Admin_Pages {
 				$this->tab_general->render($context);
 				$this->tab_columns->render($context);
 				$this->tab_table->render($context);
+				$this->tab_design->render($context);
 				$this->tab_advanced->render($context);
 				?>
 			</div>

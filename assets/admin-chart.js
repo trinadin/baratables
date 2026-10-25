@@ -337,5 +337,123 @@ jQuery(function($) {
 		});
 	}
 
+	// ------------------------------------------------------------------
+	// Design tab (2.0): palette chip editor + live chart restyling.
+	// ------------------------------------------------------------------
+	var $paletteEditor = $('[data-btbl-palette-editor]');
+	var $paletteInput = $paletteEditor.find('[data-btbl-palette-input]');
+	var COMPLETE_HEX = /^#[0-9a-fA-F]{6}$/;
+
+	function paletteChipHtml(color, removeLabel) {
+		return '<span class="btbl-palette-chip" draggable="true" data-color="' + color + '">' +
+			'<span class="btbl-palette-swatch" style="background-color:' + color + '"></span>' +
+			'<code>' + color + '</code>' +
+			'<button type="button" class="btbl-palette-chip-remove" aria-label="' + removeLabel + '">&times;</button>' +
+			'</span>';
+	}
+
+	function syncPalette() {
+		if (!$paletteEditor.length) { return; }
+		var colors = [];
+		$paletteEditor.find('.btbl-palette-chip').each(function() {
+			var color = String($(this).data('color') || '');
+			if (COMPLETE_HEX.test(color) && colors.indexOf(color) === -1) {
+				colors.push(color);
+			}
+		});
+		$paletteInput.val(JSON.stringify(colors)).trigger('change');
+	}
+
+	function designHex(name) {
+		var raw = String($('[name="' + name + '"]').val() || '');
+		return COMPLETE_HEX.test(raw) ? raw : '';
+	}
+
+	function designSize(name) {
+		var raw = String($('[name="' + name + '"]').val() || '');
+		return /^\d{1,4}(\.\d{1,2})?(px|em|rem|%)( \d{1,4}(\.\d{1,2})?(px|em|rem|%))?$/.test(raw) ? raw : '';
+	}
+
+	// The Design tab re-runs the preview chart through BaraTablesCharts.init() with the
+	// stashed init inputs (see baratables-charts.js), overriding the style keys with the
+	// current form values -- the same values the PHP sanitizers will accept, so the preview
+	// never diverges from what a save would persist.
+	var chartStyleTimer;
+	function restyleChartPreview() {
+		var container = document.querySelector('.btbl-chart-preview-embed .btbl-chart');
+		var stash = container && container.__btblChart;
+		if (!stash || !window.BaraTablesCharts) { return; }
+		var config = JSON.parse(JSON.stringify(stash.config));
+		config.styleBackground = designHex('btbl_chart_style_background');
+		config.styleTextColor = designHex('btbl_chart_style_text_color');
+		config.styleGridColor = designHex('btbl_chart_style_grid_color');
+		config.styleFontSize = designSize('btbl_chart_style_font_size');
+		if ($paletteInput.length) {
+			try { config.stylePalette = JSON.parse($paletteInput.val() || '[]'); } catch (paletteError) { config.stylePalette = []; }
+		}
+		window.BaraTablesCharts.init(config, null, stash.tableId, stash.slugToIndex, stash.helpers);
+	}
+
+	function queueChartRestyle() {
+		clearTimeout(chartStyleTimer);
+		chartStyleTimer = setTimeout(restyleChartPreview, 200);
+	}
+
+	if ($paletteEditor.length) {
+		var removeLabel = String($paletteEditor.data('label-remove') || 'Remove color');
+
+		$(document).on('click', '.btbl-palette-chip-remove', function(e) {
+			e.preventDefault();
+			$(this).closest('.btbl-palette-chip').remove();
+			syncPalette();
+		});
+
+		$paletteEditor.find('[data-btbl-palette-add]').on('click', function(e) {
+			e.preventDefault();
+			var $value = $paletteEditor.find('.btbl-palette-add .btbl-color-value');
+			var color = String($value.val() || '');
+			if (!COMPLETE_HEX.test(color) || $paletteEditor.find('.btbl-palette-chip[data-color="' + color + '"]').length) {
+				return;
+			}
+			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(color, removeLabel));
+			$value.val('').trigger('change');
+			syncPalette();
+		});
+
+		// Native HTML5 drag to reorder, same contract as the layout builder's chips.
+		var dragIndex = -1;
+		$paletteEditor.find('.btbl-palette-chips')
+			.on('dragstart', '.btbl-palette-chip', function(e) {
+				dragIndex = $(this).index();
+				try {
+					e.originalEvent.dataTransfer.effectAllowed = 'move';
+					e.originalEvent.dataTransfer.setData('text/plain', String(dragIndex));
+				} catch (dataTransferError) {
+					// dataTransfer restrictions only matter for cross-window drags; reorder still works.
+				}
+			})
+			.on('dragover', '.btbl-palette-chip', function(e) {
+				e.originalEvent.preventDefault();
+				e.originalEvent.dataTransfer.dropEffect = 'move';
+			})
+			.on('drop', '.btbl-palette-chip', function(e) {
+				e.originalEvent.preventDefault();
+				var $dragged = $paletteEditor.find('.btbl-palette-chips .btbl-palette-chip').eq(dragIndex);
+				var $target = $(this);
+				if (!$dragged.length || $dragged[0] === $target[0]) { return; }
+				if ($target.index() > dragIndex) {
+					$dragged.insertAfter($target);
+				} else {
+					$dragged.insertBefore($target);
+				}
+				syncPalette();
+			})
+			.on('dragend', '.btbl-palette-chip', function() {
+				dragIndex = -1;
+			});
+	}
+
+	$(document).on('input change', '[name="btbl_chart_style_background"], [name="btbl_chart_style_text_color"], [name="btbl_chart_style_grid_color"], [name="btbl_chart_style_font_size"], [data-btbl-palette-input]', queueChartRestyle);
+
 	initChartTypeChooser();
 });

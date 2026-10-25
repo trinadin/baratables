@@ -1198,7 +1198,7 @@ jQuery(function($) {
 	var $builderForm = $('#btbl-table-builder').closest('form');
 	if (!$builderForm.length) { $builderForm = $('#post'); }
 	var $previewTarget = $('#btbl-preview-target');
-	var previewedState = $builderForm.length ? $builderForm.serialize() : '';
+	var previewedState = $builderForm.length ? serializeForDirtyCheck() : '';
 	function serializeTableBuilder() {
 		return $('#btbl-table-builder').find(':input').serialize();
 	}
@@ -1232,6 +1232,18 @@ jQuery(function($) {
 			$previewTarget.removeAttr('aria-disabled');
 		}
 	}
+	// Design-tab style fields apply to the preview live (admin-design.js), so they never make
+	// the preview stale: they are disabled around the comparison, which both excludes them
+	// from serialize() and keeps this helper's output comparable across edits. The
+	// Refresh-preview POST keeps its own full serialize -- only the dirty check narrows.
+	function serializeForDirtyCheck() {
+		if (!$builderForm.length) { return ''; }
+		var $liveStyleFields = $builderForm.find('[data-btbl-live-style]');
+		$liveStyleFields.prop('disabled', true);
+		var serialized = $builderForm.serialize();
+		$liveStyleFields.prop('disabled', false);
+		return serialized;
+	}
 	function syncRefreshPreviewVisibility() {
 		if (!$builderForm.length) { return; }
 		// serialize() walks every control in the builder, and this is bound at document level to
@@ -1239,7 +1251,7 @@ jQuery(function($) {
 		// otherwise serialized the whole form once per column. The bulk handler calls this once
 		// when it is done, which is the only result that was ever visible.
 		if (bulkColumnToggle) { return; }
-		var dirty = $builderForm.serialize() !== previewedState;
+		var dirty = serializeForDirtyCheck() !== previewedState;
 		$('.btbl-preview-toolbar').prop('hidden', !dirty);
 		setPreviewStale(dirty || previewRefreshPending);
 		syncRemoteFetchState();
@@ -1305,11 +1317,27 @@ jQuery(function($) {
 			key: 'preview',
 			auth: false,
 			data: data,
-			validate: function(response) { return !!(response && response.success && response.data && typeof response.data.html === 'string'); },
+			validate: function(response) {
+				return !!(response && response.success && response.data && typeof response.data.html === 'string');
+			},
 			success: function(responseData) {
 				$previewTarget.html(responseData.html);
-				previewedState = serialized; // preview now reflects this state
+				// The preview ships the same payload the front end would print inline, so the
+				// swapped markup boots exactly like a page load. initInstance() tears down any
+				// previous instance for the table element first.
+				var payload = responseData.payload;
+				if (payload && payload.tableId && window.BaraTablesFrontend && typeof window.BaraTablesFrontend.init === 'function') {
+					try {
+						window.BaraTablesFrontend.init(payload);
+					} catch (bootError) {
+						if (window.console && console.error) { console.error('[BaraTables] Preview bootstrap failed.', bootError); }
+					}
+				}
+				previewedState = serializeForDirtyCheck(); // preview now reflects this state
 				syncRefreshPreviewVisibility(); // -> hides the button until the next edit
+				// admin-design.js re-applies the live style block and Additional CSS tag on
+				// top of the fresh markup (the form outranks it while editing).
+				$(document).trigger('btbl:preview-refreshed');
 			},
 			always: function(isCurrent) {
 				if (isCurrent) {

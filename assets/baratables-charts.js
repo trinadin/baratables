@@ -522,6 +522,95 @@
 		return buildCartesianOption(type, prepared, context.columnsMeta, context.chartConfig);
 	}
 
+	function validColor(value) {
+		return typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : '';
+	}
+
+	function eachItem(value, callback) {
+		var list = Array.isArray(value) ? value : (value ? [value] : []);
+		list.forEach(callback);
+	}
+
+	// Split lines only show on value axes by default; creating them on category axes would
+	// ADD grid lines the chart never had. Axis lines are the reverse, so category axes get
+	// theirs colored while value axes keep theirs hidden. An axis that explicitly hides
+	// either line (show: false, from a builder or a hand-built payload) is never re-shown.
+	function applyAxisStyle(axis, textColor, gridColor, fontSize) {
+		if (!axis || typeof axis !== 'object') { return; }
+		if (textColor || fontSize) {
+			axis.axisLabel = axis.axisLabel || {};
+			if (textColor) { axis.axisLabel.color = textColor; }
+			if (fontSize) { axis.axisLabel.fontSize = fontSize; }
+			if (axis.name) {
+				axis.nameTextStyle = axis.nameTextStyle || {};
+				if (textColor) { axis.nameTextStyle.color = textColor; }
+				if (fontSize) { axis.nameTextStyle.fontSize = fontSize; }
+			}
+		}
+		if (gridColor) {
+			var splitLineVisible = axis.splitLine ? axis.splitLine.show !== false : axis.type === 'value';
+			if (splitLineVisible) {
+				axis.splitLine = axis.splitLine || { show: true };
+				axis.splitLine.lineStyle = axis.splitLine.lineStyle || {};
+				axis.splitLine.lineStyle.color = gridColor;
+			}
+			var axisLineVisible = axis.axisLine ? axis.axisLine.show !== false : axis.type === 'category';
+			if (axisLineVisible) {
+				axis.axisLine = axis.axisLine || { show: true };
+				axis.axisLine.lineStyle = axis.axisLine.lineStyle || {};
+				axis.axisLine.lineStyle.color = gridColor;
+			}
+		}
+	}
+
+	/**
+	 * Design tokens (2.0). The chart's own palette replaces the accent-led default series
+	 * colors wherever ECharts has not chosen its own -- a builder that sets option.color
+	 * (the Gantt progress palette) keeps it. Text, grid, and background then restyle the
+	 * built option on top; the background also prints as --btbl-chart-bg on the container
+	 * from PHP, so copy/image exports without a canvas background still show it. Colors
+	 * arrive sanitized from PHP, but the runtime re-checks so a hand-built integration
+	 * payload can never inject a malformed value.
+	 */
+	function applyChartStyle(option, chartConfig, container) {
+		var style = chartConfig || {};
+		var textColor = validColor(style.styleTextColor);
+		var gridColor = validColor(style.styleGridColor);
+		var fontSize = parseFloat(style.styleFontSize);
+		var background = validColor(style.styleBackground);
+		var palette = Array.isArray(style.stylePalette) ? style.stylePalette.filter(validColor) : [];
+
+		if (!option.color && chartConfig.type !== 'gantt' && palette.length) {
+			option.color = palette;
+		}
+		// Lead the series palette with the table's accent so a themed accent colors the
+		// chart too; charts without a resolved accent keep ECharts' default palette.
+		if (!option.color) {
+			var accent = '';
+			try { accent = String(window.getComputedStyle(container).getPropertyValue('--btbl-accent') || '').trim(); } catch (err) { accent = ''; }
+			if (accent) {
+				option.color = [accent, '#91CC75', '#EE6666', '#73C0DE', '#FAC858', '#9A60B4', '#EA7CCC'];
+			}
+		}
+		if (background) {
+			option.backgroundColor = background;
+		}
+		if (textColor || fontSize) {
+			option.textStyle = option.textStyle || {};
+			if (textColor) { option.textStyle.color = textColor; }
+			if (fontSize) { option.textStyle.fontSize = fontSize; }
+		}
+		eachItem(option.legend, function(legend) {
+			legend.textStyle = legend.textStyle || {};
+			if (textColor) { legend.textStyle.color = textColor; }
+			if (fontSize) { legend.textStyle.fontSize = fontSize; }
+		});
+		if (gridColor || textColor || fontSize) {
+			eachItem(option.xAxis, function(axis) { applyAxisStyle(axis, textColor, gridColor, fontSize); });
+			eachItem(option.yAxis, function(axis) { applyAxisStyle(axis, textColor, gridColor, fontSize); });
+		}
+	}
+
 	function init(chartConfig, tableInstance, tableId, slugToIndex, helpers) {
 		if (!chartConfig || !chartConfig.enabled || !window.echarts) {
 			return null;
@@ -567,15 +656,7 @@
 			var option = buildChartOption(context);
 			if (option) {
 				rendered = true;
-				// Lead the series palette with the table's accent so a themed accent colors the
-				// chart too; charts without a resolved accent keep ECharts' default palette.
-				if (!option.color) {
-					var accent = '';
-					try { accent = String(window.getComputedStyle(container).getPropertyValue('--btbl-accent') || '').trim(); } catch (err) { accent = ''; }
-					if (accent) {
-						option.color = [accent, '#91CC75', '#EE6666', '#73C0DE', '#FAC858', '#9A60B4', '#EA7CCC'];
-					}
-				}
+				applyChartStyle(option, chartConfig, container);
 				chart.setOption(option, true);
 			}
 		}
@@ -590,6 +671,10 @@
 			chart.dispose();
 			return null;
 		}
+		// The Design tab's live restyling re-initializes from this stash (admin-chart.js):
+		// config carries the style keys it rewrites, and helpers/slugToIndex are the exact
+		// inputs this init() call received.
+		container.__btblChart = {config: chartConfig, tableId: tableId, slugToIndex: slugToIndex, helpers: helpers};
 		if (tableInstance && tableInstance.on) {
 			tableInstance.on('draw', render);
 		}

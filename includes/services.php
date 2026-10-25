@@ -56,6 +56,29 @@ class BaraTables_Service {
 		'orderColumn'             => ['checkbox', true],
 		'compact'                 => ['checkbox', false],
 		'accentColor'             => ['color', ''],
+		// Design tokens (2.0). Every key is empty-means-inherit: the value only reaches the
+		// wrapper's inline style block when set, so untouched tables render as 1.x did and
+		// themes keep control of everything the admin leaves blank.
+		'textColor'               => ['color', ''],
+		'headerBgColor'           => ['color', ''],
+		'headerTextColor'         => ['color', ''],
+		'headerWeight'            => ['css_weight', ''],
+		'stripeColor'             => ['color', ''],
+		'hoverColor'              => ['color', ''],
+		'borderColor'             => ['color', ''],
+		'footerBgColor'           => ['color', ''],
+		'footerTextColor'         => ['color', ''],
+		'successColor'            => ['color', ''],
+		'successBgColor'          => ['color', ''],
+		'warningColor'            => ['color', ''],
+		'warningBgColor'          => ['color', ''],
+		'dangerColor'             => ['color', ''],
+		'dangerBgColor'           => ['color', ''],
+		'fontSize'                => ['css_size', ''],
+		'cellPadding'             => ['css_size', ''],
+		'borderRadius'            => ['css_size', ''],
+		'styleMode'               => ['style_mode', 'inline'],
+		'customCss'               => ['css', ''],
 		'pageLength'              => ['number', 25, 1, 500],
 		'rowLimit'                => ['number', 1000, 1, 10000],
 		'lengthMenuPrefix'        => ['text_html', ''],
@@ -165,6 +188,32 @@ class BaraTables_Service {
 		'orderColumn' => 'order-column',
 		'compact' => 'compact',
 	];
+	/**
+	 * Design-tab option key => CSS custom property names, in output order. One key may drive
+	 * several properties (Border colors the plugin's own controls AND DataTables' header and
+	 * row borders through their token layer). Values must already be sanitized.
+	 */
+	public const STYLE_VAR_MAP = [
+		'accentColor'      => ['--btbl-accent'],
+		'textColor'        => ['--btbl-text'],
+		'fontSize'         => ['--btbl-font-size'],
+		'headerBgColor'    => ['--btbl-header-bg'],
+		'headerTextColor'  => ['--btbl-header-text'],
+		'headerWeight'     => ['--btbl-header-weight'],
+		'stripeColor'      => ['--btbl-stripe'],
+		'hoverColor'       => ['--btbl-hover'],
+		'borderColor'      => ['--btbl-border', '--btbl-row-border', '--btbl-header-border'],
+		'footerBgColor'    => ['--btbl-footer-bg'],
+		'footerTextColor'  => ['--btbl-footer-text'],
+		'successBgColor'   => ['--btbl-condition-success-bg'],
+		'successColor'     => ['--btbl-condition-success-text'],
+		'warningBgColor'   => ['--btbl-condition-warning-bg'],
+		'warningColor'     => ['--btbl-condition-warning-text'],
+		'dangerBgColor'    => ['--btbl-condition-danger-bg'],
+		'dangerColor'      => ['--btbl-condition-danger-text'],
+		'cellPadding'      => ['--btbl-cell-padding'],
+		'borderRadius'     => ['--btbl-radius'],
+	];
 	private const CHART_OPTION_DEFAULTS = [
 		'type' => 'bar',
 		'x_axis' => '',
@@ -180,7 +229,17 @@ class BaraTables_Service {
 		'heatmap_x' => '',
 		'heatmap_y' => '',
 		'heatmap_value' => '',
+		// Design tokens (2.0). Empty-means-inherit like the table side; the palette replaces
+		// the accent-led default series colors wherever ECharts has not chosen its own.
+		'stylePalette' => [],
+		'styleBackground' => '',
+		'styleTextColor' => '',
+		'styleGridColor' => '',
+		'styleFontSize' => '',
 	];
+
+	/** Hard ceiling on the Design tab's series palette; sane ECharts palettes run 6-10 colors. */
+	public const MAX_CHART_PALETTE_COLORS = 12;
 	private const MAX_CSV_BYTES = 5242880;
 	private const MAX_CSV_LINE_LENGTH = 1048576;
 	private const CSV_MIME_TYPES = [
@@ -787,6 +846,14 @@ class BaraTables_Service {
 				// Empty string means "inherit the theme's primary color"; anything that is not
 				// a valid 3- or 6-digit hex collapses back to that inherited state.
 				$options[$key] = sanitize_hex_color((string) $options_raw[$key]) ?? '';
+			} elseif ($type === 'css_size') {
+				$options[$key] = self::sanitize_css_size($options_raw[$key]);
+			} elseif ($type === 'css_weight') {
+				$options[$key] = self::sanitize_css_weight($options_raw[$key]);
+			} elseif ($type === 'style_mode') {
+				$options[$key] = self::sanitize_style_mode($options_raw[$key]);
+			} elseif ($type === 'css') {
+				$options[$key] = self::sanitize_custom_css($options_raw[$key]);
 			} elseif ($type === 'checkbox_multi') {
 				$choices = isset($config['choices']) && is_array($config['choices']) ? array_keys($config['choices']) : [];
 				$options[$key] = $this->sanitize_checkbox_multi($options_raw[$key], $choices);
@@ -814,6 +881,263 @@ class BaraTables_Service {
 			}
 		}
 		return $clean;
+	}
+
+	/** One or two non-negative CSS lengths with an explicit safe unit (e.g. `12px`, `8px 12px`). */
+	public static function sanitize_css_size($raw): string {
+		$value = trim((string) $raw);
+		if ($value === '') {
+			return '';
+		}
+		$length = '\d{1,4}(?:\.\d{1,2})?(?:px|em|rem|%)';
+		if (!preg_match('/^' . $length . '(?: ' . $length . ')?$/', $value)) {
+			return '';
+		}
+		return $value;
+	}
+
+	/** Curated font weights only; the empty string means "follow the theme/table default". */
+	public static function sanitize_css_weight($raw): string {
+		$value = trim((string) $raw);
+		return in_array($value, ['400', '500', '600', '700', 'normal', 'bold'], true) ? $value : '';
+	}
+
+	public static function sanitize_style_mode($raw): string {
+		$value = sanitize_key((string) $raw);
+		return in_array($value, ['inline', 'external'], true) ? $value : 'inline';
+	}
+
+	/**
+	 * Admin-authored CSS for the per-table <style> sink. Only `manage_options` users ever
+	 * submit it, but the same rules apply as the Customizer's Additional CSS: nothing may
+	 * close the surrounding <style> tag early or open a PHP context, and the payload is
+	 * capped. CSS itself is passed through verbatim so `content:` strings and `url()` values
+	 * survive.
+	 */
+	public static function sanitize_custom_css($raw): string {
+		$value = (string) $raw;
+		if ($value === '') {
+			return '';
+		}
+		$value = str_replace("\0", '', $value);
+		// Also kills "</style >", "<?PHP" and any other "<tag" markup that would otherwise be
+		// parsed inside the style element; CSS custom properties and selectors never need "<".
+		$value = preg_replace('/<\s*\/?\s*[a-z]/i', '', $value) ?? '';
+		$value = str_replace('<?', '', $value);
+		if (strlen($value) > 20000) {
+			$value = substr($value, 0, 20000);
+		}
+		return $value;
+	}
+
+	/**
+	 * Scope user-authored Additional CSS to one table. The Design tab invites plain
+	 * selectors ("td { ... }"), so every top-level rule gets the table's wrapper scope
+	 * prefixed onto each of its selectors, and @media/@supports bodies are scoped too,
+	 * while @keyframes steps and selector-less at-rules (@font-face, @import) pass through
+	 * untouched. The `^=` id match covers every instance of the table on a page, matching
+	 * the Copy CSS convention. Best effort by design: malformed CSS passes through as-is,
+	 * and sanitize_custom_css() has already stripped anything that could escape the sink.
+	 */
+	public static function scope_table_css(string $css, string $table_id): string {
+		$table_id = sanitize_title($table_id);
+		if ($table_id === '' || trim($css) === '') {
+			return $css;
+		}
+		$scope = '.btbl-table-wrapper[data-table-id^="' . $table_id . '"]';
+		$index = 0;
+		return self::scope_css_segment($css, $index, $scope, true);
+	}
+
+	/** Copies a `/* ... *\/` comment verbatim; the index moves past it. */
+	private static function copy_css_comment(string $css, int &$index): string {
+		$end = strpos($css, '*/', $index + 2);
+		$end = $end === false ? strlen($css) - 1 : $end + 1;
+		$comment = substr($css, $index, $end - $index + 1);
+		$index = $end + 1;
+		return $comment;
+	}
+
+	/** Copies a quoted string verbatim, honoring backslash escapes; the index moves past it. */
+	private static function copy_css_string(string $css, int &$index): string {
+		$quote = $css[$index];
+		$length = strlen($css);
+		$j = $index + 1;
+		while ($j < $length) {
+			if ($css[$j] === '\\') {
+				$j += 2;
+				continue;
+			}
+			if ($css[$j] === $quote) {
+				break;
+			}
+			$j++;
+		}
+		$j = min($j + 1, $length);
+		$fragment = substr($css, $index, $j - $index);
+		$index = $j;
+		return $fragment;
+	}
+
+	/**
+	 * One nesting level of the CSS scoper. Reads preludes and blocks until the enclosing
+	 * block's closing brace (left unconsumed for the caller) or the end of input.
+	 */
+	private static function scope_css_segment(string $css, int &$index, string $scope, bool $scoping): string {
+		$out = '';
+		$length = strlen($css);
+		while ($index < $length) {
+			if ($css[$index] === '}') {
+				return $out;
+			}
+			if (substr($css, $index, 2) === '/*') {
+				$out .= self::copy_css_comment($css, $index);
+				continue;
+			}
+			$prelude = '';
+			$closed = false;
+			while ($index < $length) {
+				$char = $css[$index];
+				if ($char === '"' || $char === "'") {
+					$prelude .= self::copy_css_string($css, $index);
+					continue;
+				}
+				if (substr($css, $index, 2) === '/*') {
+					$prelude .= self::copy_css_comment($css, $index);
+					continue;
+				}
+				if ($char === '{') {
+					$index++;
+					$closed = true;
+					break;
+				}
+				if ($char === ';') {
+					// Semicolon-terminated prelude: an @import or similar; emit verbatim.
+					$out .= $prelude . $char;
+					$prelude = '';
+					$index++;
+					continue;
+				}
+				if ($char === '}') {
+					$out .= $prelude;
+					$prelude = '';
+					return $out;
+				}
+				$prelude .= $char;
+				$index++;
+			}
+			if ($prelude === '' && !$closed) {
+				break;
+			}
+			$is_at_rule = preg_match('/^\s*@/', $prelude) === 1;
+			$at_name = $is_at_rule && preg_match('/@([-a-z]+)/i', $prelude, $m) ? strtolower($m[1]) : '';
+			// Emitted blocks normalize to "prelude { body }" regardless of the input's
+			// spacing, so the printed CSS reads consistently.
+			$prelude = trim($prelude);
+			if ($at_name === 'keyframes' || $at_name === '-webkit-keyframes') {
+				// Animation steps are percentage selectors; copying the body verbatim keeps
+				// them that way.
+				$out .= $prelude . ' {' . self::scope_css_segment($css, $index, $scope, false) . '}';
+			} elseif ($is_at_rule) {
+				// @media, @supports and friends re-nest rules: scope their contents.
+				$out .= $prelude . ' {' . self::scope_css_segment($css, $index, $scope, $scoping) . '}';
+			} elseif ($scoping) {
+				$out .= self::scope_selector_list($prelude, $scope) . ' {' . self::copy_css_block($css, $index) . '}';
+			} else {
+				$out .= $prelude . ' {' . self::copy_css_block($css, $index) . '}';
+			}
+		}
+		return $out;
+	}
+
+	/** Copies a declaration block verbatim (strings honored) through its closing brace. */
+	private static function copy_css_block(string $css, int &$index): string {
+		$body = '';
+		$length = strlen($css);
+		while ($index < $length) {
+			$char = $css[$index];
+			if ($char === '"' || $char === "'") {
+				$body .= self::copy_css_string($css, $index);
+				continue;
+			}
+			if ($char === '}') {
+				$index++;
+				return $body;
+			}
+			$body .= $char;
+			$index++;
+		}
+		return $body;
+	}
+
+	/** Prefixes every selector in a comma list (paren- and string-aware) with the scope. */
+	private static function scope_selector_list(string $prelude, string $scope): string {
+		$selectors = [];
+		$current = '';
+		$depth = 0;
+		$length = strlen($prelude);
+		for ($i = 0; $i < $length; $i++) {
+			$char = $prelude[$i];
+			if ($char === '"' || $char === "'") {
+				$current .= self::copy_css_string($prelude, $i);
+				continue;
+			}
+			if ($char === '(') {
+				$depth++;
+			} elseif ($char === ')') {
+				$depth = max(0, $depth - 1);
+			} elseif ($char === ',' && $depth === 0) {
+				$selectors[] = $current;
+				$current = '';
+				continue;
+			}
+			$current .= $char;
+		}
+		$selectors[] = $current;
+		$scoped = [];
+		foreach ($selectors as $selector) {
+			$selector = trim($selector);
+			if ($selector !== '') {
+				$scoped[] = $scope . ' ' . $selector;
+			}
+		}
+		return $scoped === [] ? $scope : implode(', ', $scoped);
+	}
+
+	/**
+	 * The wrapper's inline design-token block: sanitized option values mapped to their CSS
+	 * custom properties, skipping every key the admin left empty. Output order follows
+	 * STYLE_VAR_MAP so the generated block is stable (and copyable) across saves.
+	 *
+	 * @return array<string,string> Custom property name => raw value (escaped at print time).
+	 */
+	public static function style_vars_from_options(array $table_options): array {
+		$vars = [];
+		foreach (self::STYLE_VAR_MAP as $key => $properties) {
+			$value = $table_options[$key] ?? '';
+			if ($value === '' || $value === null) {
+				continue;
+			}
+			$value = self::revalidate_style_value($key, (string) $value);
+			if ($value === '') {
+				continue;
+			}
+			foreach ($properties as $property) {
+				$vars[$property] = $value;
+			}
+		}
+		return $vars;
+	}
+
+	/** Output-time revalidation, independent of how the definition reached storage. */
+	private static function revalidate_style_value(string $key, string $value): string {
+		if ($key === 'accentColor' || substr($key, -5) === 'Color') {
+			return sanitize_hex_color($value) ?? '';
+		}
+		if ($key === 'headerWeight') {
+			return self::sanitize_css_weight($value);
+		}
+		return self::sanitize_css_size($value);
 	}
 
 	private function merge_chart_options(array $options_raw, array $columns): array {
@@ -887,6 +1211,35 @@ class BaraTables_Service {
 				}
 			}
 		}
+
+		// Design tokens (2.0): same empty-means-inherit contract as the table side. Duplicate
+		// detection is case-insensitive (#EEF2F7 and #eef2f7 are the same color), while the
+		// first-seen spelling is what gets stored.
+		$palette_raw = isset($options_raw['stylePalette']) && is_array($options_raw['stylePalette'])
+			? $options_raw['stylePalette']
+			: [];
+		$palette = [];
+		$palette_seen = [];
+		foreach ($palette_raw as $color) {
+			$hex = sanitize_hex_color((string) $color);
+			if ($hex !== null && $hex !== '') {
+				$lower = strtolower($hex);
+				if (!in_array($lower, $palette_seen, true)) {
+					$palette[] = $hex;
+					$palette_seen[] = $lower;
+				}
+			}
+			if (count($palette) >= self::MAX_CHART_PALETTE_COLORS) {
+				break;
+			}
+		}
+		$options['stylePalette'] = $palette;
+		foreach (['styleBackground', 'styleTextColor', 'styleGridColor'] as $key) {
+			$options[$key] = isset($options_raw[$key])
+				? (sanitize_hex_color((string) $options_raw[$key]) ?? '')
+				: '';
+		}
+		$options['styleFontSize'] = self::sanitize_css_size($options_raw['styleFontSize'] ?? '');
 
 		return $options;
 	}
@@ -2819,6 +3172,51 @@ class BaraTables_Service {
 		$schema['compact']['label'] = __('Compact density', 'baratables');
 		$schema['accentColor']['label'] = __('Accent color', 'baratables');
 		$schema['accentColor']['description'] = __('Color for focus rings, sorted columns, and paging highlights. Off follows your theme\'s primary color automatically.', 'baratables');
+
+		// Design tokens (2.0): the Design tab renders every editor_group === 'design' key from
+		// these labels, grouped exactly as below. Empty means "inherit the theme".
+		$schema['textColor']['label'] = __('Text color', 'baratables');
+		$schema['textColor']['description'] = __('Body text in the table. Empty follows your theme.', 'baratables');
+		$schema['fontSize']['label'] = __('Font size', 'baratables');
+		$schema['fontSize']['description'] = __('Base size for the table and its controls, e.g. 14px.', 'baratables');
+		$schema['headerBgColor']['label'] = __('Header background', 'baratables');
+		$schema['headerTextColor']['label'] = __('Header text color', 'baratables');
+		$schema['headerWeight']['label'] = __('Header font weight', 'baratables');
+		$schema['stripeColor']['label'] = __('Zebra stripe color', 'baratables');
+		$schema['stripeColor']['description'] = __('Shown on alternating rows when zebra stripes are enabled.', 'baratables');
+		$schema['hoverColor']['label'] = __('Row hover color', 'baratables');
+		$schema['hoverColor']['description'] = __('Shown on rows under the pointer when hover highlighting is enabled.', 'baratables');
+		$schema['borderColor']['label'] = __('Border color', 'baratables');
+		$schema['borderColor']['description'] = __('Table borders, filter inputs, and buttons.', 'baratables');
+		$schema['footerBgColor']['label'] = __('Footer background', 'baratables');
+		$schema['footerTextColor']['label'] = __('Footer text color', 'baratables');
+		$schema['successColor']['label'] = __('Success text color', 'baratables');
+		$schema['successBgColor']['label'] = __('Success background', 'baratables');
+		$schema['warningColor']['label'] = __('Warning text color', 'baratables');
+		$schema['warningBgColor']['label'] = __('Warning background', 'baratables');
+		$schema['dangerColor']['label'] = __('Danger text color', 'baratables');
+		$schema['dangerBgColor']['label'] = __('Danger background', 'baratables');
+		$schema['cellPadding']['label'] = __('Cell padding', 'baratables');
+		$schema['cellPadding']['description'] = __('Space inside cells, e.g. 8px 12px. Lower is denser.', 'baratables');
+		$schema['borderRadius']['label'] = __('Corner radius', 'baratables');
+		$schema['borderRadius']['description'] = __('Roundness of buttons and filter inputs, e.g. 6px.', 'baratables');
+		$schema['styleMode']['label'] = __('Style output', 'baratables');
+		$schema['styleMode']['description'] = __('Inline keeps the styles managed here. Theme CSS stops the inline styles so the copy you moved into your theme takes over.', 'baratables');
+		$schema['customCss']['label'] = __('Additional CSS', 'baratables');
+		$schema['customCss']['description'] = __('Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th.', 'baratables');
+		foreach (array_keys(self::STYLE_VAR_MAP) as $key) {
+			$schema[$key]['editor_group'] = 'design';
+		}
+		$schema['styleMode']['editor_group'] = 'design_output';
+		$schema['customCss']['editor_group'] = 'design_output';
+		$schema['headerWeight']['choices'] = [
+			'normal' => __('Normal', 'baratables'),
+			'bold' => __('Bold', 'baratables'),
+			'400' => '400',
+			'500' => '500',
+			'600' => '600',
+			'700' => '700',
+		];
 		$schema['pageLength']['label'] = __('Rows per page', 'baratables');
 		$schema['rowLimit']['label'] = __('Maximum rows', 'baratables');
 		$schema['rowLimit']['description'] = __('Rows fetched and rendered, on every data source. Pre-filter larger datasets at the source.', 'baratables');

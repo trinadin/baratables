@@ -8,17 +8,64 @@
 	--btbl-border: #d0d7de;
 	--btbl-muted: #6c757d;
 	--btbl-surface: #fff;
-	--dt-control_color: var(--btbl-accent);
+	/* Design tokens (2.0): the Design tab writes these as an inline style block on the
+	   wrapper, and every rule below consumes a token BEFORE its pre-token default, so an
+	   unset token renders exactly as 1.x did. Themes can set any --btbl-* token with plain
+	   CSS on this wrapper or any ancestor. The --dt-* bridges push tokens into DataTables'
+	   own variable layer, which owns header/body padding, borders, and control chrome;
+	   their fallbacks are the vendored 3.0.2 defaults. */
+	font-size: var(--btbl-font-size, inherit);
+
+	--dt-header_padding: var(--btbl-cell-padding, 10px);
+	--dt-body_padding: var(--btbl-cell-padding, 8px 10px);
+	--dt-header_border: 1px solid var(--btbl-header-border, rgba(0, 0, 0, 0.3));
+	--dt-body_border: 1px solid var(--btbl-row-border, rgba(0, 0, 0, 0.15));
+	--dt-input_border-radius: var(--btbl-radius, 3px);
+	--dt-paging-button_border-radius: var(--btbl-radius, 3px);
 }
 
-/* The sorted column carries a subtle accent tint instead of DataTables' neutral gray. */
+/* The sorted column carries a subtle accent tint instead of DataTables' neutral gray. It is
+   painted as a gradient layered over the header background token, so a table with a custom
+   header color keeps it under the sort tint instead of losing it to the shorthand reset. */
 .btbl-table-wrapper table.dataTable > thead th.dt-ordering-asc,
 .btbl-table-wrapper table.dataTable > thead th.dt-ordering-desc {
-	background: color-mix(in srgb, var(--btbl-accent) 7%, transparent);
+	background-color: var(--btbl-header-bg, transparent);
+	background-image: linear-gradient(
+		color-mix(in srgb, var(--btbl-accent) 7%, transparent),
+		color-mix(in srgb, var(--btbl-accent) 7%, transparent)
+	);
+}
+
+/* Header presentation tokens. The fallbacks are what the browser/DataTables rendered before
+   tokens existed (UA-bold th, inherited color, transparent background). */
+.btbl-table-wrapper .btbl-table > thead th {
+	background-color: var(--btbl-header-bg, transparent);
+	color: var(--btbl-header-text, inherit);
+	font-weight: var(--btbl-header-weight, bold);
+}
+
+/* Custom stripe and hover colors paint at ROW level, underneath cell backgrounds, so
+   conditional-formatting colors keep their cell color. DataTables' own translucent cell
+   shadows still layer on top unchanged, so its sorted-column and hover compositions keep
+   vendor semantics. Unset tokens stay transparent -- DataTables' stripe/hover classes then
+   do the painting exactly as they always have. */
+.btbl-table-wrapper table.dataTable.stripe > tbody > tr:nth-child(odd) {
+	background-color: var(--btbl-stripe, transparent);
+}
+
+.btbl-table-wrapper table.dataTable.hover > tbody > tr:hover {
+	background-color: var(--btbl-hover, transparent);
 }
 
 .btbl-table {
 	width: 100%;
+	color: var(--btbl-text, inherit);
+}
+
+/* The chart container paints the chart's own background token behind ECharts' transparent
+   canvas; every other chart token is canvas-drawn and travels through the JS payload. */
+.btbl-chart {
+	background-color: var(--btbl-chart-bg, transparent);
 }
 
 /* The aggregate footer reads as part of the table: a strong top rule and a quiet tint, so
@@ -27,37 +74,37 @@
    land on the light surface at ~1:1. */
 .btbl-table tfoot td[data-btbl-aggregate]:not([data-btbl-aggregate="none"]) {
 	border-top: 2px solid var(--btbl-border);
-	background: #f6f8fa;
-	color: #1f2328;
+	background: var(--btbl-footer-bg, #f6f8fa);
+	color: var(--btbl-footer-text, #1f2328);
 	font-weight: 600;
 }
 
 .btbl-table td.btbl-condition-accent,
 .btbl-table td.dtfc-fixed-start.btbl-condition-accent,
 .dtr-data.btbl-condition-accent {
-	background-color: #eaf4fb;
-	color: #135e96;
+	background-color: var(--btbl-condition-accent-bg, #eaf4fb);
+	color: var(--btbl-condition-accent-text, #135e96);
 }
 
 .btbl-table td.btbl-condition-success,
 .btbl-table td.dtfc-fixed-start.btbl-condition-success,
 .dtr-data.btbl-condition-success {
-	background-color: #edfaef;
-	color: #14532d;
+	background-color: var(--btbl-condition-success-bg, #edfaef);
+	color: var(--btbl-condition-success-text, #14532d);
 }
 
 .btbl-table td.btbl-condition-warning,
 .btbl-table td.dtfc-fixed-start.btbl-condition-warning,
 .dtr-data.btbl-condition-warning {
-	background-color: #fff8e1;
-	color: #6b4f00;
+	background-color: var(--btbl-condition-warning-bg, #fff8e1);
+	color: var(--btbl-condition-warning-text, #6b4f00);
 }
 
 .btbl-table td.btbl-condition-danger,
 .btbl-table td.dtfc-fixed-start.btbl-condition-danger,
 .dtr-data.btbl-condition-danger {
-	background-color: #fff0f0;
-	color: #8a1f11;
+	background-color: var(--btbl-condition-danger-bg, #fff0f0);
+	color: var(--btbl-condition-danger-text, #8a1f11);
 }
 
 .btbl-filter-wrapper,
@@ -88,7 +135,7 @@
 
 .btbl-filter .ts-control {
 	border: 1px solid var(--btbl-border);
-	border-radius: 4px;
+	border-radius: var(--btbl-radius, 4px);
 }
 
 .btbl-filter .ts-wrapper.focus .ts-control {
@@ -98,7 +145,7 @@
 
 .btbl-filter .ts-dropdown {
 	border-color: var(--btbl-border);
-	border-radius: 4px;
+	border-radius: var(--btbl-radius, 4px);
 	box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
 	margin-top: 4px;
 	z-index: 9999;
@@ -172,7 +219,7 @@
 .btbl-edit-link {
 	border: 1px solid var(--btbl-border);
 	background: var(--btbl-surface);
-	border-radius: 4px;
+	border-radius: var(--btbl-radius, 4px);
 	padding: 5px 10px;
 	font-size: 13px;
 	cursor: pointer;
@@ -199,7 +246,7 @@
 	top: calc(100% + 5px);
 	padding: 10px 10px 10px 12px;
 	border: 1px solid var(--btbl-border);
-	border-radius: 6px;
+	border-radius: var(--btbl-radius, 6px);
 	background: var(--btbl-surface);
 	color: #1f2328;
 	box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);

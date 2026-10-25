@@ -931,10 +931,12 @@ class BaraTables_Chart_Slug_Manager extends BaraTables_Base_Slug_Manager {
 class BaraTables_Admin_Assets {
 	private string $plugin_url;
 	private string $plugin_path;
+	private ?BaraTables_Frontend $frontend;
 
-	public function __construct(string $plugin_url, string $plugin_path) {
+	public function __construct(string $plugin_url, string $plugin_path, ?BaraTables_Frontend $frontend = null) {
 		$this->plugin_url = $plugin_url;
 		$this->plugin_path = $plugin_path;
+		$this->frontend = $frontend;
 	}
 
 	public function enqueue(string $hook): void {
@@ -970,6 +972,22 @@ class BaraTables_Admin_Assets {
 
 		$is_table_editor = $is_btbl_editor && $hook_post_type === BaraTables_Repository::CPT;
 		$is_chart_editor = $is_btbl_editor && $hook_post_type === BaraTables_Chart_Repository::CPT;
+		if (($is_table_editor || $is_chart_editor) && $this->frontend !== null) {
+			// The preview metaboxes render the actual front-end output, so the front-end
+			// stylesheets must be in <head> before that markup paints. A table editor pulls
+			// the DataTables chrome plus exactly this table's feature-gated vendor CSS --
+			// the same gating the published page applies -- while a chart editor needs only
+			// the base stylesheet (see BaraTables_Frontend::enqueue_preview_styles).
+			$table_features = [];
+			if ($is_table_editor) {
+				$post_id = isset($_GET['post']) ? absint(wp_unslash($_GET['post'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading standard WP admin URL parameters.
+				$definition = $post_id ? get_post_meta($post_id, BaraTables_Repository::META_KEY, true) : [];
+				$table_features = is_array($definition)
+					? $this->frontend->get_table_asset_features($definition)
+					: [];
+			}
+			$this->frontend->enqueue_preview_styles($is_table_editor, $table_features);
+		}
 		if ($is_chart_editor) {
 			wp_enqueue_style(
 				'baratables-tom-select',
@@ -995,6 +1013,7 @@ class BaraTables_Admin_Assets {
 			['baratables-utils', 'assets/baratables-utils.js', [], $is_table_editor],
 			['baratables-admin-layout', 'assets/admin-layout.js', ['jquery', 'baratables-admin-core'], $is_table_editor],
 			['baratables-admin-grid', 'assets/admin-grid.js', ['jquery', 'baratables-utils'], $is_table_editor],
+			['baratables-admin-design', 'assets/admin-design.js', ['jquery', 'baratables-admin-core'], $is_table_editor],
 			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core', 'baratables-tom-select'], $is_chart_editor],
 			['baratables-admin', 'assets/admin.js', $admin_dependencies, $is_btbl_editor],
 		];

@@ -916,7 +916,6 @@ class BaraTables_Admin_Tab_Table {
 		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
 		$panel_class = $active_tab === 'btbl-tab-table' ? 'btbl-tab-panel is-active' : 'btbl-tab-panel';
 		$flag_keys = [];
-		$style_keys = [];
 		$inline_controls = [];
 		$layout_features = [];
 		$layout_dependencies = [];
@@ -927,8 +926,6 @@ class BaraTables_Admin_Tab_Table {
 			$editor_group = $config['editor_group'] ?? '';
 			if ($editor_group === 'controls') {
 				$flag_keys[] = $key;
-			} elseif ($editor_group === 'style') {
-				$style_keys[] = $key;
 			} elseif ($editor_group === 'inline' && !empty($config['editor_parent'])) {
 				$inline_controls[$config['editor_parent']][(int) ($config['editor_order'] ?? 0)] = $key;
 			} elseif ($editor_group === 'layout') {
@@ -980,19 +977,19 @@ class BaraTables_Admin_Tab_Table {
 		$layout_unused = array_values(array_filter($layout_allowed, static function ($item) use ($layout_used) {
 			return !isset($layout_used[$item]);
 		}));
-		// The override toggles are DERIVED from the stored value: a set caption, a non-default
-		// row limit, or a picked accent color reads as "on", blank/default reads as "off". No
-		// separate enabled flag is stored, so existing definitions and the front end are
-		// unchanged. The fields render empty with the default shown as the placeholder --
-		// empty IS "use the default", and the save pipeline restores the default from it, so
-		// admin-layout.js only has to clear the field when a toggle goes off.
+		// The override toggles are DERIVED from the stored value: a set caption or a non-default
+		// row limit reads as "on", blank/default reads as "off". No separate enabled flag is
+		// stored, so existing definitions and the front end are unchanged. The fields render
+		// empty with the default shown as the placeholder -- empty IS "use the default", and
+		// the save pipeline restores the default from it, so admin-layout.js only has to clear
+		// the field when a toggle goes off.
+		// (The Accent color override card moved to the Design tab in 2.0 -- same field, same
+		// name, same btbl-color-field markup.)
 		$caption_value = (string) ($table_options['caption'] ?? '');
 		$row_limit_config = $option_schema['rowLimit'] ?? null;
 		$row_limit_default = (int) ($row_limit_config['default'] ?? 1000);
 		$row_limit_value = (int) ($table_options['rowLimit'] ?? $row_limit_default);
 		$row_limit_overridden = $row_limit_value !== $row_limit_default;
-		$accent_value = sanitize_hex_color((string) ($table_options['accentColor'] ?? '')) ?? '';
-		$theme_accent = BaraTables_Service::resolve_theme_accent();
 		$button_text_defaults = BaraTables_Service::frontend_label_defaults();
 		$server_side_state = isset($context['server_side_state']) && is_array($context['server_side_state'])
 			? $context['server_side_state']
@@ -1068,37 +1065,6 @@ class BaraTables_Admin_Tab_Table {
 											data-btbl-override-field
 										/>
 									</label>
-								</div>
-							</div>
-						</div>
-						<div class="btbl-checkbox" data-btbl-override="accentColor">
-							<span class="btbl-checkbox-top">
-								<label class="btbl-checkbox-main" for="btbl_override_accentcolor">
-									<input type="checkbox" id="btbl_override_accentcolor" data-btbl-override-toggle <?php checked($accent_value !== ''); ?> />
-									<span class="btbl-field-name"><?php echo esc_html($option_schema['accentColor']['label']); ?></span>
-								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled($accent_value === ''); ?>>
-									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
-								</button>
-							</span>
-							<div class="btbl-field-options-body<?php echo $accent_value !== '' ? '' : ' is-hidden'; ?>">
-								<div class="btbl-options-row btbl-options-inline">
-									<div>
-										<label class="btbl-small-label" for="btbl_table_accentcolor"><?php esc_html_e('Hex color', 'baratables'); ?></label>
-										<div class="btbl-color-field" data-btbl-theme-accent="<?php echo esc_attr($theme_accent); ?>">
-											<input
-												type="text"
-												id="btbl_table_accentcolor"
-												name="btbl_table_options[accentColor]"
-												class="btbl-color-value"
-												value="<?php echo esc_attr($accent_value); ?>"
-												placeholder="<?php echo esc_attr($theme_accent); ?>"
-												data-btbl-override-field
-											/>
-											<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($accent_value !== '' ? $accent_value : $theme_accent); ?>" aria-label="<?php echo esc_attr__('Pick accent color', 'baratables'); ?>" />
-										</div>
-									</div>
 								</div>
 							</div>
 						</div>
@@ -1246,28 +1212,6 @@ class BaraTables_Admin_Tab_Table {
 						</div>
 					</div>
 				</div>
-			<?php if (!empty($style_keys)) : ?>
-				<div class="btbl-control">
-					<strong class="btbl-small-heading"><?php esc_html_e('Style features', 'baratables'); ?></strong>
-					<div class="btbl-flag-grid btbl-table-flags">
-					<?php foreach ($style_keys as $style_key) : ?>
-						<?php $config = $option_schema[$style_key]; ?>
-						<?php if (($config['type'] ?? '') !== 'checkbox') { continue; } ?>
-						<?php $input_id = 'btbl_table_style_' . sanitize_key($style_key); ?>
-						<?php $style_default = !empty($config['default']) ? '1' : '0'; ?>
-							<input type="hidden" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="0" />
-							<div class="btbl-checkbox">
-								<span class="btbl-checkbox-top">
-									<label class="btbl-checkbox-main" for="<?php echo esc_attr($input_id); ?>">
-									<input type="checkbox" id="<?php echo esc_attr($input_id); ?>" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="1" data-default="<?php echo esc_attr($style_default); ?>" <?php checked(!empty($table_options[$style_key])); ?> />
-										<span class="btbl-field-name"><?php echo esc_html($config['label']); ?></span>
-									</label>
-								</span>
-							</div>
-						<?php endforeach; ?>
-					</div>
-				</div>
-				<?php endif; ?>
 			<?php if ($buttons_config) : ?>
 				<?php $config = $buttons_config['config']; ?>
 				<?php $button_text_keys = isset($config['choice_text_options']) && is_array($config['choice_text_options']) ? $config['choice_text_options'] : []; ?>
@@ -1338,6 +1282,220 @@ class BaraTables_Admin_Tab_Table {
 			<?php echo esc_html($label); ?>
 		</button>
 		<?php
+	}
+}
+
+/**
+ * The Design tab (2.0): the visual style designer. Every control is a plain
+ * btbl_table_options[...] field, so the save and preview pipelines treat it exactly like
+ * any other option; the curated controls map 1:1 onto the CSS custom properties consumed
+ * by baratables.css. Empty means "inherit the theme" for every token.
+ */
+class BaraTables_Admin_Tab_Design {
+	public function render(array $context): void {
+		$table_options = $context['table_options'] ?? [];
+		$option_schema = BaraTables_Service::get_table_option_schema();
+		$active_tab = $context['active_tab'] ?? 'btbl-tab-general';
+		$panel_class = $active_tab === 'btbl-tab-design' ? 'btbl-tab-panel is-active' : 'btbl-tab-panel';
+		$theme_accent = BaraTables_Service::resolve_theme_accent();
+
+		$color_groups = [
+			[
+				'heading' => __('Colors', 'baratables'),
+				'fields' => ['accentColor', 'textColor', 'borderColor'],
+			],
+			[
+				'heading' => __('Header row', 'baratables'),
+				'fields' => ['headerBgColor', 'headerTextColor', 'headerWeight'],
+			],
+			[
+				'heading' => __('Rows', 'baratables'),
+				'fields' => ['stripeColor', 'hoverColor'],
+			],
+			[
+				'heading' => __('Footer totals', 'baratables'),
+				'fields' => ['footerBgColor', 'footerTextColor'],
+			],
+			[
+				'heading' => __('Conditional cell colors', 'baratables'),
+				'description' => __('Used by the per-column conditional formatting rules on the Columns & filters tab.', 'baratables'),
+				'fields' => ['successBgColor', 'successColor', 'warningBgColor', 'warningColor', 'dangerBgColor', 'dangerColor'],
+			],
+		];
+		$size_fields = ['fontSize', 'cellPadding', 'borderRadius'];
+		$style_keys = [];
+		foreach ($option_schema as $key => $config) {
+			if (($config['editor_group'] ?? '') === 'style') {
+				$style_keys[] = $key;
+			}
+		}
+
+		$config = [
+			'previewSelector' => '#btbl-preview-target .btbl-table-wrapper',
+			'varMap' => BaraTables_Service::STYLE_VAR_MAP,
+		];
+		?>
+		<div id="btbl-tab-design" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-design-label">
+			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Table preview below the builder as you edit, and publish with the table. Leave anything blank to follow your theme.', 'baratables'); ?></p>
+			<div class="btbl-control" data-btbl-design-config="<?php echo esc_attr(wp_json_encode($config)); ?>">
+				<strong class="btbl-small-heading"><?php esc_html_e('Style presets', 'baratables'); ?></strong>
+				<p class="description"><?php esc_html_e('One click fills the controls below; keep tweaking from there. Your data and table settings are not touched.', 'baratables'); ?></p>
+				<div class="btbl-flag-grid btbl-preset-grid">
+					<button type="button" class="button btbl-preset-button" data-btbl-preset="default"><?php esc_html_e('Theme default', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-preset="minimal"><?php esc_html_e('Minimal', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-preset="bold"><?php esc_html_e('Bold header', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-preset="midnight"><?php esc_html_e('Midnight', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-preset="paper"><?php esc_html_e('Paper', 'baratables'); ?></button>
+				</div>
+			</div>
+			<?php foreach ($color_groups as $group) : ?>
+				<div class="btbl-control btbl-design-fields">
+					<strong class="btbl-small-heading"><?php echo esc_html($group['heading']); ?></strong>
+					<?php if (!empty($group['description'])) : ?>
+						<p class="description"><?php echo esc_html($group['description']); ?></p>
+					<?php endif; ?>
+					<div class="btbl-flag-grid btbl-table-flags">
+						<?php foreach ($group['fields'] as $field_key) : ?>
+							<?php $this->render_field($field_key, $option_schema[$field_key] ?? [], $table_options, $theme_accent); ?>
+						<?php endforeach; ?>
+					</div>
+				</div>
+			<?php endforeach; ?>
+			<div class="btbl-control btbl-design-fields">
+				<strong class="btbl-small-heading"><?php esc_html_e('Typography & shape', 'baratables'); ?></strong>
+				<div class="btbl-flag-grid btbl-table-flags">
+					<?php foreach ($size_fields as $field_key) : ?>
+						<?php $this->render_field($field_key, $option_schema[$field_key] ?? [], $table_options, $theme_accent); ?>
+					<?php endforeach; ?>
+				</div>
+			</div>
+			<?php if (!empty($style_keys)) : ?>
+				<div class="btbl-control btbl-design-fields">
+					<strong class="btbl-small-heading"><?php esc_html_e('Table features', 'baratables'); ?></strong>
+					<p class="description"><?php esc_html_e('Zebra stripes and highlights render through DataTables\' own styles; the colors above tint them.', 'baratables'); ?></p>
+					<div class="btbl-flag-grid btbl-table-flags">
+						<?php foreach ($style_keys as $style_key) : ?>
+							<?php $style_config = $option_schema[$style_key]; ?>
+							<?php $input_id = 'btbl_design_' . $style_key; ?>
+							<?php $style_default = !empty($style_config['default']) ? '1' : '0'; ?>
+							<input type="hidden" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="0" />
+							<div class="btbl-checkbox">
+								<span class="btbl-checkbox-top">
+									<label class="btbl-checkbox-main" for="<?php echo esc_attr($input_id); ?>">
+										<input type="checkbox" id="<?php echo esc_attr($input_id); ?>" name="btbl_table_options[<?php echo esc_attr($style_key); ?>]" value="1" data-default="<?php echo esc_attr($style_default); ?>" data-btbl-style-feature data-btbl-live-style <?php checked(!empty($table_options[$style_key])); ?> />
+										<span class="btbl-field-name"><?php echo esc_html($style_config['label']); ?></span>
+									</label>
+								</span>
+							</div>
+						<?php endforeach; ?>
+					</div>
+				</div>
+			<?php endif; ?>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Style output', 'baratables'); ?></strong>
+				<div class="btbl-flag-grid btbl-style-mode-grid">
+					<?php $style_mode = ($table_options['styleMode'] ?? 'inline') === 'external' ? 'external' : 'inline'; ?>
+					<div class="btbl-checkbox btbl-style-mode-card">
+						<label class="btbl-checkbox-main" for="btbl_style_mode_inline">
+							<input type="radio" id="btbl_style_mode_inline" name="btbl_table_options[styleMode]" value="inline" data-btbl-live-style <?php checked($style_mode, 'inline'); ?> />
+							<span class="btbl-field-name"><?php esc_html_e('Inline - managed here', 'baratables'); ?></span>
+						</label>
+						<p class="description btbl-style-mode-hint"><?php esc_html_e('The styles print with the table. Default.', 'baratables'); ?></p>
+					</div>
+					<div class="btbl-checkbox btbl-style-mode-card">
+						<label class="btbl-checkbox-main" for="btbl_style_mode_external">
+							<input type="radio" id="btbl_style_mode_external" name="btbl_table_options[styleMode]" value="external" data-btbl-live-style <?php checked($style_mode, 'external'); ?> />
+							<span class="btbl-field-name"><?php esc_html_e('Theme CSS - copied out', 'baratables'); ?></span>
+						</label>
+						<p class="description btbl-style-mode-hint"><?php esc_html_e('Nothing prints with the table. Copy the generated CSS into Additional CSS or your child theme; your copy stays in charge.', 'baratables'); ?></p>
+					</div>
+				</div>
+				<p class="description btbl-external-note" hidden data-btbl-external-note><?php esc_html_e('Inline output is off. This preview still shows your styles; visitors get whatever your theme CSS applies.', 'baratables'); ?></p>
+				<div class="btbl-options-row btbl-copy-css-row">
+					<button type="button" class="button" data-btbl-copy-css><?php esc_html_e('Copy CSS', 'baratables'); ?></button>
+					<span class="description" aria-live="polite" data-btbl-copy-status></span>
+				</div>
+				<pre class="btbl-copy-css-output" hidden tabindex="0" aria-label="<?php esc_attr_e('Generated table CSS', 'baratables'); ?>"></pre>
+				<div class="btbl-custom-css-row">
+					<label class="btbl-small-label" for="btbl_design_custom_css"><?php echo esc_html($option_schema['customCss']['label'] ?? __('Additional CSS', 'baratables')); ?></label>
+					<textarea
+						name="btbl_table_options[customCss]"
+						id="btbl_design_custom_css"
+						class="large-text code"
+						rows="8"
+						spellcheck="false"
+						placeholder="td { font-style: italic; }"
+						data-btbl-custom-css
+						data-btbl-live-style
+					><?php echo esc_textarea((string) ($table_options['customCss'] ?? '')); ?></textarea>
+					<p class="description btbl-field-hint"><?php echo esc_html($option_schema['customCss']['description'] ?? ''); ?></p>
+				</div>
+			</div>
+		</div>
+		<?php
+	}
+
+	private function render_field(string $key, array $config, array $table_options, string $theme_accent): void {
+		$label = (string) ($config['label'] ?? $key);
+		$description = (string) ($config['description'] ?? '');
+		// Raw schema key, matching the Options tab's btbl_rowLimit precedent: the id mirrors
+		// the stored camelCase option key (sanitize_key would lowercase it).
+		$input_id = 'btbl_design_' . $key;
+		$value = (string) ($table_options[$key] ?? '');
+		?>
+		<div class="btbl-checkbox btbl-design-field" data-btbl-design-field="<?php echo esc_attr($key); ?>">
+			<span class="btbl-checkbox-top">
+				<span class="btbl-field-name"><?php echo esc_html($label); ?></span>
+			</span>
+			<?php if (($config['type'] ?? '') === 'color') : ?>
+				<div class="btbl-color-field" data-btbl-theme-accent="<?php echo esc_attr($key === 'accentColor' ? $theme_accent : ''); ?>">
+					<input
+						type="text"
+						id="<?php echo esc_attr($input_id); ?>"
+						name="btbl_table_options[<?php echo esc_attr($key); ?>]"
+						class="btbl-color-value"
+						value="<?php echo esc_attr($value); ?>"
+						placeholder="<?php echo esc_attr($key === 'accentColor' ? $theme_accent : __('Theme default', 'baratables')); ?>"
+						data-btbl-live-style
+					/>
+					<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : ($key === 'accentColor' ? $theme_accent : '#ffffff')); ?>" aria-label="<?php echo esc_attr(sprintf(
+					/* translators: %s is the control label, e.g. "Background". */
+					__('Pick %s', 'baratables'),
+					$label
+				)); ?>" />
+				</div>
+			<?php elseif (!empty($config['choices']) && is_array($config['choices'])) : ?>
+				<select id="<?php echo esc_attr($input_id); ?>" name="btbl_table_options[<?php echo esc_attr($key); ?>]" data-btbl-live-style>
+					<option value=""><?php echo esc_html($config['type'] === 'css_weight' ? __('Theme default', 'baratables') : ''); ?></option>
+					<?php foreach ($config['choices'] as $choice_value => $choice_label) : ?>
+						<option value="<?php echo esc_attr((string) $choice_value); ?>" <?php selected($value, (string) $choice_value); ?>><?php echo esc_html((string) $choice_label); ?></option>
+					<?php endforeach; ?>
+				</select>
+			<?php else : ?>
+				<input
+					type="text"
+					id="<?php echo esc_attr($input_id); ?>"
+					name="btbl_table_options[<?php echo esc_attr($key); ?>]"
+					class="small-text"
+					value="<?php echo esc_attr($value); ?>"
+					placeholder="<?php echo esc_attr($this->size_placeholder($key)); ?>"
+					data-btbl-live-style
+				/>
+			<?php endif; ?>
+			<?php if ($description !== '') : ?>
+				<p class="description btbl-field-hint"><?php echo esc_html($description); ?></p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function size_placeholder(string $key): string {
+		$placeholders = [
+			'fontSize' => '14px',
+			'cellPadding' => '8px 12px',
+			'borderRadius' => '6px',
+		];
+		return $placeholders[$key] ?? '';
 	}
 }
 
@@ -1656,6 +1814,113 @@ class BaraTables_Admin_Tab_Chart {
 				<option value="<?php echo esc_attr($slug); ?>" <?php selected($value, $slug); ?>><?php echo esc_html($label); ?></option>
 			<?php endforeach; ?>
 		</select>
+		<?php
+	}
+}
+
+/**
+ * The chart editor's Design tab (2.0). Charts draw into a canvas, so unlike the table's
+ * token controls these values mostly ride the JS payload; the background is the one
+ * CSS-visible piece and prints as --btbl-chart-bg on the container. Empty means "keep the
+ * current look": the accent-led stock palette and ECharts' own text and grid colors.
+ */
+class BaraTables_Admin_Tab_Chart_Design {
+	public function render(array $context): void {
+		$chart_options = $context['chart_options'] ?? [];
+		$palette = [];
+		foreach ((array) ($chart_options['stylePalette'] ?? []) as $color) {
+			$hex = sanitize_hex_color((string) $color);
+			if ($hex !== null) {
+				$palette[] = $hex;
+			}
+		}
+		?>
+		<div id="btbl-tab-chart-design" class="btbl-tab-panel" role="tabpanel" aria-labelledby="btbl-tab-chart-design-label">
+			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Chart preview as you edit and publish with the chart. Leave anything blank to keep the current look.', 'baratables'); ?></p>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Series palette', 'baratables'); ?></strong>
+				<p class="description"><?php esc_html_e('Colors are used in order across series and slices. Drag to reorder. An empty palette keeps the table accent leading the default colors.', 'baratables'); ?></p>
+				<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php esc_attr_e('Remove color', 'baratables'); ?>">
+					<div class="btbl-palette-chips">
+						<?php foreach ($palette as $color) : ?>
+							<?php $this->render_chip($color); ?>
+						<?php endforeach; ?>
+					</div>
+					<div class="btbl-palette-add">
+						<div class="btbl-color-field">
+							<input
+								type="text"
+								class="btbl-color-value"
+								value=""
+								placeholder="#2271b1"
+								aria-label="<?php esc_attr_e('New palette color (hex)', 'baratables'); ?>"
+							/>
+							<input type="color" class="btbl-color-picker" value="#2271b1" aria-label="<?php esc_attr_e('Pick new palette color', 'baratables'); ?>" />
+						</div>
+						<button type="button" class="button" data-btbl-palette-add><?php esc_html_e('Add color', 'baratables'); ?></button>
+					</div>
+					<input type="hidden" name="btbl_chart_style_palette" value="<?php echo esc_attr((string) wp_json_encode($palette)); ?>" data-btbl-palette-input />
+				</div>
+			</div>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Colors & type', 'baratables'); ?></strong>
+				<div class="btbl-flag-grid btbl-table-flags btbl-design-fields">
+					<?php
+					$this->render_color_card('btbl_chart_style_background', __('Background', 'baratables'), (string) ($chart_options['styleBackground'] ?? ''), __('Canvas default', 'baratables'));
+					$this->render_color_card('btbl_chart_style_text_color', __('Text color', 'baratables'), (string) ($chart_options['styleTextColor'] ?? ''), __('ECharts default', 'baratables'));
+					$this->render_color_card('btbl_chart_style_grid_color', __('Grid color', 'baratables'), (string) ($chart_options['styleGridColor'] ?? ''), __('ECharts default', 'baratables'));
+					?>
+					<div class="btbl-checkbox btbl-design-field">
+						<span class="btbl-checkbox-top">
+							<span class="btbl-field-name"><?php esc_html_e('Font size', 'baratables'); ?></span>
+						</span>
+						<input
+							type="text"
+							class="small-text"
+							name="btbl_chart_style_font_size"
+							value="<?php echo esc_attr((string) ($chart_options['styleFontSize'] ?? '')); ?>"
+							placeholder="14px"
+						/>
+					</div>
+				</div>
+				<p class="description btbl-field-hint"><?php esc_html_e('Text and grid colors apply to axis labels, legends, and grid lines. Gantt palettes keep their progress-state colors.', 'baratables'); ?></p>
+			</div>
+		</div>
+		<?php
+	}
+
+	/** Shared chip markup: the JS palette editor clones this exact structure for new chips. */
+	private function render_chip(string $color): void {
+		?>
+		<span class="btbl-palette-chip" draggable="true" data-color="<?php echo esc_attr($color); ?>">
+			<span class="btbl-palette-swatch" style="background-color: <?php echo esc_attr($color); ?>"></span>
+			<code><?php echo esc_html($color); ?></code>
+			<button type="button" class="btbl-palette-chip-remove" aria-label="<?php esc_attr_e('Remove color', 'baratables'); ?>">&times;</button>
+		</span>
+		<?php
+	}
+
+	private function render_color_card(string $name, string $label, string $value, string $placeholder): void {
+		?>
+		<div class="btbl-checkbox btbl-design-field">
+			<span class="btbl-checkbox-top">
+				<span class="btbl-field-name"><?php echo esc_html($label); ?></span>
+			</span>
+			<div class="btbl-color-field">
+				<input
+					type="text"
+					class="btbl-color-value"
+					name="<?php echo esc_attr($name); ?>"
+					value="<?php echo esc_attr($value); ?>"
+					placeholder="<?php echo esc_attr($placeholder); ?>"
+				/>
+				<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : '#ffffff'); ?>" aria-label="<?php echo esc_attr(sprintf(
+					/* translators: %s is the control's label, e.g. "Background". */
+					__('Pick %s', 'baratables'),
+					$label
+				)); ?>" />
+			</div>
+		</div>
 		<?php
 	}
 }

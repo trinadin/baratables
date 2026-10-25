@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 2.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,89 +12,100 @@ Create searchable, sortable WordPress tables and charts from files, public snaps
 
 == Description ==
 
-BaraTables builds interactive tables and charts from manual rows, CSV uploads, public remote snapshots, WordPress content, or an external MySQL/MariaDB database, then publishes them with a shortcode or a block.
+BaraTables builds interactive tables and charts from manual rows, CSV uploads, public snapshots, WordPress content, or an external database, published by shortcode or block.
 
-Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another table plugin or spreadsheet to rebuild a table.
+Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another plugin.
 
-Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, and column visibility controls. Charts draw from any BaraTables table and embed with their own shortcode.
+Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, and column visibility. Charts draw from any table.
 
 **Features:**
 
-* Add search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, including filtering by category or tag
-* Export table data to CSV, Excel, or PDF, copy it, or print it
-* Reorder columns, control column visibility, keep headers visible, and freeze leading columns while scrolling
-* Treat a column as strict numbers for reliable numeric sorting, conditional color presets, and filtered sum, average, minimum, or maximum footers
-* Fetch a bounded snapshot from a public CSV, JSON record array, or Google Sheet without contacting it from published pages
-* Page large external MySQL/MariaDB tables on demand with bounded database queries
-* Collapse wide tables into stacked, expandable rows on small screens
-* Match your theme automatically: colors follow your theme's palette, with an optional custom accent color
-* Restrict WordPress-content, CSV, and external-database rows by user role or user metadata
-* Remember table state between visits, and control scrolling, column sizing, and row limits
-* Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts with ECharts
-* Light frontend styles that are easy to override with CSS
+* Search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, with category and tag filtering
+* Export to CSV, Excel, or PDF, copy, or print
+* Reorder columns, control visibility, keep headers visible, freeze leading columns on scroll
+* Strict numeric sorting, conditional colors, and filtered sum, average, min, or max footers
+* Fetch a bounded snapshot from a public CSV, JSON, or Google Sheet; pages never contact the source
+* Page large external MySQL/MariaDB tables on demand
+* Collapse wide tables into stacked rows on small screens
+* Match your theme automatically: colors follow its palette, with an optional accent
+* Style tables and charts without code in the Design tab, with a live preview
+* Restrict rows by role or user metadata
+* Remember table state between visits; control scrolling, column sizing, and row limits
+* Create bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts
+* Light frontend styles that are easy to override
 
 == Installation ==
 
 1. Upload the `baratables` folder to `/wp-content/plugins/`.
 2. Activate the plugin through the Plugins menu in WordPress.
-3. Go to Tables in the admin menu and create your first table.
-4. Use the shortcode `[bara_table id="your-table-slug"]` to embed it.
+3. Create a table under Tables, then embed it with `[bara_table id="your-table-slug"]`.
 
 == Frequently Asked Questions ==
 
 = What data sources are supported? =
 
-CSV files, manual data entry, WordPress content, external MySQL/MariaDB databases, and stored snapshots from public CSV, JSON-record, or Google Sheets URLs.
+CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only. Save the public HTTPS URL and format, then click Fetch snapshot. Published tables and charts use the last stored snapshot and never contact the source. CSV and Google Sheets endpoints must return `text/csv` or `application/csv`; `text/plain` downloads are rejected. Authentication, private Sheets, scheduled refresh, and schema-changing refreshes are not supported; create a new table when remote column headings change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. Endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected. Authentication, private Sheets, scheduled refresh, and schema changes are not supported; re-create the table when remote columns change.
 
-= Which table plugin exports can I import? =
+= Which plugin exports can I import? =
 
-Use a TablePress single-table JSON export. Ninja Tables classic and drag-and-drop JSON exports work; export an externally connected Ninja table as CSV. WP Table Builder XML or CSV, Visualizer CSV, Supsystic JSON or CSV, League Table XML, and wpDataTables or Tablesome data-only CSV also import, as do HTML tables. A ZIP imports the first supported table and reports how many were found.
+Use a TablePress single-table JSON export; Ninja Tables classic and drag-and-drop JSON also work (export an externally connected Ninja table as CSV). WP Table Builder, Visualizer, Supsystic, League Table, wpDataTables, and Tablesome exports import too, as do HTML tables; a ZIP imports the first supported table.
 
-Imports rebuild table data and compatible display settings, not plugin-specific styling, formulas, macros, shortcodes, charts, or external data connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks as XLSX, ODS, or CSV first.
-
-Uploads and pasted imports can be up to 5 MB. A ZIP can hold 50 entries of up to 5 MB each, and up to 20 MB expanded.
+Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts, or external connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each.
 
 = How many rows can a table load? =
 
-Each table loads up to 1,000 rows by default. The Options tab sets a limit from 1 to 10,000 rows on every data source.
+Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can instead opt into large database performance mode. It loads at most 100 rows per request and lets the database page, sort, and literally search within your Rows to load limit of at most 100,000 addressable results. It requires selected columns, pagination, and a non-null single-column primary or unique key. Row access rules, value/date transforms, filter controls, footer calculations, exports, print, and charts keep standard loading, preserving their meaning. Database search follows the source collation, which controls case and accent matching.
+External MySQL/MariaDB tables can instead opt into large database performance mode: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key; access rules, transforms, filters, footers, exports, print, and charts keep standard loading. Database search follows the source collation.
 
 = Can I link to a filtered view of a table? =
 
-Yes. Filtering or searching updates the page address, so you can share that exact view, or build the link yourself with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
+Yes. Filtering or searching updates the page address, so you can share the view, or build it with `btbl_filter[column-slug]`, `btbl_search`, and `btbl_search_cols`.
 
 = How do I add a chart? =
 
-Create a table first, then go to Charts and create a new chart linked to that table. Use `[bara_chart id="your-chart-slug"]` to embed it.
+Create a table first, then go to Charts and create a chart linked to it, embedded with `[bara_chart id="your-chart-slug"]`.
 
 = Can I customize the table appearance? =
 
-Yes. The Options tab provides controls for striping, hover, borders, compact mode, pagination style, button labels, search text, and info display; layout zones control where controls appear.
+Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. Styles print as CSS custom properties, so your theme keeps what you leave blank.
 
 = How do numeric rules and footer calculations work? =
 
-Choose Number in a column's settings. Plain decimals such as -12.5 participate in numeric sorting, conditional styles, and footer calculations. Currency symbols, percentages, grouping separators, words, blank cells, and out-of-range values stay visible but are excluded. Footers calculate every loaded row matching the current search and filters, not only the current page; rows beyond the table's row limit and exports are excluded.
+Choose Number in a column's settings: plain decimals such as -12.5 join numeric sorting, conditional styles, and footers, while currency symbols, percentages, grouped numbers, words, blanks, and out-of-range values stay visible but are excluded. Footers calculate every loaded row matching the current search and filters, not only the current page; rows beyond the row limit and exports are excluded.
 
 = Can I style BaraTables with custom CSS? =
 
-Yes. BaraTables ships minimal frontend styles so your theme stays in control; adjust colors, spacing, typography, and buttons with your theme, the Site Editor, or custom CSS.
+Yes. Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS.
+
+The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set them globally to re-skin every table, or copy the generated block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
+
+The Design tab also takes per-table Additional CSS.
 
 = Where can I see examples? =
 
-Visit https://ktisisweb.com/baratables/ for screenshots, feature notes, and styling guidance, or try the Live Preview demo on WordPress.org.
+See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or the demo on WordPress.org.
 
 == Screenshots ==
 
-1. Frontend chart generated from a BaraTables table.
-2. Frontend table with search, filters, CSV, Excel, and PDF export, column visibility, sorting, and pagination.
-3. The Options tab: table settings, control toggles, layout builder, styling, and export buttons.
-4. Chart builder and chart-type gallery with all supported chart types.
-5. Responsive table on a phone: collapsed columns expand into a stacked row.
+1. A frontend chart generated from a table.
+2. A frontend table with search, filters, exports, and sorting.
+3. The Design tab: presets, colors, typography, and Copy CSS.
+4. Chart builder and chart-type gallery.
+5. Responsive table on a phone.
 
 == Changelog ==
+
+= 2.0.0 =
+New:
+
+* A Design tab for tables and charts: presets, colors, typography, spacing, and a per-chart series palette, with a live preview updating as you type.
+* The table preview now renders the real table visitors see, so what you style is what you publish.
+* Copy CSS hands the styles to your theme, and the "Theme CSS" output mode lets that copy take over.
+* Per-table Additional CSS, auto-scoped to the table, plus a documented `--btbl-*` token API for themes.
+* Accent color and the style toggles moved into the Design tab.
 
 = 1.4.0 =
 New:
@@ -318,6 +329,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.0.0 =
+Adds the Design tab: no-code styling with live preview, Copy CSS handoff, and a token API for themes.
 
 = 1.4.0 =
 Adds workbook imports, remote snapshots, fixed headers and columns, numeric rules and footers, and bounded database paging. Exports now neutralize spreadsheet formulas.

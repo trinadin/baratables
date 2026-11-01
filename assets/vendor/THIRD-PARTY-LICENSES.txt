@@ -10,12 +10,12 @@ DataTables, DataTables Buttons, DataTables ColReorder, DataTables Responsive,
 DataTables FixedHeader, DataTables FixedColumns
 -------------------------------------------------
 
-DataTables v3.0.2
-DataTables Buttons v4.0.2
-DataTables ColReorder v3.0.1
-DataTables Responsive v4.0.2
-DataTables FixedHeader v5.0.0
-DataTables FixedColumns v6.0.0
+DataTables v3.1.5
+DataTables Buttons v4.1.3
+DataTables ColReorder v3.1.2
+DataTables Responsive v4.1.1
+DataTables FixedHeader v5.1.2
+DataTables FixedColumns v6.1.2
 
 License: MIT
 

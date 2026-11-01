@@ -194,8 +194,8 @@ trait BaraTables_Value_Format_Trait {
 				$row[$idx] = $this->apply_compiled_overrides_with(
 					(string) $row[$idx],
 					$compiled['rules'][$slug],
-					function (string $replace) use ($row_tokens): string {
-						return $this->replace_row_tokens($replace, $row_tokens);
+					function (string $replace, bool $escape = false) use ($row_tokens): string {
+						return $this->replace_row_tokens($replace, $row_tokens, $escape);
 					}
 				);
 			}
@@ -334,26 +334,52 @@ trait BaraTables_Value_Format_Trait {
 		foreach ($rules as $rule) {
 			$search = $rule['search'];
 			if (!empty($rule['regex'])) {
-				$resolved_replace = $resolve_replace($rule['replace']);
+				// The replacement goes to preg_replace() as a STRING, where PHP reads "$n" as a
+				// backreference. Merged cell values are literal content, not template text, so
+				// they must be escaped for that context -- otherwise a price of "$1,200" is read
+				// as capture group 1 and the value is silently destroyed. Only the merged value
+				// is escaped: the admin's own "$1" stays a working backreference.
+				$resolved_replace = $resolve_replace($rule['replace'], true);
 				$result = preg_replace($search, $resolved_replace, $value);
 				if (is_string($result)) {
 					$value = $result;
 				}
 			} elseif (strpos($value, $search) !== false) {
-				$value = str_replace($search, $resolve_replace($rule['replace']), $value);
+				// The literal path replaces with str_replace(), where "$" and "\" are ordinary
+				// characters -- escaping here would leak backslashes into the rendered cell.
+				$value = str_replace($search, $resolve_replace($rule['replace'], false), $value);
 			}
 		}
 
 		return $value;
 	}
 
-	private function replace_merge_tags(string $text, WP_Post $post): string {
+	/**
+	 * Escape literal content for use inside a preg_replace() replacement argument.
+	 *
+	 * PHP's replacement parser reads "$1".."$99" as a backreference and treats a doubled
+	 * backslash as one literal backslash. A merged cell value is data, so it has to be
+	 * neutralised before it is spliced into a replacement string.
+	 *
+	 * @param string $value Literal text to protect.
+	 * @return string The same text, safe to place in a preg_replace() replacement.
+	 */
+	private static function escape_replacement_literal(string $value): string {
+		if ($value === '') {
+			return '';
+		}
+		// Backslashes first: escaping "$" afterwards would otherwise double the backslash
+		// this replacement introduces.
+		return str_replace(['\\', '$'], ['\\\\', '\\$'], $value);
+	}
+
+	private function replace_merge_tags(string $text, WP_Post $post, bool $escape = false): string {
 		if ($text === '') {
 			return $text;
 		}
 
 		$pattern = '/{{\s*(core|meta):([^}]+)\s*}}/i';
-		$text = preg_replace_callback($pattern, function ($matches) use ($post) {
+		$text = preg_replace_callback($pattern, function ($matches) use ($post, $escape) {
 			$source = strtolower($matches[1]);
 			$raw_key = trim($matches[2]);
 			if ($source === 'core') {
@@ -371,19 +397,24 @@ trait BaraTables_Value_Format_Trait {
 				? $this->get_core_value($post, $key)
 				: $this->get_meta_value($post->ID, $key);
 
-			return wp_kses_post($this->stringify_cell_value($value));
+			$resolved = wp_kses_post($this->stringify_cell_value($value));
+			return $escape ? self::escape_replacement_literal($resolved) : $resolved;
 		}, $text);
 
 		return $text;
 	}
 
-	private function replace_row_tokens(string $text, array $row_tokens): string {
+	private function replace_row_tokens(string $text, array $row_tokens, bool $escape = false): string {
 		if ($text === '' || empty($row_tokens)) {
 			return $text;
 		}
-		return preg_replace_callback('/{{\\s*(?:row\\.)?([a-z0-9_:-]+)\\s*}}/i', function ($matches) use ($row_tokens) {
+		return preg_replace_callback('/{{\\s*(?:row\\.)?([a-z0-9_:-]+)\\s*}}/i', function ($matches) use ($row_tokens, $escape) {
 			$token = strtolower($matches[1]);
-			return array_key_exists($token, $row_tokens) ? $row_tokens[$token] : $matches[0];
+			if (!array_key_exists($token, $row_tokens)) {
+				return $matches[0];
+			}
+			$value = (string) $row_tokens[$token];
+			return $escape ? self::escape_replacement_literal($value) : $value;
 		}, $text);
 	}
 

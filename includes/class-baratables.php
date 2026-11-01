@@ -132,7 +132,15 @@ class BaraTables {
 				'before'
 			);
 		}
+		// api_version matches the apiVersion the editor scripts register with. WordPress
+		// defaults it to 1, which would make the REST block-types endpoint report a
+		// different version than the editor actually runs.
+		//
+		// 2 is the version these blocks are written for: the editor scripts do not call
+		// useBlockProps, so they rely on the Block API v2 wrapper behaviour. Declaring 3
+		// here would opt the blocks into v3 rules they have not opted into.
 		register_block_type('baratables/table', [
+			'api_version' => 2,
 			'attributes' => [
 				'id' => ['type' => 'string', 'default' => ''],
 			],
@@ -141,6 +149,7 @@ class BaraTables {
 		]);
 
 		register_block_type('baratables/chart', [
+			'api_version' => 2,
 			'attributes' => [
 				'id' => ['type' => 'string', 'default' => ''],
 			],

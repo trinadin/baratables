@@ -428,7 +428,9 @@ class BaraTables_Admin_Form_Context {
 			$values['external_pass_saved'] = !empty($external['pass']);
 			$values['external_table'] = $external['table'] ?? '';
 			$values['external_charset'] = $external['charset'] ?? '';
-			$values['external_port'] = isset($external['port']) ? (string) $external['port'] : '';
+				$values['external_port'] = isset($external['port']) ? (string) $external['port'] : '';
+			$values['external_ssl'] = !empty($external['ssl']);
+			$values['external_ssl_ca'] = (string) ($external['ssl_ca'] ?? '');
 			$remote_source = isset($editing_defn['remote_source']) && is_array($editing_defn['remote_source']) ? $editing_defn['remote_source'] : [];
 			$values['remote_url'] = BaraTables_Remote_Snapshot::sanitize_url($remote_source['url'] ?? '');
 			$values['remote_format'] = BaraTables_Remote_Snapshot::sanitize_format($remote_source['format'] ?? BaraTables_Remote_Snapshot::FORMAT_CSV);

@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,7 @@ Create searchable, sortable WordPress tables and charts from files, public snaps
 
 == Description ==
 
-BaraTables builds interactive tables and charts from manual rows, CSV uploads, public snapshots, WordPress content, or an external database, published by shortcode or block.
+BaraTables builds interactive tables and charts from manual rows, CSV uploads, snapshots, WordPress content, or an external database, published by shortcode or block.
 
 Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another plugin.
 
@@ -31,7 +31,7 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 * Style tables and charts without code in the Design tab, with a live preview
 * Restrict rows by role or user metadata
 * Remember table state between visits; control scrolling, column sizing, and row limits
-* Create bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts
+* Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts
 * Light frontend styles that are easy to override
 
 == Installation ==
@@ -46,19 +46,19 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. Endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected. Authentication, private Sheets, scheduled refresh, and schema changes are not supported; re-create the table when remote columns change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected. JSON endpoints may also be served as `text/plain`. Authentication, private Sheets, scheduled refresh, and schema changes are not supported; re-create the table when remote columns change.
 
 = Which plugin exports can I import? =
 
-Use a TablePress single-table JSON export; Ninja Tables classic and drag-and-drop JSON also work (export an externally connected Ninja table as CSV). WP Table Builder, Visualizer, Supsystic, League Table, wpDataTables, and Tablesome exports import too, as do HTML tables; a ZIP imports the first supported table.
+Use a TablePress single-table JSON export; Ninja Tables classic and drag-and-drop JSON also work (export an externally connected Ninja table as CSV). WP Table Builder, Visualizer, Supsystic, League Table, wpDataTables, TableKit, and Tablesome exports import too, as do HTML tables; a ZIP imports the first supported table.
 
-Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts, or external connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each.
+Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts, or connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each.
 
 = How many rows can a table load? =
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can instead opt into large database performance mode: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key; access rules, transforms, filters, footers, exports, print, and charts keep standard loading. Database search follows the source collation.
+External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key; access rules, transforms, filters, footers, exports, print, and charts load as usual. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine. TLS needs the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -70,7 +70,7 @@ Create a table first, then go to Charts and create a chart linked to it, embedde
 
 = Can I customize the table appearance? =
 
-Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. Styles print as CSS custom properties, so your theme keeps what you leave blank.
+Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so your theme keeps what you leave blank.
 
 = How do numeric rules and footer calculations work? =
 
@@ -78,15 +78,11 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Yes. Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS.
-
-The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set them globally to re-skin every table, or copy the generated block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
-
-The Design tab also takes per-table Additional CSS.
+Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set them globally to re-skin every table, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
 
 = Where can I see examples? =
 
-See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or the demo on WordPress.org.
+See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or the WordPress.org demo.
 
 == Screenshots ==
 
@@ -97,6 +93,24 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or t
 5. Responsive table on a phone.
 
 == Changelog ==
+
+= 2.0.1 =
+New:
+
+* External database sources can encrypt their connection with TLS. Give the source the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
+
+Fixes:
+
+* Tables with a hidden column load again instead of showing an error and losing paging, sorting, and search.
+* Additional CSS keeps a "<" that cannot break out of the style element, so a content string with markup in it is no longer altered.
+* Styles for one table no longer reach a sibling table whose ID starts with the same characters.
+* A merged cell value used in a regex replacement is no longer destroyed when it contains "$1".
+* The Design tab shows the color a save will keep, and no longer marks a short "#fff" as invalid.
+* The Copy CSS message is translated like the rest of the interface.
+
+Security:
+
+* A remote snapshot URL that resolves to a link-local, carrier-grade NAT, or benchmarking address is refused instead of being fetched.
 
 = 2.0.0 =
 New:
@@ -162,7 +176,7 @@ Improvements:
 * The table engine is now DataTables 3; pages with export buttons load fewer files.
 * Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column cannot make the page unresponsive.
 * The editor's Options tab is reorganized, and every field shows its default until you change it.
-* Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable fallback when JavaScript is off.
+* Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable fallback without JavaScript.
 * Publishing a table for the first time shows its shortcode and block.
 
 Fixes:
@@ -212,7 +226,7 @@ Security:
 Improvements:
 
 * Fixed scroll height is now a Table controls option, with its height and collapse settings inside. Existing heights carry over.
-* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading, and the result summary. Saved tables are included, and wording you typed yourself is kept.
+* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading, and the result summary. Saved tables are included, and your own wording is kept.
 * Tables load without a flash of unstyled content.
 * Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space to open the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the layout.
 * Pages with a table and its chart, or the same table twice, load faster on large tables.
@@ -241,8 +255,8 @@ New:
 Fixes:
 
 * Filtering by category or tag.
-* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly; the columns show their title, name, or contents.
-* Manual data grids hold up to 25,000 cells, and the editor warns when your server's form-field limit is too low for a grid that size.
+* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly, showing their title, name, or contents.
+* Manual data grids hold up to 25,000 cells; the editor warns when your server's form-field limit is too low for that size.
 * Two tables on the same page keep their own filters in the shareable link.
 * An import that fails to save can be retried without uploading the file again.
 * Importing a large table keeps more of its rows and columns.
@@ -255,7 +269,7 @@ Fixes:
 * Date columns show the time of day, and timestamps use your site's timezone.
 * Blank lines in a CSV file are skipped.
 * Custom WP Query tables load up to the row limit you set.
-* On CSV and external database tables, row-level access control shows every row a visitor may see, even beyond the row limit.
+* On CSV and external database tables, row-level access control shows every row a visitor may see, even past the row limit.
 * Shareable filter links work for a value of 0.
 * Unnamed columns from a headerless CSV follow the site language.
 * The editor preview uses the same export button labels as the published table.
@@ -302,15 +316,15 @@ Security:
 New:
 
 * Import a table from another table plugin or a spreadsheet: upload a JSON, XML, or CSV export and BaraTables creates a matching table.
-* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes already placed in your content.
+* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes already in your content.
 * Reorder manual-data rows in the editor with up and down controls.
 * Manual-table column headers are translation-ready and follow the site language.
 
 Improvements:
 
-* Wide manual-data tables scroll horizontally while keeping the row number and controls in view.
+* Wide manual-data tables scroll horizontally, keeping the row number and controls in view.
 * Paste tabular data straight from a spreadsheet into the manual-data grid.
-* Smoother admin: one-click copy for shortcodes and IDs, a Show/Hide help text preference, and fewer page reloads while configuring a source.
+* Smoother admin: one-click copy for shortcodes and IDs, a Show/Hide help text preference, and fewer reloads while configuring a source.
 
 Fixes:
 
@@ -329,6 +343,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.0.1 =
+Adds TLS for external database sources, and fixes tables with a hidden column, Additional CSS that uses a "<", styles reaching a sibling table, and a preview that could show a color a save would drop.
 
 = 2.0.0 =
 Adds the Design tab: no-code styling with live preview, Copy CSS handoff, and a token API for themes.
@@ -374,14 +391,14 @@ Initial release.
 
 == Third-Party Libraries ==
 
-This plugin bundles these libraries and admin thumbnail images, all under GPL-compatible licenses. Full license notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt; each link is that library's source.
+Bundled libraries and admin thumbnails, all under GPL-compatible licenses; the full notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt.
 
-* DataTables v3.0.2 - MIT License - https://github.com/DataTables/DataTablesSrc/tree/3.0.2
-* DataTables Buttons v4.0.2 - MIT License - https://github.com/DataTables/Buttons/tree/4.0.2 (bundles FileSaver.js - MIT License - https://github.com/eligrey/FileSaver.js/tree/1.3.3)
-* DataTables ColReorder v3.0.1 - MIT License - https://github.com/DataTables/ColReorder/tree/3.0.1
-* DataTables Responsive v4.0.2 - MIT License - https://github.com/DataTables/Responsive/tree/4.0.2
-* DataTables FixedHeader v5.0.0 - MIT License - https://github.com/DataTables/FixedHeader/tree/5.0.0
-* DataTables FixedColumns v6.0.0 - MIT License - https://github.com/DataTables/FixedColumns/tree/6.0.0
+* DataTables v3.1.5 - MIT License - https://github.com/DataTables/DataTablesSrc/tree/3.1.5
+* DataTables Buttons v4.1.3 - MIT License - https://github.com/DataTables/Buttons/tree/4.1.3 (bundles FileSaver.js - MIT License - https://github.com/eligrey/FileSaver.js/tree/1.3.3)
+* DataTables ColReorder v3.1.2 - MIT License - https://github.com/DataTables/ColReorder/tree/3.1.2
+* DataTables Responsive v4.1.1 - MIT License - https://github.com/DataTables/Responsive/tree/4.1.1
+* DataTables FixedHeader v5.1.2 - MIT License - https://github.com/DataTables/FixedHeader/tree/5.1.2
+* DataTables FixedColumns v6.1.2 - MIT License - https://github.com/DataTables/FixedColumns/tree/6.1.2
 * Tom Select v2.6.2 - Apache License 2.0 - https://github.com/orchidjs/tom-select/tree/v2.6.2
 * JSZip v3.10.1 - MIT License - https://github.com/Stuk/jszip/tree/v3.10.1 (bundles pako - MIT License - https://github.com/nodeca/pako)
 * pdfmake v0.2.23 - MIT License - https://github.com/bpampuch/pdfmake/tree/0.2.23 (bundles the Roboto fonts - Apache License 2.0)

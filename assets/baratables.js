@@ -58,13 +58,38 @@
 
 	// API methods such as column().header() return raw elements, but defensive unwrapping
 	// keeps the code correct if a build ever hands back a collection instead.
+	//
+	// A DataTables accessor answers with an API instance. `.get()` resolves a single
+	// entry and answers undefined for a multi-node accessor -- and a hidden column has
+	// no rendered cells at all -- so the indexed form is the reliable one. Answering
+	// undefined here used to throw, which aborted the whole front-end bootstrap and
+	// left the visitor with a dead, non-interactive table.
 	function asNodeList(value) {
 		if (!value) { return []; }
-		if (value.nodeType) { return [value]; }
-		if (typeof value.get === 'function') { value = value.get(); }
-		if (Array.isArray(value)) { return value; }
-		if (typeof value.length === 'number') { return Array.prototype.slice.call(value); }
-		return [value];
+		if (value.nodeType === 1) { return [value]; }
+		// A string has a length and an index, so without this guard the length branch
+		// below would recurse into the string's own characters forever. A string is
+		// never a node collection.
+		if (typeof value === 'string') { return []; }
+		if (Array.isArray(value)) {
+			return value.reduce(function(list, entry) {
+				return list.concat(asNodeList(entry));
+			}, []);
+		}
+		if (typeof value.toArray === 'function') {
+			return asNodeList(value.toArray());
+		}
+		if (typeof value.get === 'function') {
+			return asNodeList(value.get());
+		}
+		if (typeof value.length === 'number') {
+			var list = [];
+			for (var i = 0; i < value.length; i++) {
+				list = list.concat(asNodeList(value[i]));
+			}
+			return list;
+		}
+		return [];
 	}
 
 	// Registered lazily, NOT at parse time.
@@ -805,6 +830,7 @@
 			labelHtml: searchTextHtml,
 			labelPlain: searchTextPlain,
 			placeholder: searchPlaceholderText,
+			accessibleLabel: (resolvedOptions.searchAccessibleLabel || ''),
 			debounceDelay: config.serverSide && config.serverSide.url ? 500 : 250,
 			maxSearchBytes: config.serverSide && config.serverSide.url ? 100 : 0,
 			onChange: function(state) {
@@ -1070,6 +1096,34 @@
 		}
 	}
 
+	/**
+	 * Tear down the live instance for a table, if there is one.
+	 *
+	 * Destroying is what releases everything the instance owns: the search controller's
+	 * document-level click listener, the fixed-header resize listener and the chart. It has
+	 * to happen while the element is still in the document -- replacing the surrounding
+	 * markup detaches the element, and a later lookup by id only ever finds the NEW one,
+	 * which would leave the old instance alive.
+	 *
+	 * @param {string} tableId The render instance id (the payload's tableId).
+	 * @return {boolean} True when an instance was destroyed.
+	 */
+	function destroyInstance(tableId) {
+		if (!tableId) { return false; }
+		var tableElement = document.getElementById('btbl-table-' + tableId);
+		if (!tableElement) { return false; }
+		try {
+			var lib = dataTablesLib();
+			if (lib && lib.isDataTable && lib.isDataTable(tableElement)) {
+				new lib.Api(tableElement).destroy();
+				return true;
+			}
+		} catch (error) {
+			// A failed teardown must never stop the caller from replacing the markup.
+		}
+		return false;
+	}
+
 	function bootQueue() {
 		var queue = Array.isArray(window.BaraTablesFrontendQueue) ? window.BaraTablesFrontendQueue : [];
 		function drain() {
@@ -1092,6 +1146,7 @@
 	bootQueue();
 
 	window.BaraTablesFrontend = {
-		init: initInstance
+		init: initInstance,
+		destroy: destroyInstance
 	};
 })();

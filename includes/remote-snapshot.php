@@ -50,6 +50,116 @@ final class BaraTables_Remote_Snapshot {
 		return $url;
 	}
 
+	/**
+	 * True when an address belongs to a range this plugin refuses to fetch.
+	 *
+	 * PHP's own filter flags cover the private ranges, loopback, the link-local range
+	 * (which is where the cloud metadata service lives) and the reserved blocks -- but
+	 * NOT the carrier-grade NAT range or the benchmarking range, and both are reachable
+	 * on real networks.
+	 *
+	 * @param string $address An IPv4 or IPv6 address.
+	 * @return bool True when the address is safe to fetch.
+	 */
+	public static function is_public_address(string $address): bool {
+		if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+			return false;
+		}
+		if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+			$long = ip2long($address);
+			$nat_low = ip2long('100.64.0.0');
+			$nat_high = ip2long('100.127.255.255');
+			$bench_low = ip2long('198.18.0.0');
+			$bench_high = ip2long('198.19.255.255');
+			if ($long === false || $nat_low === false || $nat_high === false || $bench_low === false || $bench_high === false) {
+				return false;
+			}
+			if (($long >= $nat_low && $long <= $nat_high) || ($long >= $bench_low && $long <= $bench_high)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * True when the URL's host must not be fetched.
+	 *
+	 * WordPress' wp_http_validate_url() resolves the hostname and blocks loopback and
+	 * the RFC1918 private ranges, but it does NOT block the link-local range -- where
+	 * the cloud metadata service (169.254.169.254) lives -- nor carrier-grade NAT. A
+	 * literal IP is caught by sanitize_url(); a NAME that resolves into one of those
+	 * ranges is not, so the resolved address is checked here as well.
+	 *
+	 * The name is resolved once more than the transport resolves it, so a host that
+	 * answers differently between the two lookups can still slip through. WordPress'
+	 * HTTP API offers no way to pin the validated address to the connection, so this
+	 * narrows the window rather than closing it.
+	 *
+	 * Public so the address policy can be exercised by the test suite directly.
+	 *
+	 * @param string $url The URL to inspect.
+	 * @return bool True when the host resolves to a public address.
+	 */
+	public static function is_public_host(string $url): bool {
+		$parts = wp_parse_url($url);
+		$host = is_array($parts) ? strtolower(trim((string) ($parts['host'] ?? ''), '[]')) : '';
+		if ($host === '') {
+			return false;
+		}
+		if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+			return self::is_public_address($host);
+		}
+		// EVERY address the name resolves to is checked, not just the first one: a name
+		// with a public A record and a private one would be connected to over whichever
+		// the transport picks.
+		$addresses = gethostbynamel($host);
+		if (!is_array($addresses) || $addresses === []) {
+			// The name did not resolve. Fail closed. The transport resolves it again, and a
+			// name that answers differently between the two lookups -- or not at all on the
+			// second try -- is exactly the case this check exists to catch.
+			return false;
+		}
+		foreach ($addresses as $address) {
+			if (!self::is_public_address((string) $address)) {
+				return false;
+			}
+		}
+		// gethostbynamel() is IPv4-only. A dual-stack name with a public A record and a
+		// private AAAA record would be reached over IPv6, so the AAAA records are checked
+		// too. A failed AAAA lookup is treated as "no IPv6 address": the resolver has
+		// already answered for this name, and refusing every fetch on a resolver that
+		// dislikes AAAA queries would break the feature outright.
+		foreach (self::resolve_ipv6_addresses($host) as $address) {
+			if (!self::is_public_address($address)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * The host's IPv6 addresses, or an empty list when it has none.
+	 *
+	 * @param string $host A hostname.
+	 * @return string[]
+	 */
+	private static function resolve_ipv6_addresses(string $host): array {
+		if (!function_exists('dns_get_record')) {
+			return [];
+		}
+		$records = @dns_get_record($host, DNS_AAAA);
+		if (!is_array($records)) {
+			return [];
+		}
+		$addresses = [];
+		foreach ($records as $record) {
+			if (isset($record['ipv6']) && is_string($record['ipv6'])) {
+				$addresses[] = $record['ipv6'];
+			}
+		}
+		return $addresses;
+	}
+
 	/** Accept only ordinary public share/edit URLs; published/embed variants are not v1 inputs. */
 	public static function google_sheets_export_url(string $configured_url): string {
 		$url = self::sanitize_url($configured_url);
@@ -87,6 +197,9 @@ final class BaraTables_Remote_Snapshot {
 		if (!wp_http_validate_url($fetch_url_for_hops)) {
 			return self::kept_error('remote_url_unsafe', __('The remote URL did not resolve to a safe public address.', 'baratables'));
 		}
+		if (!self::is_public_host($fetch_url_for_hops)) {
+			return self::kept_error('remote_url_unsafe', __('The remote URL did not resolve to a safe public address.', 'baratables'));
+		}
 		// Follow redirects manually so every hop is re-held to the same contract as the first
 		// request: HTTPS, port 443, no credentials, public address. Core's redirect follower
 		// validates hops for safety but still accepts an http:// (and port 80/8080) downgrade
@@ -117,7 +230,7 @@ final class BaraTables_Remote_Snapshot {
 			}
 			$location = trim((string) wp_remote_retrieve_header($response, 'location'));
 			$next = $location === '' ? '' : WP_Http::make_absolute_url($location, $fetch_url_for_hops);
-			if ($next === '' || self::sanitize_url($next) === '' || !wp_http_validate_url($next)) {
+			if ($next === '' || self::sanitize_url($next) === '' || !wp_http_validate_url($next) || !self::is_public_host($next)) {
 				return self::kept_error('remote_redirect_unsafe', __('The remote source redirected to an address that is not a safe public HTTPS URL.', 'baratables'));
 			}
 			if ($hop === 3) {
@@ -254,7 +367,12 @@ final class BaraTables_Remote_Snapshot {
 
 	/** @return array|WP_Error */
 	private static function parse_csv(string $body) {
-		$trimmed = ltrim($body, "\xEF\xBB\xBF \t\r\n");
+		// Strip a declared encoding before parsing: a byte-order mark in the response would
+		// otherwise land in the first header cell, and a UTF-16 body would read as mojibake.
+		// Only what the bytes declare is handled -- a malformed body still has to fail the
+		// source's own UTF-8 check rather than being silently re-encoded.
+		$body = BaraTables_Text_Normalizer::strip_declared_encoding($body);
+		$trimmed = ltrim($body, " \t\r\n");
 		if ($trimmed === '' || preg_match('/^(?:<!doctype\s+html|<html\b|[\[{])/i', $trimmed)) {
 			return new WP_Error('remote_csv_mismatch', __('The response was not a CSV table.', 'baratables'));
 		}
@@ -323,6 +441,9 @@ final class BaraTables_Remote_Snapshot {
 
 	/** @return array|WP_Error Parse only a top-level array of flat associative records. */
 	private static function parse_json_records(string $body) {
+		// Strip a declared encoding before parsing: a byte-order mark in the response would
+		// make the payload fail the array shape check below.
+		$body = BaraTables_Text_Normalizer::strip_declared_encoding($body);
 		$trimmed = trim($body);
 		if ($trimmed === '' || $trimmed[0] !== '[' || substr($trimmed, -1) !== ']') {
 			return new WP_Error('remote_json_mismatch', __('JSON sources must be a top-level array of records.', 'baratables'));

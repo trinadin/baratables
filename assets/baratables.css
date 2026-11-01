@@ -13,7 +13,7 @@
 	   unset token renders exactly as 1.x did. Themes can set any --btbl-* token with plain
 	   CSS on this wrapper or any ancestor. The --dt-* bridges push tokens into DataTables'
 	   own variable layer, which owns header/body padding, borders, and control chrome;
-	   their fallbacks are the vendored 3.0.2 defaults. */
+	   their fallbacks are the vendored 3.1.5 defaults. */
 	font-size: var(--btbl-font-size, inherit);
 
 	--dt-header_padding: var(--btbl-cell-padding, 10px);

@@ -43,6 +43,14 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 		);
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery -- Prepared cleanup of plugin-owned transient prefixes during uninstall.
 		$GLOBALS['wpdb']->query($rate_cleanup_sql);
+
+		// The plugin caches parsed CSV rows and discovered meta keys under its own cache
+		// group. A persistent object cache (Redis, Memcached) keeps them past the delete, and
+		// a reinstall can then be served a stale parse. Flushing the group is scoped to the
+		// plugin, so nothing else in the site cache is touched.
+		if (function_exists('wp_cache_flush_group')) {
+			wp_cache_flush_group('baratables');
+		}
 	};
 
 	if (is_multisite()) {

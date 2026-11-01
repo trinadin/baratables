@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
-# Versioned, side-effect-free release guard helpers. This file is sourced by the
-# release command and by local-tests/check-release-safety.sh.
+# Versioned release guard helpers. This file is sourced by the release command and by
+# local-tests/check-release-safety.sh. The helpers are pure checks with one exception,
+# baratables_version_svn_assets(), which versions the promotional assets tree so a new
+# asset is committed instead of being silently skipped.
 
 baratables_is_canonical_remote_url() {
 	case "${1:-}" in
@@ -196,6 +198,19 @@ baratables_security_disclosures() {
 	' <<<"$body"
 }
 
+# The security wording of a PUBLISHED Upgrade Notice is protected the same way the
+# Changelog's Security: section is: a shipped disclosure is part of the public record,
+# and no command-line flag may quietly rewrite or drop it. Four published Upgrade
+# Notices carry such wording (1.1.0, 1.1.1, 1.2.2, 1.2.3), so this is not theoretical.
+baratables_upgrade_notice_security_disclosures() {
+	local version="$1"
+	local readme="$2"
+	local body
+
+	body="$(baratables_upgrade_notice_entry_body "$version" "$readme")"
+	grep -iE 'security|vulnerab|CVE-[0-9]+' <<<"$body" || true
+}
+
 baratables_build_committed_package() {
 	local repository="$1"
 	local ref="$2"
@@ -207,4 +222,35 @@ baratables_build_committed_package() {
 	fi
 
 	git -C "$repository" archive --format=tar "$ref" | tar -xf - -C "$destination"
+}
+
+reject_pattern='(^|/)(\.[^/]+|__MACOSX|CLAUDE|docs|node_modules|tests|wordpress-org|composer\.(json|lock)|package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|phpunit\.xml(\.dist)?|local-tests)(/|$)|(^|/)(.*\.log|.*\.md|.*\.zip|.*\.tar\.gz)$'
+reject_release_artifacts() {
+	local release_dir="$1"
+	local matches symlinks
+	# The pattern is matched against paths RELATIVE to the package root. Matching the
+	# absolute paths instead would let the checkout's own location decide the outcome:
+	# a working copy under a directory named "docs" or ".config" would make every file
+	# match and abort a legitimate release.
+	matches="$(cd "$release_dir" && find . -mindepth 1 -print | sed 's|^\./||' | rg "$reject_pattern" || true)"
+	if [[ -n "$matches" ]]; then
+		echo "Rejected release artifacts found in $release_dir:" >&2
+		printf '%s\n' "$matches" >&2
+		return 1
+	fi
+	symlinks="$(find "$release_dir" -type l -print)"
+	if [[ -n "$symlinks" ]]; then
+		echo "Symbolic links are not permitted in the WordPress.org package:" >&2
+		printf '%s\n' "$symlinks" >&2
+		return 1
+	fi
+}
+
+# The promotional assets are committed only when --include-assets approves them, but they
+# still have to be VERSIONED before that commit: svn commit does not add unversioned
+# files, so a new screenshot would otherwise be skipped by the commit and the release
+# would end half-published, with the working copy still dirty after a successful commit.
+baratables_version_svn_assets() {
+	local assets_dir="$1"
+	svn add --force "$assets_dir" --depth infinity --quiet
 }

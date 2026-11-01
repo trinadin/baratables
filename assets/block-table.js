@@ -98,7 +98,11 @@ var Notice = wp.components.Notice;
 				Notice,
 				{ status: 'warning', isDismissible: false },
 				list.truncated
-					? sprintf(__('The picker lists only the first %d tables; the selected one may exist beyond them.', 'baratables'), list.results.length)
+					? sprintf(
+						/* translators: %d is the number of tables the picker loaded. */
+						__('The picker lists only the first %d tables; the selected one may exist beyond them.', 'baratables'),
+						list.results.length
+					)
 					: __('The selected table no longer exists. Pick another table.', 'baratables')
 			);
 		}

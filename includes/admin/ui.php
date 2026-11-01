@@ -50,6 +50,8 @@ class BaraTables_Admin_Tab_General {
 		$external_pass_saved = !empty($context['external_pass_saved']);
 		$external_table = $context['external_table'] ?? '';
 		$external_charset = $context['external_charset'] ?? '';
+		$external_ssl = !empty($context['external_ssl']);
+		$external_ssl_ca = $context['external_ssl_ca'] ?? '';
 		$csv_attachment_id = $context['csv_attachment_id'] ?? 0;
 		$csv_delimiter = $context['csv_delimiter'] ?? ',';
 		$csv_has_header = !empty($context['csv_has_header']);
@@ -411,6 +413,19 @@ class BaraTables_Admin_Tab_General {
 			<div class="btbl-control">
 				<label class="btbl-small-heading" for="btbl_external_charset"><?php esc_html_e('Charset (optional)', 'baratables'); ?></label>
 				<input type="text" name="btbl_external_charset" id="btbl_external_charset" class="regular-text" value="<?php echo esc_attr($external_charset); ?>" placeholder="utf8mb4" />
+			</div>
+			<div class="btbl-control">
+				<label class="btbl-small-heading" for="btbl_external_ssl"><?php esc_html_e('Encrypt the connection (TLS)', 'baratables'); ?></label>
+				<label for="btbl_external_ssl">
+					<input type="checkbox" name="btbl_external_ssl" id="btbl_external_ssl" value="1" <?php checked($external_ssl); ?> />
+					<?php esc_html_e('Use TLS', 'baratables'); ?>
+				</label>
+				<p class="description"><?php esc_html_e('Without TLS the database password and every row travel in plain text. Turn this on for any host outside your own machine.', 'baratables'); ?></p>
+			</div>
+			<div class="btbl-control">
+				<label class="btbl-small-heading" for="btbl_external_ssl_ca"><?php esc_html_e('CA certificate path', 'baratables'); ?></label>
+				<input type="text" name="btbl_external_ssl_ca" id="btbl_external_ssl_ca" class="regular-text" value="<?php echo esc_attr($external_ssl_ca); ?>" placeholder="/etc/ssl/certs/mysql-ca.pem" />
+				<p class="description"><?php esc_html_e('Required when TLS is on: the absolute path on the server to a CA certificate that signed the database certificate. PHP\'s MySQL driver cannot use the system trust store, so without this path the server cannot be verified.', 'baratables'); ?></p>
 			</div>
 			</div>
 		</div>
@@ -1333,6 +1348,15 @@ class BaraTables_Admin_Tab_Design {
 		$config = [
 			'previewSelector' => '#btbl-preview-target .btbl-table-wrapper',
 			'varMap' => BaraTables_Service::STYLE_VAR_MAP,
+			// The Additional CSS byte budget, so the editor's preview caps the payload
+			// exactly where the server will.
+			'maxCssBytes' => BaraTables_Service::MAX_CUSTOM_CSS_BYTES,
+			// Translated here rather than hardcoded in the script: the Design tab's only
+			// feedback message is user-facing copy, and the POT sync cannot see a string
+			// that is not wrapped in a gettext call.
+			'copiedLabel' => __('Copied to your clipboard.', 'baratables'),
+			// The em dash is written as a Unicode escape so this file stays ASCII.
+			'clipboardUnavailableLabel' => __("Clipboard unavailable \u{2014} the CSS is selected below; copy it manually.", 'baratables'),
 		];
 		?>
 		<div id="btbl-tab-design" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-design-label">
@@ -1829,8 +1853,8 @@ class BaraTables_Admin_Tab_Chart_Design {
 		$chart_options = $context['chart_options'] ?? [];
 		$palette = [];
 		foreach ((array) ($chart_options['stylePalette'] ?? []) as $color) {
-			$hex = sanitize_hex_color((string) $color);
-			if ($hex !== null) {
+			$hex = BaraTables_Service::normalize_hex_color((string) $color);
+			if ($hex !== '') {
 				$palette[] = $hex;
 			}
 		}
@@ -1915,7 +1939,7 @@ class BaraTables_Admin_Tab_Chart_Design {
 					placeholder="<?php echo esc_attr($placeholder); ?>"
 				/>
 				<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : '#ffffff'); ?>" aria-label="<?php echo esc_attr(sprintf(
-					/* translators: %s is the control's label, e.g. "Background". */
+					/* translators: %s is the control label, e.g. "Background". */
 					__('Pick %s', 'baratables'),
 					$label
 				)); ?>" />

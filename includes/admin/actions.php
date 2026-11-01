@@ -66,6 +66,8 @@ class BaraTables_Admin_Action_Handler {
 		'external_table' => ['raw', 'btbl_external_table'],
 		'external_charset' => ['raw', 'btbl_external_charset'],
 		'external_port' => ['raw', 'btbl_external_port'],
+		'external_ssl' => ['bool', 'btbl_external_ssl'],
+		'external_ssl_ca' => ['raw', 'btbl_external_ssl_ca'],
 	];
 	private BaraTables_Service $service;
 
@@ -198,10 +200,18 @@ class BaraTables_Admin_Action_Handler {
 				'table' => $input['external_table'],
 				'charset' => $input['external_charset'],
 				'port' => $input['external_port'],
+				'ssl' => $input['external_ssl'],
+				'ssl_ca' => $input['external_ssl_ca'],
 			]),
 			// Whether ANY external connection field was posted with content. The editor form always
 			// posts these fields for an external source, so "all empty" is an explicit clear and
 			// "content but sanitize_external_db_config() returned nothing" is an invalid config.
+			//
+			// The CA certificate path is NOT part of that test. It is a modifier of the TLS
+			// setting rather than part of the connection's identity, and the form pre-fills
+			// it from the stored source: counting it would make an administrator who clears
+			// every connection field unable to clear the source at all, leaving the table
+			// still publishing the rows of a connection they believe they removed.
 			'external_db_input_nonempty' => trim(
 				$input['external_host'] . ' ' . $input['external_name'] . ' ' . $input['external_user'] . ' '
 				. $input['external_pass'] . ' ' . $input['external_table'] . ' ' . $input['external_charset'] . ' ' . $input['external_port']
@@ -252,8 +262,13 @@ class BaraTables_Admin_Action_Handler {
 				$defn['external_db'] = $external_db;
 			} elseif (!empty($request['external_db_input_nonempty'])) {
 				// Invalid config (e.g. a table name outside [A-Za-z0-9_]): keep the previous
-				// connection rather than half-replacing it. The save flow reports this loudly;
-				// the bug is the silent fallback to the old table, not the keep itself.
+				// connection rather than half-replacing it, and say so. Keeping the old
+				// connection silently would leave the table serving a source the
+				// administrator believes they changed.
+				BaraTables_Admin_Notice::queue(
+					__('The external database settings were not valid, so the previous connection was kept. Check the host, database name, user, and table name.', 'baratables'),
+					'warning'
+				);
 			} elseif (array_key_exists('external_db', $defn)) {
 				// Every connection field posted empty against a stored config: an explicit clear.
 				unset($defn['external_db']);

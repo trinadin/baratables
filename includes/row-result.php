@@ -51,7 +51,11 @@ final class BaraTables_Row_Result {
 			'custom_query_invalid' => __('The custom WordPress query is empty or invalid.', 'baratables'),
 			'external_configuration' => __('The external database source is incomplete or unsupported.', 'baratables'),
 			'external_connection' => __('BaraTables could not connect to the external database.', 'baratables'),
+			'external_credentials' => __('The saved external database password could not be decrypted. This usually means the site\'s security salts were regenerated - save the external database password again to store a new one.', 'baratables'),
 			'external_read_failed' => __('The external database query could not be completed.', 'baratables'),
+			'external_tls_missing_ca' => __('The external database source is set to use TLS, but no CA certificate path was given. Add the absolute path of the CA certificate that signed the database certificate: PHP\'s MySQL driver cannot use the system trust store, and an encrypted connection to a server it cannot verify is not a secure one.', 'baratables'),
+			'external_tls_unreadable_ca' => __('The external database source is set to use TLS, but the CA certificate file could not be read. Check the path and the file permissions on the server.', 'baratables'),
+			'external_tls_unsupported' => __('The external database source is set to use TLS, but this PHP installation cannot verify the database certificate. Ask the host for a MySQL driver that supports certificate verification.', 'baratables'),
 		];
 		return $messages[$this->error_code] ?? __('The table source could not be read.', 'baratables');
 	}

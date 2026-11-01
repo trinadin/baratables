@@ -255,11 +255,21 @@ class BaraTables_Frontend {
 		}
 	}
 
-	private function get_render_instance_id(string $base): string {
+	/**
+	 * The stable, per-table part of a render id, shared by the instance id and the base-id
+	 * attribute the per-table CSS is scoped on.
+	 *
+	 * The instance id appends a per-render counter ("sales-1"); the base id is the table's own
+	 * slug. Both the front-end markup and the CSS scope must derive the base id the SAME way,
+	 * or the scope selector stops matching its own wrapper.
+	 */
+	private function get_render_base_id(string $base): string {
 		$base = sanitize_html_class(sanitize_title($base));
-		if ($base === '') {
-			$base = 'baratables';
-		}
+		return $base !== '' ? $base : 'baratables';
+	}
+
+	private function get_render_instance_id(string $base): string {
+		$base = $this->get_render_base_id($base);
 		// Deterministic per-render counter, NOT wp_unique_id(). wp_unique_id() is a request-global
 		// counter shared with core blocks and every other plugin, so its value -- and therefore the
 		// table's DOM id -- shifts whenever page composition changes. DataTables keys its saved state
@@ -413,12 +423,12 @@ class BaraTables_Frontend {
 	private function get_style_specs(): array {
 		if ($this->style_specs === null) {
 			$this->style_specs = [
-				$this->asset_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '3.0.2', ['table_only' => true]),
-				$this->asset_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'buttons']),
-				$this->asset_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '3.0.1', ['table_only' => true, 'feature' => 'colreorder']),
-				$this->asset_spec('baratables-datatables-responsive', 'assets/vendor/datatables/responsive.dataTables.min.css', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'responsive']),
-				$this->asset_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/fixedHeader.dataTables.min.css', ['baratables-datatables'], '5.0.0', ['table_only' => true, 'feature' => 'fixedheader']),
-				$this->asset_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/fixedColumns.dataTables.min.css', ['baratables-datatables'], '6.0.0', ['table_only' => true, 'feature' => 'fixedcolumns']),
+				$this->asset_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.dataTables.min.css', [], '3.1.5', ['table_only' => true]),
+				$this->asset_spec('baratables-datatables-buttons', 'assets/vendor/datatables/buttons.dataTables.min.css', ['baratables-datatables'], '4.1.3', ['table_only' => true, 'feature' => 'buttons']),
+				$this->asset_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/colReorder.dataTables.min.css', ['baratables-datatables'], '3.1.2', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->asset_spec('baratables-datatables-responsive', 'assets/vendor/datatables/responsive.dataTables.min.css', ['baratables-datatables'], '4.1.1', ['table_only' => true, 'feature' => 'responsive']),
+				$this->asset_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/fixedHeader.dataTables.min.css', ['baratables-datatables'], '5.1.2', ['table_only' => true, 'feature' => 'fixedheader']),
+				$this->asset_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/fixedColumns.dataTables.min.css', ['baratables-datatables'], '6.1.2', ['table_only' => true, 'feature' => 'fixedcolumns']),
 				$this->asset_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.default.min.css', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
 				$this->asset_spec('baratables', 'assets/baratables.css'),
 			];
@@ -432,15 +442,15 @@ class BaraTables_Frontend {
 				$this->script_spec('baratables-utils', 'assets/baratables-utils.js'),
 				// DataTables 3 runs standalone, and Tom Select (the dropdown-filter picker) is
 				// dependency-free too, so table pages stay jQuery-free end to end.
-				$this->script_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.min.js', [], '3.0.2', ['table_only' => true]),
+				$this->script_spec('baratables-datatables', 'assets/vendor/datatables/dataTables.min.js', [], '3.1.5', ['table_only' => true]),
 				// Buttons 4 ships html5 export, print, and column visibility inside the one bundle;
 				// only JSZip (Excel) and pdfmake (PDF) stay separate, feature-gated libraries.
-				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'buttons']),
+				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '4.1.3', ['table_only' => true, 'feature' => 'buttons']),
 				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons-excel']),
-				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '3.0.1', ['table_only' => true, 'feature' => 'colreorder']),
-				$this->script_spec('baratables-datatables-responsive', 'assets/vendor/datatables/dataTables.responsive.min.js', ['baratables-datatables'], '4.0.2', ['table_only' => true, 'feature' => 'responsive']),
-				$this->script_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/dataTables.fixedHeader.min.js', ['baratables-datatables'], '5.0.0', ['table_only' => true, 'feature' => 'fixedheader']),
-				$this->script_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/dataTables.fixedColumns.min.js', ['baratables-datatables'], '6.0.0', ['table_only' => true, 'feature' => 'fixedcolumns']),
+				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '3.1.2', ['table_only' => true, 'feature' => 'colreorder']),
+				$this->script_spec('baratables-datatables-responsive', 'assets/vendor/datatables/dataTables.responsive.min.js', ['baratables-datatables'], '4.1.1', ['table_only' => true, 'feature' => 'responsive']),
+				$this->script_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/dataTables.fixedHeader.min.js', ['baratables-datatables'], '5.1.2', ['table_only' => true, 'feature' => 'fixedheader']),
+				$this->script_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/dataTables.fixedColumns.min.js', ['baratables-datatables'], '6.1.2', ['table_only' => true, 'feature' => 'fixedcolumns']),
 				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
 				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.min.js', ['baratables-pdfmake'], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
 				$this->script_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.complete.min.js', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
@@ -508,14 +518,16 @@ class BaraTables_Frontend {
 		// so the admin can write plain selectors ("td { ... }") without leaking across
 		// tables. External mode prints nothing at all -- "external" means the plugin emits
 		// zero style output -- and the sanitizer is reapplied here so the sink stays safe
-		// however the value reached storage. The scope keys on the base definition id with a
-		// prefix match, covering every render instance on the page.
+		// however the value reached storage. The scope keys on the table's own base id (the
+		// instance id without its per-render counter), printed on the wrapper as
+		// data-btbl-table-id, so every render instance of THIS table matches and no other
+		// table can.
+		$base_id = $this->get_render_base_id((string) preg_replace('/-\d+$/', '', $table_id));
 		$custom_css = ($table_options['styleMode'] ?? 'inline') !== 'external'
 			? BaraTables_Service::sanitize_custom_css((string) ($table_options['customCss'] ?? ''))
 			: '';
 		if ($custom_css !== '') {
-			$scope_id = (string) ($definition['id'] ?? '');
-			$custom_css = BaraTables_Service::scope_table_css($custom_css, $scope_id !== '' ? $scope_id : $table_id);
+			$custom_css = BaraTables_Service::scope_table_css($custom_css, $base_id);
 		}
 		$custom_css_tag = $custom_css !== ''
 			? '<style data-btbl-css="' . esc_attr($table_id) . '">' . $custom_css . '</style>'
@@ -555,7 +567,7 @@ class BaraTables_Frontend {
 		ob_start();
 		?>
 		<?php echo $custom_css_tag; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Admin-authored CSS, sanitized by sanitize_custom_css() above; the sink cannot be escaped early. ?>
-		<div class="btbl-table-wrapper is-loading<?php echo !$render_table ? ' is-chart-only' : ''; ?><?php echo esc_attr($wrapper_compact_class); ?>" data-table-id="<?php echo esc_attr($table_id); ?>"<?php echo $wrapper_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- assembled from esc_attr() pieces above. ?>>
+		<div class="btbl-table-wrapper is-loading<?php echo !$render_table ? ' is-chart-only' : ''; ?><?php echo esc_attr($wrapper_compact_class); ?>" data-table-id="<?php echo esc_attr($table_id); ?>" data-btbl-table-id="<?php echo esc_attr($base_id); ?>"<?php echo $wrapper_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- assembled from esc_attr() pieces above. ?>>
 			<div class="btbl-loading-mask" role="status" aria-live="polite">
 				<span class="btbl-spinner" aria-hidden="true"></span>
 				<span class="screen-reader-text"><?php esc_html_e('Loading table...', 'baratables'); ?></span>
@@ -581,7 +593,7 @@ class BaraTables_Frontend {
 			// capture it too); the remaining chart tokens travel through the JS payload
 			// because they restyle canvas-drawn content, which CSS cannot reach.
 			$chart_style_parts = $chart_height > 0 ? ['height:' . (string) $chart_height . 'px'] : [];
-			$chart_background = $chart_enabled ? sanitize_hex_color((string) ($chart_options['styleBackground'] ?? '')) : '';
+			$chart_background = $chart_enabled ? BaraTables_Service::normalize_hex_color((string) ($chart_options['styleBackground'] ?? '')) : '';
 			if ($chart_background) {
 				$chart_style_parts[] = '--btbl-chart-bg:' . $chart_background;
 			}

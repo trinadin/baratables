@@ -445,6 +445,15 @@ while IFS= read -r published_version; do
 			exit 1
 		fi
 		new_upgrade_notice="$(baratables_upgrade_notice_entry_body "$published_version" "$SOURCE_DIR/readme.txt")"
+		old_upgrade_security="$(baratables_upgrade_notice_security_disclosures "$published_version" "$baseline_readme")"
+		new_upgrade_security="$(baratables_upgrade_notice_security_disclosures "$published_version" "$SOURCE_DIR/readme.txt")"
+		if [[ "$old_upgrade_security" != "$new_upgrade_security" ]]; then
+			# A published security disclosure is part of the public record. Rewording or
+			# dropping it needs Nathan's deliberate approval of a guard change, not a flag.
+			echo "Published version $published_version changes protected security disclosure text in its Upgrade Notice." >&2
+			echo "The release is blocked. This guard has no command-line bypass." >&2
+			exit 1
+		fi
 		if [[ "$old_upgrade_notice" != "$new_upgrade_notice" ]]; then
 			if ! changelog_edit_allowed "$published_version"; then
 				echo "Published Upgrade Notice $published_version was edited." >&2
@@ -497,24 +506,6 @@ if [[ "$PACKAGE_PLUGIN_VERSION" != "$VERSION" || "$PACKAGE_STABLE_TAG" != "$VERS
 fi
 assert_release_readme_metadata "$PACKAGE_DIR/readme.txt" "Committed package readme.txt"
 
-reject_pattern='(^|/)(\.[^/]+|__MACOSX|CLAUDE|docs|node_modules|tests|wordpress-org|composer\.(json|lock)|package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|phpunit\.xml(\.dist)?|local-tests)(/|$)|(^|/)(.*\.log|.*\.md|.*\.zip|.*\.tar\.gz)$'
-reject_release_artifacts() {
-	local release_dir="$1"
-	local matches symlinks
-	matches="$(find "$release_dir" -mindepth 1 -print | rg -n "$reject_pattern" || true)"
-	if [[ -n "$matches" ]]; then
-		echo "Rejected release artifacts found in $release_dir:" >&2
-		printf '%s\n' "$matches" >&2
-		return 1
-	fi
-	symlinks="$(find "$release_dir" -type l -print)"
-	if [[ -n "$symlinks" ]]; then
-		echo "Symbolic links are not permitted in the WordPress.org package:" >&2
-		printf '%s\n' "$symlinks" >&2
-		return 1
-	fi
-}
-
 reject_release_artifacts "$PACKAGE_DIR"
 
 rsync -a --delete "$PACKAGE_DIR/" "$SVN_DIR/trunk/"
@@ -525,6 +516,10 @@ svn status "$SVN_DIR/trunk" | awk '/^!/ {print substr($0, 9)}' | sort -r | while
 	fi
 done
 svn add --force "$SVN_DIR/trunk" --depth infinity --quiet
+
+if [[ "$INCLUDE_ASSETS" -eq 1 ]]; then
+	baratables_version_svn_assets "$SVN_DIR/assets"
+fi
 
 TAG_DIR="$SVN_DIR/tags/$VERSION"
 if [[ -e "$TAG_DIR" ]]; then

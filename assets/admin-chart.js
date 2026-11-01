@@ -342,7 +342,10 @@ jQuery(function($) {
 	// ------------------------------------------------------------------
 	var $paletteEditor = $('[data-btbl-palette-editor]');
 	var $paletteInput = $paletteEditor.find('[data-btbl-palette-input]');
-	var COMPLETE_HEX = /^#[0-9a-fA-F]{6}$/;
+	// Mirrors BaraTables_Service::normalize_hex_color(): a "#" followed by exactly three
+	// or six hex digits, returned verbatim -- exactly what the server stores for the
+	// palette and the chart style colours.
+	var normalizeHex = adminCore.normalizeHex;
 
 	function paletteChipHtml(color, removeLabel) {
 		return '<span class="btbl-palette-chip" draggable="true" data-color="' + color + '">' +
@@ -356,8 +359,8 @@ jQuery(function($) {
 		if (!$paletteEditor.length) { return; }
 		var colors = [];
 		$paletteEditor.find('.btbl-palette-chip').each(function() {
-			var color = String($(this).data('color') || '');
-			if (COMPLETE_HEX.test(color) && colors.indexOf(color) === -1) {
+			var color = normalizeHex(String($(this).data('color') || ''));
+			if (color && colors.indexOf(color) === -1) {
 				colors.push(color);
 			}
 		});
@@ -365,8 +368,7 @@ jQuery(function($) {
 	}
 
 	function designHex(name) {
-		var raw = String($('[name="' + name + '"]').val() || '');
-		return COMPLETE_HEX.test(raw) ? raw : '';
+		return normalizeHex(String($('[name="' + name + '"]').val() || ''));
 	}
 
 	function designSize(name) {
@@ -411,8 +413,10 @@ jQuery(function($) {
 		$paletteEditor.find('[data-btbl-palette-add]').on('click', function(e) {
 			e.preventDefault();
 			var $value = $paletteEditor.find('.btbl-palette-add .btbl-color-value');
-			var color = String($value.val() || '');
-			if (!COMPLETE_HEX.test(color) || $paletteEditor.find('.btbl-palette-chip[data-color="' + color + '"]').length) {
+			var color = normalizeHex(String($value.val() || ''));
+			if (!color || $paletteEditor.find('.btbl-palette-chip').filter(function() {
+				return normalizeHex(String($(this).data('color') || '')) === color;
+			}).length) {
 				return;
 			}
 			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(color, removeLabel));

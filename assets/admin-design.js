@@ -13,7 +13,11 @@
 
 	var config = null;
 	var customCssTimer;
-	var COMPLETE_HEX = /^#[0-9a-fA-F]{6}$/;
+	var adminCore = window.BaraTablesAdminCore;
+	// The same helpers the server's sanitizers are mirrored by. They live in admin-core.js
+	// because the chart editor mirrors the same colour contract.
+	var normalizeHex = adminCore.normalizeHex;
+	var sanitizeCustomCss = adminCore.sanitizeCustomCss;
 	var CSS_SIZE = /^\d{1,4}(\.\d{1,2})?(px|em|rem|%)( \d{1,4}(\.\d{1,2})?(px|em|rem|%))?$/;
 	var CSS_WEIGHTS = ['400', '500', '600', '700', 'normal', 'bold'];
 	// The DataTables style-feature toggles render through classes, not custom properties, so
@@ -89,7 +93,7 @@
 	function sanitizedValue(key, raw) {
 		if (!raw) { return ''; }
 		if (/Color$/.test(key) || key === 'accentColor') {
-			return COMPLETE_HEX.test(raw) ? raw : '';
+			return normalizeHex(raw);
 		}
 		if (key === 'headerWeight') {
 			return CSS_WEIGHTS.indexOf(raw) !== -1 ? raw : '';
@@ -115,11 +119,14 @@
 		return $(selector).first();
 	}
 
-	// The preview wrapper's id carries the per-render instance counter (slug-1); scoping and
-	// Copy CSS key on the base id so every instance of the table matches.
+	// The wrapper carries the base id (the table's own slug) in data-btbl-table-id; the
+	// per-render instance counter lives in data-table-id. Scoping and Copy CSS key on the base
+	// id so every instance of the table matches -- and only that table.
 	function previewBaseId() {
 		var $wrapper = previewWrapper();
 		if (!$wrapper.length) { return ''; }
+		var base = String($wrapper.attr('data-btbl-table-id') || '');
+		if (base) { return base; }
 		return String($wrapper.attr('data-table-id') || '').replace(/-\d+$/, '');
 	}
 
@@ -130,7 +137,7 @@
 		var trimmed = String(css || '').trim();
 		var id = String(targetId || '');
 		if (!trimmed || !id) { return css; }
-		var scope = '.btbl-table-wrapper[data-table-id^="' + id + '"]';
+		var scope = '.btbl-table-wrapper[data-btbl-table-id="' + id + '"]';
 		var i = 0;
 
 		// Fragments are RETURNED so each caller appends to its own buffer, mirroring
@@ -255,13 +262,21 @@
 		});
 	}
 
+	// The Additional CSS byte budget, straight from the server constant, so the preview
+	// and the published page can never disagree about where the cap falls.
+	function cssByteBudget() {
+		return (config && typeof config.maxCssBytes === 'number' && config.maxCssBytes > 0)
+			? config.maxCssBytes
+			: 20000;
+	}
+
 	// The Additional CSS textarea manages its own preview tag and removes the one the server
 	// printed, so the CSS is never applied twice while editing. Content is scoped exactly
 	// like the print path (scope_table_css), so the preview shows what will publish.
 	function applyCustomCss() {
 		var $target = $('#btbl-preview-target');
 		if (!$target.length) { return; }
-		var css = String(field('customCss').val() || '').replace(/<\s*\/?\s*[a-z]/gi, '');
+		var css = sanitizeCustomCss(field('customCss').val(), cssByteBudget());
 		$target.children('style[data-btbl-css]').remove();
 		var $style = $target.children('style[data-btbl-preview-css]');
 		if (!css) {
@@ -278,7 +293,7 @@
 	function buildCssText() {
 		var vars = buildVars();
 		var tableId = previewBaseId();
-		var scope = '.btbl-table-wrapper[data-table-id^="' + (tableId || 'your-table-id') + '"]';
+		var scope = '.btbl-table-wrapper[data-btbl-table-id="' + (tableId || 'your-table-id') + '"]';
 		var lines = [
 			'/* BaraTables table styles. Paste into Appearance > Customize > Additional CSS (or a',
 			'   child theme stylesheet), then switch the Design tab to "Theme CSS" so this plugin',
@@ -291,7 +306,7 @@
 			});
 			lines.push('}');
 		}
-		var custom = String(field('customCss').val() || '');
+		var custom = sanitizeCustomCss(field('customCss').val(), cssByteBudget());
 		if (custom) {
 			lines.push('', scopeCss(custom, tableId));
 		}
@@ -386,12 +401,12 @@
 			var $status = $('[data-btbl-copy-status]');
 			var $output = $('.btbl-copy-css-output');
 			copyText(buildCssText()).then(function() {
-				$status.text('Copied to your clipboard.');
+				$status.text(config.copiedLabel);
 				$output.prop('hidden', true);
 			}, function() {
 				// Clipboard access is denied on non-secure origins and some webviews: surface the
 				// generated CSS on the page, selected, so the manual copy is one Cmd/Ctrl+C away.
-				$status.text('Clipboard unavailable — the CSS is selected below; copy it manually.');
+				$status.text(config.clipboardUnavailableLabel);
 				$output.text(buildCssText()).prop('hidden', false);
 				var range = document.createRange();
 				range.selectNodeContents($output[0]);

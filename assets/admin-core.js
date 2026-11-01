@@ -89,8 +89,48 @@
 		window.location.href = url.toString();
 	}
 
+	// Mirrors BaraTables_Service::normalize_hex_color(): a "#" followed by exactly three
+	// or six hex digits, returned verbatim. Every other value -- a bare "fff", a doubled
+	// "##fff", a seven-digit value -- is rejected, exactly as the server rejects it, so
+	// the admin preview can never paint a colour that a save would discard.
+	function normalizeHex(raw) {
+		var value = String(raw === null || raw === undefined ? '' : raw);
+		return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : '';
+	}
+
+	// Mirrors BaraTables_Service::sanitize_custom_css(): null bytes go, a maximal run of
+	// "<" that is immediately followed by "/" or "?" goes with it -- those are the only two
+	// characters that can close the surrounding <style> element early or open a PHP
+	// context -- and the result is capped at the server's byte budget on a character
+	// boundary.
+	//
+	// The transform only ever removes "<", so it cannot create a new "<" before a "/" or
+	// "?", which makes it a fixpoint: sanitizing an already-sanitized value changes
+	// nothing, so the published page carries exactly the CSS the editor showed.
+	function sanitizeCustomCss(raw, maxBytes) {
+		var css = String(raw === null || raw === undefined ? '' : raw).replace(/\0/g, '');
+		css = css.replace(/<+([/?])/g, '$1');
+		if (typeof maxBytes !== 'number' || maxBytes <= 0) { return css; }
+		return truncateUtf8(css, maxBytes);
+	}
+
+	// Caps a string at a byte budget without cutting a UTF-8 character in half. The budget
+	// is in BYTES on both sides of the wire, so the preview and the published page carry
+	// the same CSS; the cut lands on a character boundary, so neither side emits a broken
+	// character.
+	function truncateUtf8(value, maxBytes) {
+		var bytes = new TextEncoder().encode(value);
+		if (bytes.length <= maxBytes) { return value; }
+		var end = maxBytes;
+		while (end > 0 && (bytes[end] & 0xc0) === 0x80) { end--; }
+		return new TextDecoder().decode(bytes.subarray(0, end));
+	}
+
 	window.BaraTablesAdminCore = {
 		formAuth: formAuth,
+		normalizeHex: normalizeHex,
+		sanitizeCustomCss: sanitizeCustomCss,
+		truncateUtf8: truncateUtf8,
 		requestFragment: requestFragment,
 		isActivationEvent: isActivationEvent,
 		applyDefaultIfUntouched: applyDefaultIfUntouched,

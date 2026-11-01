@@ -270,6 +270,9 @@ class BaraTables_Service {
 	// legal in an earlier version is ever silently truncated when its editor is opened or saved;
 	// the per-dimension caps above remain the real guard against pathologically large grids.
 	public const MAX_CUSTOM_CELLS = 25000;
+	// Ceiling on the Design tab's Additional CSS payload, in bytes. The admin preview
+	// mirrors the same budget, so the preview and the published page carry the same CSS.
+	public const MAX_CUSTOM_CSS_BYTES = 20000;
 	// Nesting depth stringify_cell_value() will flatten before giving up. ACF Repeater/Group
 	// fields nest arbitrarily; two levels covers Relationship and a flat Repeater row without
 	// letting a pathological structure recurse.
@@ -654,6 +657,11 @@ class BaraTables_Service {
 			'buttonTextTableOptions' => __('Table options', 'baratables'),
 			// Fallback caption for a search-picker column whose heading is blank.
 			'searchColumnFallback' => __('Column', 'baratables'),
+			// Accessible name for the search input. The visible label is the admin's "Search
+			// text" option, which may be markup with no text at all (an icon-only label); the
+			// input would then have no name but its placeholder, and the placeholder is empty
+			// by default. This is the last resort in that chain.
+			'searchAccessibleLabel' => __('Search', 'baratables'),
 		];
 	}
 
@@ -670,8 +678,8 @@ class BaraTables_Service {
 			if (is_array($palette)) {
 				foreach ($palette as $color) {
 					if (is_array($color) && ($color['slug'] ?? '') === 'primary') {
-						$hex = sanitize_hex_color((string) ($color['color'] ?? ''));
-						if ($hex !== null && $hex !== '') {
+						$hex = self::normalize_hex_color((string) ($color['color'] ?? ''));
+						if ($hex !== '') {
 							return $hex;
 						}
 					}
@@ -845,7 +853,7 @@ class BaraTables_Service {
 			} elseif ($type === 'color') {
 				// Empty string means "inherit the theme's primary color"; anything that is not
 				// a valid 3- or 6-digit hex collapses back to that inherited state.
-				$options[$key] = sanitize_hex_color((string) $options_raw[$key]) ?? '';
+				$options[$key] = self::normalize_hex_color((string) $options_raw[$key]);
 			} elseif ($type === 'css_size') {
 				$options[$key] = self::sanitize_css_size($options_raw[$key]);
 			} elseif ($type === 'css_weight') {
@@ -911,8 +919,9 @@ class BaraTables_Service {
 	 * Admin-authored CSS for the per-table <style> sink. Only `manage_options` users ever
 	 * submit it, but the same rules apply as the Customizer's Additional CSS: nothing may
 	 * close the surrounding <style> tag early or open a PHP context, and the payload is
-	 * capped. CSS itself is passed through verbatim so `content:` strings and `url()` values
-	 * survive.
+	 * capped. CSS itself is passed through verbatim, except for a "<" that would start
+	 * such a sequence: `content: "<"`, a media query range (`@media (width < 600px)`) and
+	 * a selector like `a<b` are valid CSS and survive untouched.
 	 */
 	public static function sanitize_custom_css($raw): string {
 		$value = (string) $raw;
@@ -920,14 +929,65 @@ class BaraTables_Service {
 			return '';
 		}
 		$value = str_replace("\0", '', $value);
-		// Also kills "</style >", "<?PHP" and any other "<tag" markup that would otherwise be
-		// parsed inside the style element; CSS custom properties and selectors never need "<".
-		$value = preg_replace('/<\s*\/?\s*[a-z]/i', '', $value) ?? '';
-		$value = str_replace('<?', '', $value);
-		if (strlen($value) > 20000) {
-			$value = substr($value, 0, 20000);
+		// Remove a maximal run of "<" that is immediately followed by "/" or "?": those are
+		// the only two characters that can end the surrounding <style> element early
+		// ("</style") or open a PHP context ("<?php"). Every other "<" is valid CSS.
+		//
+		// The transform only ever removes "<", so it cannot create a new "<" before a "/"
+		// or "?" -- which also makes this function a FIXPOINT: applying it to its own
+		// output cannot change it again. The front end re-sanitizes the stored value before
+		// printing it, so a sanitizer that is not a fixpoint would publish different CSS
+		// than it saved.
+		$value = preg_replace('~<+([/?])~', '$1', $value);
+		if ($value === null) {
+			// Only a malformed pattern can fail here, and the pattern is a constant.
+			return '';
 		}
-		return $value;
+		return self::cap_css_bytes($value, self::MAX_CUSTOM_CSS_BYTES);
+	}
+
+	/**
+	 * Caps a payload at a byte budget without cutting a UTF-8 character in half.
+	 *
+	 * The budget is in BYTES, on both sides of the wire: the admin preview and the
+	 * published page have to carry the same CSS, so the byte count -- not the character
+	 * count -- is the contract. The cut lands on a character boundary, so the stored CSS
+	 * never carries a broken character.
+	 */
+	public static function cap_css_bytes(string $value, int $max_bytes): string {
+		if (strlen($value) <= $max_bytes) {
+			return $value;
+		}
+		$end = $max_bytes;
+		// If the first excluded byte continues a character that began inside the kept
+		// part, that character is incomplete: drop it, and with it the leading bytes the
+		// walk finds on the way back to its first byte.
+		while ($end > 0 && (ord($value[$end]) & 0xc0) === 0x80) {
+			$end--;
+		}
+		return substr($value, 0, $end);
+	}
+
+	/**
+	 * A hex colour, or '' when there is none.
+	 *
+	 * The contract is the plugin's own rather than core's: sanitize_hex_color() changed
+	 * its mind in WordPress 7.0 (it now requires the "#" and no longer expands a 3-digit
+	 * value), so a plugin that simply called it stored one thing on WordPress 6 and
+	 * another on WordPress 7 -- and the admin preview, which mirrors the sanitizer, could
+	 * match neither. A "#" followed by exactly three or six hex digits is accepted and
+	 * returned verbatim; every other value -- a bare "fff", a doubled "##fff", a
+	 * seven-digit value -- is rejected.
+	 *
+	 * @param mixed $raw Raw colour value.
+	 * @return string '' or the accepted colour.
+	 */
+	public static function normalize_hex_color($raw): string {
+		$value = (string) $raw;
+		if (preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $value) === 1) {
+			return $value;
+		}
+		return '';
 	}
 
 	/**
@@ -935,16 +995,22 @@ class BaraTables_Service {
 	 * selectors ("td { ... }"), so every top-level rule gets the table's wrapper scope
 	 * prefixed onto each of its selectors, and @media/@supports bodies are scoped too,
 	 * while @keyframes steps and selector-less at-rules (@font-face, @import) pass through
-	 * untouched. The `^=` id match covers every instance of the table on a page, matching
-	 * the Copy CSS convention. Best effort by design: malformed CSS passes through as-is,
-	 * and sanitize_custom_css() has already stripped anything that could escape the sink.
+	 * untouched. An exact match on the table's own base id scopes the rules to that
+	 * table, matching the Copy CSS convention. Best effort by design: malformed CSS
+	 * passes through as-is, and sanitize_custom_css() has already stripped anything
+	 * that could escape the sink.
 	 */
 	public static function scope_table_css(string $css, string $table_id): string {
-		$table_id = sanitize_title($table_id);
+		// Same normalization the front end applies to the base id it prints on the wrapper, so
+		// the selector and the attribute can never disagree.
+		$table_id = sanitize_html_class(sanitize_title($table_id));
 		if ($table_id === '' || trim($css) === '') {
 			return $css;
 		}
-		$scope = '.btbl-table-wrapper[data-table-id^="' . $table_id . '"]';
+		// An EXACT match on the base id. A prefix match ("[data-table-id^=...]") also matched a
+		// sibling table whose slug merely started with the same string -- table "sales" styled
+		// table "sales-2024" on the same page.
+		$scope = '.btbl-table-wrapper[data-btbl-table-id="' . $table_id . '"]';
 		$index = 0;
 		return self::scope_css_segment($css, $index, $scope, true);
 	}
@@ -1132,7 +1198,7 @@ class BaraTables_Service {
 	/** Output-time revalidation, independent of how the definition reached storage. */
 	private static function revalidate_style_value(string $key, string $value): string {
 		if ($key === 'accentColor' || substr($key, -5) === 'Color') {
-			return sanitize_hex_color($value) ?? '';
+			return self::normalize_hex_color($value);
 		}
 		if ($key === 'headerWeight') {
 			return self::sanitize_css_weight($value);
@@ -1221,8 +1287,8 @@ class BaraTables_Service {
 		$palette = [];
 		$palette_seen = [];
 		foreach ($palette_raw as $color) {
-			$hex = sanitize_hex_color((string) $color);
-			if ($hex !== null && $hex !== '') {
+			$hex = self::normalize_hex_color((string) $color);
+			if ($hex !== '') {
 				$lower = strtolower($hex);
 				if (!in_array($lower, $palette_seen, true)) {
 					$palette[] = $hex;
@@ -1236,7 +1302,7 @@ class BaraTables_Service {
 		$options['stylePalette'] = $palette;
 		foreach (['styleBackground', 'styleTextColor', 'styleGridColor'] as $key) {
 			$options[$key] = isset($options_raw[$key])
-				? (sanitize_hex_color((string) $options_raw[$key]) ?? '')
+				? self::normalize_hex_color((string) $options_raw[$key])
 				: '';
 		}
 		$options['styleFontSize'] = self::sanitize_css_size($options_raw['styleFontSize'] ?? '');
@@ -1898,6 +1964,16 @@ class BaraTables_Service {
 			'charset' => $charset,
 			'port' => $port,
 		];
+		// TLS. Off by default so an existing external source keeps connecting exactly as it
+		// did; on, the connection is encrypted and the server certificate is verified
+		// against the CA below. A CA path is required -- see external_tls_problem().
+		if (!empty($raw['ssl'])) {
+			$config['ssl'] = true;
+			$ca = isset($raw['ssl_ca']) ? sanitize_text_field((string) $raw['ssl_ca']) : '';
+			if ($ca !== '') {
+				$config['ssl_ca'] = $ca;
+			}
+		}
 		if ($password !== '') {
 			$encrypted = BaraTables_Crypto::encrypt($password);
 			if ($encrypted !== '') {
@@ -1905,6 +1981,43 @@ class BaraTables_Service {
 			}
 		}
 		return $config;
+	}
+
+	/**
+	 * Checks whether an external source's TLS settings can actually be honoured.
+	 *
+	 * mysqli cannot use the operating system's trust store. Under mysqlnd -- the driver PHP
+	 * has shipped by default since 7.0 -- the MYSQLI_OPT_SSL_CA constant does not exist at
+	 * all, and the only trust anchor mysqlnd accepts is the CA handed to it through
+	 * mysqli_ssl_set(). An encrypted connection is therefore only an AUTHENTICATED one when
+	 * a CA path is supplied and the server certificate is verified against it; without a CA
+	 * the transport is encrypted but the server is anonymous, and a server that cannot be
+	 * authenticated is not protected against an active attacker.
+	 *
+	 * @param array $config Sanitized external source configuration.
+	 * @return string '' when the TLS settings are usable, otherwise a short reason.
+	 */
+	public function external_tls_problem(array $config): string {
+		if (empty($config['ssl'])) {
+			return '';
+		}
+		$ca = (string) ($config['ssl_ca'] ?? '');
+		if ($ca === '') {
+			return 'missing_ca';
+		}
+		if (!is_readable($ca)) {
+			return 'unreadable_ca';
+		}
+		if (!function_exists('mysqli_ssl_set') || !defined('MYSQLI_CLIENT_SSL_VERIFY_SERVER_CERT')) {
+			return 'unsupported';
+		}
+		// mysqli_ssl_set() is a mysqlnd feature. On a libmysqlclient build it is a no-op
+		// stub, so the CA would never be installed and the connection would be encrypted
+		// but not authenticated.
+		if (!extension_loaded('mysqlnd')) {
+			return 'unsupported';
+		}
+		return '';
 	}
 
 	private function sanitize_external_identifier(string $identifier): string {
@@ -1919,20 +2032,23 @@ class BaraTables_Service {
 		return $identifier;
 	}
 
-	private function create_external_db_connection(string $user, string $password, string $dbname, string $host) {
+	private function create_external_db_connection(string $user, string $password, string $dbname, string $host, array $tls = []) {
 		if (!class_exists('wpdb')) {
 			return null;
 		}
 
-		$external_db = new class($user, $password, $dbname, $host) extends wpdb {
+		$external_db = new class($user, $password, $dbname, $host, $tls) extends wpdb {
 			private bool $btbl_transport_timeouts = false;
+			/** @var array{ca?:string} TLS settings for the external connection. */
+			private array $btbl_tls = [];
 			private string $btbl_session_timeout_sql = '';
 
-			public function __construct($dbuser, $dbpassword, $dbname, $dbhost) {
+			public function __construct($dbuser, $dbpassword, $dbname, $dbhost, array $tls = []) {
 				$this->dbuser = $dbuser;
 				$this->dbpassword = $dbpassword;
 				$this->dbname = $dbname;
 				$this->dbhost = $dbhost;
+				$this->btbl_tls = $tls;
 				$this->hide_errors();
 				$this->db_connect(false);
 			}
@@ -1971,8 +2087,42 @@ class BaraTables_Service {
 				if ($is_ipv6 && extension_loaded('mysqlnd')) {
 					$host = '[' . $host . ']';
 				}
+				// TLS, when the source is configured for it.
+				//
+				// mysqli cannot use the operating system's trust store. Under mysqlnd -- the
+				// driver PHP has shipped by default since 7.0 -- the MYSQLI_OPT_SSL_CA constant
+				// does not even exist, and the only trust anchor mysqlnd will accept is the CA
+				// handed to it through mysqli_ssl_set(). So an encrypted connection can only be
+				// an AUTHENTICATED one when a CA path is supplied and the server certificate is
+				// verified against it. Without that the transport is encrypted but the server is
+				// anonymous, which is not a protection worth advertising -- and without TLS at
+				// all the database password and every row travelled in cleartext on every render.
+				$connect_flags = 0;
+				if (!empty($this->btbl_tls)) {
+					if (!defined('MYSQLI_CLIENT_SSL') || !defined('MYSQLI_CLIENT_SSL_VERIFY_SERVER_CERT')) {
+						$this->dbh = null;
+						return false;
+					}
+					$ca = (string) ($this->btbl_tls['ca'] ?? '');
+					if ($ca === '' || !is_readable($ca)) {
+						// Fail rather than fall back to an unverified connection: a missing or
+						// unreadable CA path must not silently downgrade the transport.
+						$this->dbh = null;
+						return false;
+					}
+					// mysqli_ssl_set() installs the CA but always reports success: php-src
+					// discards the driver's result. A wrong CA therefore fails at the
+					// handshake, not here -- which is why the verification flag below is
+					// what actually makes the connection fail closed. Empty strings rather
+					// than nulls, so the call does not rely on the argument being nullable.
+					// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_ssl_set -- Part of the same bounded external connection bootstrap; installs the TLS trust anchor.
+					mysqli_ssl_set($this->dbh, '', '', $ca, '', '');
+					// MYSQLI_CLIENT_SSL_VERIFY_SERVER_CERT makes mysqlnd check the server
+					// certificate against that CA, and the host name against the certificate.
+					$connect_flags = MYSQLI_CLIENT_SSL | MYSQLI_CLIENT_SSL_VERIFY_SERVER_CERT;
+				}
 				// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_real_connect -- Bounded equivalent of wpdb::db_connect() for a separate read-only source.
-				$connected = mysqli_real_connect($this->dbh, $host, $this->dbuser, $this->dbpassword, null, $port, $socket, 0);
+				$connected = mysqli_real_connect($this->dbh, $host, $this->dbuser, $this->dbpassword, null, $port, $socket, $connect_flags);
 				if (!$connected || $this->dbh->connect_errno) {
 					$this->dbh = null;
 					return false;
@@ -2300,8 +2450,8 @@ class BaraTables_Service {
 				$row[] = $this->apply_compiled_overrides_with(
 					$raw_value,
 					$compiled_overrides['rules'][$slug] ?? [],
-					function (string $replace) use ($post): string {
-						return $this->replace_merge_tags($replace, $post);
+					function (string $replace, bool $escape = false) use ($post): string {
+						return $this->replace_merge_tags($replace, $post, $escape);
 					}
 				);
 			}
@@ -2451,11 +2601,22 @@ class BaraTables_Service {
 			$rows = $cached['rows'];
 		} else {
 			$rows = [];
+			// Normalise the bytes BEFORE parsing: a byte-order mark left in the file would
+			// otherwise survive into the first header cell and render as a stray U+FEFF in
+			// the column heading, and a UTF-16 export would read as mojibake. The importer
+			// already normalises, so the same file must not render differently here.
+			$text = BaraTables_Text_Normalizer::read_file($path);
+			if ($text === '') {
+				return BaraTables_Row_Result::failure('csv_read_failed');
+			}
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- fgetcsv requires a file handle; WP_Filesystem has no CSV parsing equivalent.
-			$handle = fopen($path, 'rb');
+			$handle = fopen('php://temp/maxmemory:' . (2 * MB_IN_BYTES), 'w+b');
 			if ($handle === false) {
 				return BaraTables_Row_Result::failure('csv_read_failed');
 			}
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Writes to the bounded in-memory stream above.
+			fwrite($handle, $text);
+			rewind($handle);
 			$count = 0;
 			while (true) {
 				$data = fgetcsv($handle, self::MAX_CSV_LINE_LENGTH, $delimiter, '"', '\\');
@@ -2525,11 +2686,19 @@ class BaraTables_Service {
 		$rows = [];
 		$inferred = [];
 		$access_index = null;
+		// Normalise the bytes BEFORE parsing, for the same reason as the reader above.
+		$text = BaraTables_Text_Normalizer::read_file($path);
+		if ($text === '') {
+			return BaraTables_Row_Result::failure('csv_read_failed');
+		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- fgetcsv requires a file handle; WP_Filesystem has no CSV parsing equivalent.
-		$handle = fopen($path, 'rb');
+		$handle = fopen('php://temp/maxmemory:' . (2 * MB_IN_BYTES), 'w+b');
 		if ($handle === false) {
 			return BaraTables_Row_Result::failure('csv_read_failed');
 		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Writes to the bounded in-memory stream above.
+		fwrite($handle, $text);
+		rewind($handle);
 
 		$first_data_row = true;
 		$max_columns = 0;
@@ -2871,7 +3040,13 @@ class BaraTables_Service {
 		$host = $config['host'] ?? '';
 		$dbname = $config['name'] ?? '';
 		$user = $config['user'] ?? '';
-		$password = BaraTables_Crypto::decrypt($config['pass'] ?? '');
+		$password = BaraTables_Crypto::decrypt_or_null((string) ($config['pass'] ?? ''));
+		if ($password === null) {
+			// The stored credential could not be decrypted -- almost always because the site's
+			// salts were regenerated after the password was saved. Say so, instead of failing
+			// as an anonymous authentication error the admin cannot act on.
+			return new WP_Error('external_credentials');
+		}
 		$table = $this->sanitize_external_identifier((string) ($config['table'] ?? ''));
 		$charset = $config['charset'] ?? '';
 		$port = isset($config['port']) ? (int) $config['port'] : 0;
@@ -2879,11 +3054,23 @@ class BaraTables_Service {
 			return new WP_Error('external_configuration');
 		}
 		$host_with_port = $port > 0 ? $host . ':' . $port : $host;
-		$connection_key = hash('sha256', implode("\0", [$host_with_port, $dbname, $user, $password, $charset]));
+		$tls_problem = $this->external_tls_problem($config);
+		if ($tls_problem !== '') {
+			// The TLS settings cannot be honoured. Say which one is wrong, so the admin
+			// can fix the source instead of re-trying a connection that was never going
+			// to work.
+			return new WP_Error('external_tls_' . $tls_problem);
+		}
+		$tls = !empty($config['ssl'])
+			? array_filter(['ca' => (string) ($config['ssl_ca'] ?? '')], static function ($value) {
+				return $value !== '';
+			})
+			: [];
+		$connection_key = hash('sha256', implode("\0", [$host_with_port, $dbname, $user, $password, $charset, (string) json_encode($tls)]));
 		if (isset($this->external_connections[$connection_key])) {
 			$ext_db = $this->external_connections[$connection_key];
 		} else {
-			$ext_db = $this->create_external_db_connection($user, $password, $dbname, $host_with_port);
+			$ext_db = $this->create_external_db_connection($user, $password, $dbname, $host_with_port, $tls);
 			if (!$ext_db) {
 				return new WP_Error('external_connection');
 			}

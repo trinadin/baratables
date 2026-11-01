@@ -201,15 +201,18 @@ jQuery(function($) {
 		var $picker = $field.find('.btbl-color-picker');
 		// Masked as you type: only "#" and hex digits, seven characters at most. The value
 		// is rewritten ONLY when something was stripped, so normal typing never disturbs the
-		// caret. A non-empty value that is not yet a complete #rrggbb flags the field as
-		// invalid -- the save pipeline drops such a value back to the theme color.
+		// caret. A non-empty value that is not yet a complete #rgb or #rrggbb flags the
+		// field as invalid -- the save pipeline drops such a value back to the theme color.
 		var raw = String($(this).val() || '');
 		var masked = raw.replace(/[^#0-9a-fA-F]/g, '').slice(0, 7);
 		if (masked !== raw) {
 			$(this).val(masked);
 			this.setSelectionRange(masked.length, masked.length);
 		}
-		var complete = /^#[0-9a-fA-F]{6}$/.test(masked);
+		// The server accepts "#" plus exactly three or six hex digits and rejects
+		// everything else, so the field has to agree with it exactly: a valid #rgb is not
+		// "not finished yet", and a bare "fff" or a doubled "##fff" is not a colour.
+		var complete = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(masked);
 		var invalid = masked !== '' && !complete;
 		$(this).toggleClass('is-invalid', invalid);
 		if (invalid) {
@@ -1321,11 +1324,22 @@ jQuery(function($) {
 				return !!(response && response.success && response.data && typeof response.data.html === 'string');
 			},
 			success: function(responseData) {
+				var payload = responseData.payload;
+				// Tear the previous instance down BEFORE the markup is replaced. The swap
+				// detaches the <table> that owns the live DataTables instance, and
+				// initInstance() resolves that table by id afterwards -- it would only ever
+				// find the NEW element, leaving the old instance (and the document-level
+				// listener its search controller registers) alive for every refresh.
+				if (payload && payload.tableId && window.BaraTablesFrontend && typeof window.BaraTablesFrontend.destroy === 'function') {
+					try {
+						window.BaraTablesFrontend.destroy(payload.tableId);
+					} catch (destroyError) {
+						if (window.console && window.console.error) { window.console.error('[BaraTables] Preview teardown failed.', destroyError); }
+					}
+				}
 				$previewTarget.html(responseData.html);
 				// The preview ships the same payload the front end would print inline, so the
-				// swapped markup boots exactly like a page load. initInstance() tears down any
-				// previous instance for the table element first.
-				var payload = responseData.payload;
+				// swapped markup boots exactly like a page load.
 				if (payload && payload.tableId && window.BaraTablesFrontend && typeof window.BaraTablesFrontend.init === 'function') {
 					try {
 						window.BaraTablesFrontend.init(payload);

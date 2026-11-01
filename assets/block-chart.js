@@ -98,7 +98,11 @@ var Notice = wp.components.Notice;
 				Notice,
 				{ status: 'warning', isDismissible: false },
 				list.truncated
-					? sprintf(__('The picker lists only the first %d charts; the selected one may exist beyond them.', 'baratables'), list.results.length)
+					? sprintf(
+						/* translators: %d is the number of charts the picker loaded. */
+						__('The picker lists only the first %d charts; the selected one may exist beyond them.', 'baratables'),
+						list.results.length
+					)
 					: __('The selected chart no longer exists. Pick another chart.', 'baratables')
 			);
 		}

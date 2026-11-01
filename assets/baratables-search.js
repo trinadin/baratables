@@ -235,11 +235,15 @@
 			inputEl.autocomplete = 'off';
 			if (maxSearchBytes) { inputEl.maxLength = maxSearchBytes; }
 			inputEl.setAttribute('aria-controls', settings.tableId || '');
-			if (usesVisualLabel && options.labelPlain) {
+			if (usesVisualLabel) {
 				// The visible label is an HTML span hidden from assistive tech, so without this
 				// the input's accessible name would fall back to the placeholder, which is empty
-				// unless the admin set one.
-				inputEl.setAttribute('aria-label', options.labelPlain);
+				// unless the admin set one -- leaving an unnamed search field when the admin
+				// used an icon-only label AND no placeholder.
+				var accessibleName = options.labelPlain || options.placeholder || options.accessibleLabel || '';
+				if (accessibleName) {
+					inputEl.setAttribute('aria-label', accessibleName);
+				}
 			}
 			if (options.placeholder) {
 				inputEl.placeholder = options.placeholder;

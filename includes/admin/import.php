@@ -77,30 +77,9 @@ class BaraTables_Import_Util {
 
 	/** Strip a leading BOM and normalize to UTF-8 so cells don't mojibake. */
 	public static function normalize_text(string $raw): string {
-		// The mb_convert_encoding() calls in this method are silenced on purpose. The input is an
-		// arbitrary uploaded file, so a malformed byte sequence is an expected outcome rather than
-		// a programming error; the function warns on those, and each call site already handles a
-		// failed conversion by falling back to the original bytes. Letting the warning through
-		// would print PHP notices over the admin screen for a file the user simply mis-saved.
-		if (strncmp($raw, "\xEF\xBB\xBF", 3) === 0) {
-			$raw = substr($raw, 3);
-		} elseif (strncmp($raw, "\xFF\xFE", 2) === 0 && function_exists('mb_convert_encoding')) {
-			// UTF-16 little-endian (BOM FF FE) -- used by some exporters; convert before parsing.
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- untrusted upload may be malformed.
-			$raw = (string) @mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE');
-		} elseif (strncmp($raw, "\xFE\xFF", 2) === 0 && function_exists('mb_convert_encoding')) {
-			// UTF-16 big-endian (BOM FE FF).
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- untrusted upload may be malformed.
-			$raw = (string) @mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE');
-		}
-		if (function_exists('mb_check_encoding') && !mb_check_encoding($raw, 'UTF-8') && function_exists('mb_convert_encoding')) {
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- untrusted upload may be malformed; failure falls back below.
-			$converted = @mb_convert_encoding($raw, 'UTF-8', 'Windows-1252, ISO-8859-1, UTF-8');
-			if (is_string($converted) && $converted !== '') {
-				$raw = $converted;
-			}
-		}
-		return $raw;
+		// One implementation, shared with the live CSV source and the remote snapshot, so the
+		// same file cannot render one way through the importer and another way as a source.
+		return BaraTables_Text_Normalizer::normalize_text($raw);
 	}
 }
 

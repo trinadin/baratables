@@ -127,14 +127,10 @@ class BaraTables_Admin_Design_Screen {
 				<input type="hidden" name="btbl_design_action" value="save_design" />
 
 				<div class="btbl-control" data-btbl-design-config="<?php echo esc_attr(wp_json_encode($this->script_config())); ?>">
-					<strong class="btbl-small-heading"><?php esc_html_e('Style presets', 'baratables'); ?></strong>
-					<p class="description"><?php esc_html_e('One click fills the controls below; keep tweaking from there.', 'baratables'); ?></p>
+					<strong class="btbl-small-heading"><?php esc_html_e('Table style presets', 'baratables'); ?></strong>
+					<p class="description"><?php esc_html_e('One click fills the table controls below; keep tweaking from there.', 'baratables'); ?></p>
 					<div class="btbl-flag-grid btbl-preset-grid">
-						<button type="button" class="button btbl-preset-button" data-btbl-preset="default"><?php esc_html_e('Theme default', 'baratables'); ?></button>
-						<button type="button" class="button btbl-preset-button" data-btbl-preset="minimal"><?php esc_html_e('Minimal', 'baratables'); ?></button>
-						<button type="button" class="button btbl-preset-button" data-btbl-preset="bold"><?php esc_html_e('Bold header', 'baratables'); ?></button>
-						<button type="button" class="button btbl-preset-button" data-btbl-preset="midnight"><?php esc_html_e('Midnight', 'baratables'); ?></button>
-						<button type="button" class="button btbl-preset-button" data-btbl-preset="paper"><?php esc_html_e('Paper', 'baratables'); ?></button>
+						<?php BaraTables_Admin_Design_Fields::render_preset_buttons('data-btbl-preset'); ?>
 					</div>
 				</div>
 
@@ -183,63 +179,17 @@ class BaraTables_Admin_Design_Screen {
 	}
 
 	/**
-	 * The table design groups, rendered from the same schema the table editor's Design
-	 * tab reads, so a token cannot exist in one and be missing from the other.
+	 * The table design groups, rendered by the shared design controls so the site
+	 * screen and the table editor's Design tab cannot drift apart.
 	 */
 	private function render_table_groups(array $values): void {
-		$schema = BaraTables_Service::get_table_option_schema();
-		$theme_accent = BaraTables_Service::resolve_theme_accent();
-		$color_groups = [
-			[
-				'heading' => __('Colors', 'baratables'),
-				'fields' => ['accentColor', 'textColor', 'borderColor'],
-			],
-			[
-				'heading' => __('Header row', 'baratables'),
-				'fields' => ['headerBgColor', 'headerTextColor', 'headerWeight'],
-			],
-			[
-				'heading' => __('Rows', 'baratables'),
-				'fields' => ['stripeColor', 'hoverColor'],
-			],
-			[
-				'heading' => __('Footer totals', 'baratables'),
-				'fields' => ['footerBgColor', 'footerTextColor'],
-			],
-			[
-				'heading' => __('Conditional cell colors', 'baratables'),
-				'description' => __('Used by the per-column conditional formatting rules on a table\'s Columns &amp; filters tab.', 'baratables'),
-				'fields' => ['successBgColor', 'successColor', 'warningBgColor', 'warningColor', 'dangerBgColor', 'dangerColor'],
-			],
-		];
-		$size_fields = ['fontSize', 'cellPadding', 'borderRadius'];
 		?>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Tables', 'baratables'); ?></strong>
 			<p class="description"><?php esc_html_e('The design every table starts from. A table that sets its own value keeps that value.', 'baratables'); ?></p>
 		</div>
-		<?php foreach ($color_groups as $group) : ?>
-			<div class="btbl-control btbl-design-fields">
-				<strong class="btbl-small-heading"><?php echo esc_html($group['heading']); ?></strong>
-				<?php if (!empty($group['description'])) : ?>
-					<p class="description"><?php echo esc_html($group['description']); ?></p>
-				<?php endif; ?>
-				<div class="btbl-flag-grid btbl-table-flags">
-					<?php foreach ($group['fields'] as $field_key) : ?>
-						<?php $this->render_field($field_key, $schema[$field_key] ?? [], $values, $theme_accent); ?>
-					<?php endforeach; ?>
-				</div>
-			</div>
-		<?php endforeach; ?>
-		<div class="btbl-control btbl-design-fields">
-			<strong class="btbl-small-heading"><?php esc_html_e('Typography & shape', 'baratables'); ?></strong>
-			<div class="btbl-flag-grid btbl-table-flags">
-				<?php foreach ($size_fields as $field_key) : ?>
-					<?php $this->render_field($field_key, $schema[$field_key] ?? [], $values, $theme_accent); ?>
-				<?php endforeach; ?>
-			</div>
-		</div>
 		<?php
+		BaraTables_Admin_Design_Fields::render_table_groups($values, 'btbl_table_options', 'btbl_site_design');
 	}
 
 	/**
@@ -260,81 +210,19 @@ class BaraTables_Admin_Design_Screen {
 			<p class="description"><?php esc_html_e('The design every chart starts from. A chart that sets its own value keeps that value.', 'baratables'); ?></p>
 		</div>
 		<div class="btbl-control">
-			<strong class="btbl-small-heading"><?php esc_html_e('Style presets', 'baratables'); ?></strong>
+			<strong class="btbl-small-heading"><?php esc_html_e('Chart style presets', 'baratables'); ?></strong>
 			<p class="description"><?php esc_html_e('One click fills the chart controls below; keep tweaking from there.', 'baratables'); ?></p>
 			<div class="btbl-flag-grid btbl-preset-grid">
-				<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="default"><?php esc_html_e('Theme default', 'baratables'); ?></button>
-				<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="minimal"><?php esc_html_e('Minimal', 'baratables'); ?></button>
-				<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="bold"><?php esc_html_e('Bold header', 'baratables'); ?></button>
-				<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="midnight"><?php esc_html_e('Midnight', 'baratables'); ?></button>
-				<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="paper"><?php esc_html_e('Paper', 'baratables'); ?></button>
+				<?php BaraTables_Admin_Design_Fields::render_preset_buttons('data-btbl-chart-preset', true); ?>
 			</div>
 		</div>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Series palette', 'baratables'); ?></strong>
 			<p class="description"><?php esc_html_e('Colors are used in order across series and slices. Drag to reorder. An empty palette keeps the table accent leading the default colors.', 'baratables'); ?></p>
-			<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php esc_attr_e('Remove color', 'baratables'); ?>">
-				<div class="btbl-palette-chips">
-					<?php foreach ($palette as $color) : ?>
-						<?php $this->render_chip($color); ?>
-					<?php endforeach; ?>
-				</div>
-				<div class="btbl-palette-add">
-					<div class="btbl-color-field">
-						<input
-							type="text"
-							class="btbl-color-value"
-							value=""
-							placeholder="#2271b1"
-							aria-label="<?php esc_attr_e('New palette color (hex)', 'baratables'); ?>"
-						/>
-						<input type="color" class="btbl-color-picker" value="#2271b1" aria-label="<?php esc_attr_e('Pick new palette color', 'baratables'); ?>" />
-					</div>
-					<button type="button" class="button" data-btbl-palette-add><?php esc_html_e('Add color', 'baratables'); ?></button>
-				</div>
-				<input type="hidden" name="btbl_chart_style_palette" value="<?php echo esc_attr((string) wp_json_encode($palette)); ?>" data-btbl-palette-input />
-			</div>
+			<?php BaraTables_Admin_Design_Fields::render_palette_editor($palette); ?>
 		</div>
-		<div class="btbl-control">
-			<strong class="btbl-small-heading"><?php esc_html_e('Colors & type', 'baratables'); ?></strong>
-			<div class="btbl-flag-grid btbl-table-flags btbl-design-fields">
-				<?php
-				$this->render_color_card('btbl_chart_style_background', __('Background', 'baratables'), (string) ($values['styleBackground'] ?? ''), __('Canvas default', 'baratables'));
-				$this->render_color_card('btbl_chart_style_text_color', __('Text color', 'baratables'), (string) ($values['styleTextColor'] ?? ''), __('ECharts default', 'baratables'));
-				$this->render_color_card('btbl_chart_style_grid_color', __('Grid color', 'baratables'), (string) ($values['styleGridColor'] ?? ''), __('ECharts default', 'baratables'));
-				$this->render_size_card('btbl_chart_style_font_size', __('Font size', 'baratables'), (string) ($values['styleFontSize'] ?? ''), '14px');
-				?>
-			</div>
-			<p class="description btbl-field-hint"><?php esc_html_e('Text and grid colors apply to axis labels, legends, and grid lines. The palette colors the series, the slices, and a Gantt\'s task groups.', 'baratables'); ?></p>
-		</div>
-		<div class="btbl-control">
-			<strong class="btbl-small-heading"><?php esc_html_e('Chart container', 'baratables'); ?></strong>
-			<p class="description"><?php esc_html_e('The space and rounding around the chart itself, rather than inside it.', 'baratables'); ?></p>
-			<div class="btbl-flag-grid btbl-table-flags btbl-design-fields">
-				<?php
-				$this->render_size_card('btbl_chart_style_padding', __('Padding', 'baratables'), (string) ($values['stylePadding'] ?? ''), __('None', 'baratables'));
-				$this->render_size_card('btbl_chart_style_radius', __('Corner radius', 'baratables'), (string) ($values['styleRadius'] ?? ''), __('None', 'baratables'));
-				?>
-			</div>
-		</div>
+		<?php BaraTables_Admin_Design_Fields::render_chart_style_groups($values, false); ?>
 		<?php
-	}
-
-	/** One design field, rendered by the shared design controls. */
-	private function render_field(string $key, array $config, array $values, string $theme_accent): void {
-		BaraTables_Admin_Design_Fields::render_field($key, $config, $values, $theme_accent, 'btbl_table_options', 'btbl_site_design');
-	}
-
-	private function render_chip(string $color): void {
-		BaraTables_Admin_Design_Fields::render_chip($color);
-	}
-
-	private function render_color_card(string $name, string $label, string $value, string $placeholder): void {
-		BaraTables_Admin_Design_Fields::render_color_card($name, $label, $value, $placeholder);
-	}
-
-	private function render_size_card(string $name, string $label, string $value, string $placeholder): void {
-		BaraTables_Admin_Design_Fields::render_size_card($name, $label, $value, $placeholder);
 	}
 
 	/**

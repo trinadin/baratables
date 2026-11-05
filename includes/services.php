@@ -74,7 +74,7 @@ class BaraTables_Service {
 		'warningBgColor'          => ['color', ''],
 		'dangerColor'             => ['color', ''],
 		'dangerBgColor'           => ['color', ''],
-		'fontSize'                => ['css_size', ''],
+		'fontSize'                => ['css_font_size', ''],
 		'cellPadding'             => ['css_size', ''],
 		'borderRadius'            => ['css_size', ''],
 		'styleMode'               => ['style_mode', 'inline'],
@@ -866,6 +866,8 @@ class BaraTables_Service {
 				$options[$key] = self::normalize_hex_color((string) $options_raw[$key]);
 			} elseif ($type === 'css_size') {
 				$options[$key] = self::sanitize_css_size($options_raw[$key]);
+			} elseif ($type === 'css_font_size') {
+				$options[$key] = self::sanitize_css_font_size($options_raw[$key]);
 			} elseif ($type === 'css_weight') {
 				$options[$key] = self::sanitize_css_weight($options_raw[$key]);
 			} elseif ($type === 'style_mode') {
@@ -901,6 +903,25 @@ class BaraTables_Service {
 		return $clean;
 	}
 
+	/**
+	 * One non-negative CSS length with an explicit safe unit (e.g. `14px`).
+	 *
+	 * A font size is a single length. The general size contract also accepts two
+	 * lengths, which is right for padding and wrong here: `--btbl-font-size:12px 16px`
+	 * is invalid CSS, so the browser drops the declaration and the field silently
+	 * does nothing.
+	 */
+	public static function sanitize_css_font_size($raw): string {
+		$value = trim((string) $raw);
+		if ($value === '') {
+			return '';
+		}
+		if (!preg_match('/^\d{1,4}(?:\.\d{1,2})?(?:px|em|rem|%)$/', $value)) {
+			return '';
+		}
+		return $value;
+	}
+
 	/** One or two non-negative CSS lengths with an explicit safe unit (e.g. `12px`, `8px 12px`). */
 	public static function sanitize_css_size($raw): string {
 		$value = trim((string) $raw);
@@ -929,6 +950,11 @@ class BaraTables_Service {
 			return '';
 		}
 		if (!preg_match('/^(\d{1,4})(?:px)?$/', $value, $matches)) {
+			return '';
+		}
+		// Zero would make the chart's text invisible: ECharts draws every label at
+		// fontSize 0, so the axis, legend and tooltip would all disappear.
+		if ((int) $matches[1] < 1) {
 			return '';
 		}
 		return $matches[1] . 'px';
@@ -1214,7 +1240,7 @@ class BaraTables_Service {
 			if ($value === '' || $value === null) {
 				continue;
 			}
-			$value = self::revalidate_style_value($key, (string) $value);
+			$value = self::sanitize_style_value($key, (string) $value);
 			if ($value === '') {
 				continue;
 			}
@@ -1225,13 +1251,25 @@ class BaraTables_Service {
 		return $vars;
 	}
 
-	/** Output-time revalidation, independent of how the definition reached storage. */
-	private static function revalidate_style_value(string $key, string $value): string {
-		if ($key === 'accentColor' || substr($key, -5) === 'Color') {
+	/**
+	 * The sanitizer for one design token, by its own key.
+	 *
+	 * One dispatch, used both when a definition is stored and when it is revalidated
+	 * at output time. A token added here is sanitized the same way everywhere.
+	 *
+	 * @param string $key   The option key, e.g. 'accentColor'.
+	 * @param string $value The raw value.
+	 * @return string The accepted value, or '' when the value is not acceptable.
+	 */
+	public static function sanitize_style_value(string $key, string $value): string {
+		if (substr($key, -5) === 'Color') {
 			return self::normalize_hex_color($value);
 		}
 		if ($key === 'headerWeight') {
 			return self::sanitize_css_weight($value);
+		}
+		if ($key === 'fontSize') {
+			return self::sanitize_css_font_size($value);
 		}
 		return self::sanitize_css_size($value);
 	}
@@ -3436,6 +3474,11 @@ class BaraTables_Service {
 		}
 		$schema['styleMode']['editor_group'] = 'design_output';
 		$schema['customCss']['editor_group'] = 'design_output';
+		// The site-design opt-out is a Design-tab control, not a table control. Without an
+		// editor_group of its own, the checkbox fallback below files it under 'controls',
+		// which the Options tab renders as a flag card -- an unlabelled duplicate of the
+		// toggle the Design tab already shows, and a second POST value for one setting.
+		$schema['useSiteDesign']['editor_group'] = 'design_site';
 		$schema['headerWeight']['choices'] = [
 			'normal' => __('Normal', 'baratables'),
 			'bold' => __('Bold', 'baratables'),

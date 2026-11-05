@@ -35,12 +35,6 @@ class BaraTables_Design {
 	public const OPT_OUT_KEY = 'useSiteDesign';
 
 	/**
-	 * Chart design keys that ride the JS payload rather than the CSS custom-property
-	 * layer, because they restyle canvas-drawn content that CSS cannot reach.
-	 */
-	public const CHART_CANVAS_KEYS = ['styleTextColor', 'styleGridColor', 'styleFontSize'];
-
-	/**
 	 * Chart design keys that print as CSS custom properties on the chart container, so a
 	 * theme can reach them the same way it reaches the table's tokens.
 	 */
@@ -184,11 +178,20 @@ class BaraTables_Design {
 			return [];
 		}
 		$palette = [];
+		$seen = [];
 		foreach ($raw as $color) {
 			$hex = BaraTables_Service::normalize_hex_color((string) $color);
-			if ($hex === '' || in_array($hex, $palette, true)) {
+			if ($hex === '') {
 				continue;
 			}
+			// Duplicate detection is case-insensitive, exactly as the chart editor's own
+			// normalization is: #EEF2F7 and #eef2f7 are the same color, and the
+			// first-seen spelling is the one that gets stored.
+			$lower = strtolower($hex);
+			if (in_array($lower, $seen, true)) {
+				continue;
+			}
+			$seen[] = $lower;
 			$palette[] = $hex;
 			if (count($palette) >= BaraTables_Service::MAX_CHART_PALETTE_COLORS) {
 				break;
@@ -201,13 +204,7 @@ class BaraTables_Design {
 	 * Sanitize one table design token by its own type.
 	 */
 	public static function sanitize_token_value(string $key, string $value): string {
-		if ($key === 'accentColor' || substr($key, -5) === 'Color') {
-			return BaraTables_Service::normalize_hex_color($value);
-		}
-		if ($key === 'headerWeight') {
-			return BaraTables_Service::sanitize_css_weight($value);
-		}
-		return BaraTables_Service::sanitize_css_size($value);
+		return BaraTables_Service::sanitize_style_value($key, $value);
 	}
 
 	/**
@@ -226,11 +223,16 @@ class BaraTables_Design {
 	 * The table's own value wins; a blank token falls back to the site default; a token
 	 * that is blank in both places stays blank, which is what "inherit the theme" means.
 	 *
-	 * @param array $table_options The table's stored options.
+	 * @param array       $table_options The table's stored options.
+	 * @param bool|null   $use_site_design Whether the site default applies at all. Null
+	 *                                   reads the entity's own opt-out flag, which is the
+	 *                                   normal case; an explicit value lets a render that
+	 *                                   has no table of its own decide for itself.
 	 * @return array<string,string> The table options with the site default folded in.
 	 */
-	public static function resolve_table_options(array $table_options): array {
-		if (self::opts_out($table_options)) {
+	public static function resolve_table_options(array $table_options, ?bool $use_site_design = null): array {
+		$inherit = $use_site_design === null ? !self::opts_out($table_options) : $use_site_design;
+		if (!$inherit) {
 			return $table_options;
 		}
 		$default = self::site_default()['table'];

@@ -70,7 +70,7 @@ Create a table first, then go to Charts and create a chart linked to it, embedde
 
 = Can I customize the table appearance? =
 
-Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so your theme keeps what you leave blank.
+Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so what you leave blank falls through to the site default and then to your theme.
 
 = Can I set one design for the whole site? =
 
@@ -112,6 +112,8 @@ Fixes:
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
 * Charts with no palette of their own now use the color scheme ECharts ships with, instead of a stale copy of an older one.
 * The Grid color control is no longer offered on charts that have no grid.
+* The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius with the table, so the CSS you copied into your theme stays in charge.
+* The "Theme default" preset is now "Clear overrides". A blank value inherits the site default first, so the old name no longer said what the button did.
 
 = 2.0.1 =
 New:

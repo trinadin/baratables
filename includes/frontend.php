@@ -202,18 +202,6 @@ class BaraTables_Frontend {
 	}
 
 	/**
-	 * Editor preview: the same markup and payload the public shortcode render produces, with
-	 * presentation-only overrides applied (no access-control cache headers, no server-side
-	 * paging, no state saving, no fixed header, no admin tools). Returns the payload next to
-	 * the HTML so the AJAX refresh can boot the freshly swapped table client-side; the
-	 * initial page-load render also pushes the payload inline as usual, and this extra copy
-	 * is simply unused on that path.
-	 *
-	 * @param array $definition Definition from the live (unsaved) editor pipeline.
-	 * @param array $rows       Preview rows, already capped by the caller.
-	 * @return array{html: string, payload: array}
-	 */
-	/**
 	 * Editor preview of a chart built from an unsaved definition and a set of chart options.
 	 *
 	 * The chart editor's preview metabox renders a SAVED chart, which a settings page has no
@@ -240,6 +228,18 @@ class BaraTables_Frontend {
 		return $this->render_table_view($definition, $rows, $chart_options, true, $instance_id, false, $chart_aria_label);
 	}
 
+	/**
+	 * Editor preview: the same markup and payload the public shortcode render produces, with
+	 * presentation-only overrides applied (no access-control cache headers, no server-side
+	 * paging, no state saving, no fixed header, no admin tools). Returns the payload next to
+	 * the HTML so the AJAX refresh can boot the freshly swapped table client-side; the
+	 * initial page-load render also pushes the payload inline as usual, and this extra copy
+	 * is simply unused on that path.
+	 *
+	 * @param array $definition Definition from the live (unsaved) editor pipeline.
+	 * @param array $rows       Preview rows, already capped by the caller.
+	 * @return array{html: string, payload: array}
+	 */
 	public function render_table_preview(array $definition, array $rows): array {
 		$this->last_preview_payload = null;
 		if (empty($definition['columns']) || empty($rows)) {
@@ -526,7 +526,11 @@ class BaraTables_Frontend {
 		// inherits the site default, and a table that opted out resolves against the theme
 		// alone. Resolved before anything else reads the options, so the printed styles and
 		// the payload describe the same effective design.
-		$table_options = BaraTables_Design::resolve_table_options($table_options);
+		// A chart-only render has no table of its own, so the wrapper's tokens follow the
+		// CHART's opt-out rather than a table's: a chart that switched the site design off
+		// must not pick up the site default's accent through the shared wrapper.
+		$inherit_site_design = $render_table ? null : !BaraTables_Design::opts_out($chart_options);
+		$table_options = BaraTables_Design::resolve_table_options($table_options, $inherit_site_design);
 		if ($presentation !== null) {
 			$presentation['options'] = $table_options;
 		}
@@ -632,7 +636,14 @@ class BaraTables_Frontend {
 			// The chart container's CSS-visible design tokens: background, padding and
 			// radius. The background also paints behind ECharts' transparent canvas, so
 			// copy and image exports without a canvas background still show it.
-			if ($chart_enabled) {
+			//
+			// "Theme CSS - copied out" means nothing prints with the table, so these three
+			// tokens are part of that: they are CSS the plugin would be printing with the
+			// table, and the admin's copy is in charge instead. The chart's canvas-drawn
+			// colours are not CSS and cannot be handed to a theme, so they still apply.
+			// A chart-only render has no table and therefore no output mode.
+			$theme_css_mode = $render_table && ($table_options['styleMode'] ?? 'inline') === 'external';
+			if ($chart_enabled && !$theme_css_mode) {
 				foreach (BaraTables_Design::chart_vars_from_options($chart_options) as $property => $value) {
 					$chart_style_parts[] = $property . ':' . $value;
 				}

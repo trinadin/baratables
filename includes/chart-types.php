@@ -55,6 +55,27 @@ class BaraTables_Chart_Types {
 		];
 	}
 
+	/**
+	 * The chart types that have no grid.
+	 *
+	 * A pie, donut or funnel draws slices and a treemap draws tiles: none of them has
+	 * axes, so there are no grid lines for the grid color to paint. Derived from the
+	 * registry's own modes, so a new gridless type cannot arrive here and stay
+	 * unhandled in the editor.
+	 *
+	 * @return string[] The chart type ids.
+	 */
+	public static function gridless_types(): array {
+		$gridless = [];
+		foreach (self::all() as $type => $capabilities) {
+			$mode = (string) ($capabilities['mode'] ?? '');
+			if ($mode === 'single_series' || $mode === 'treemap') {
+				$gridless[] = $type;
+			}
+		}
+		return $gridless;
+	}
+
 	private static function type(string $label, string $image, string $icon, string $mode = 'standard', bool $stackable = true, array $required_roles = ['x_axis', 'series'], array $column_roles = ['x_axis', 'series'], ?bool $single_series = null): array {
 		return [
 			'label' => $label,

@@ -17,8 +17,9 @@
 	// The same helpers the server's sanitizers are mirrored by. They live in admin-core.js
 	// because the chart editor mirrors the same colour contract.
 	var normalizeHex = adminCore.normalizeHex;
+	var normalizeCssSize = adminCore.normalizeCssSize;
+	var normalizeCssFontSize = adminCore.normalizeCssFontSize;
 	var sanitizeCustomCss = adminCore.sanitizeCustomCss;
-	var CSS_SIZE = /^\d{1,4}(\.\d{1,2})?(px|em|rem|%)( \d{1,4}(\.\d{1,2})?(px|em|rem|%))?$/;
 	var CSS_WEIGHTS = ['400', '500', '600', '700', 'normal', 'bold'];
 	// The DataTables style-feature toggles render through classes, not custom properties, so
 	// they get the same live treatment via class toggling on the preview table.
@@ -61,13 +62,16 @@
 	// reaches the preview, so the preview can never diverge from what will persist.
 	function sanitizedValue(key, raw) {
 		if (!raw) { return ''; }
-		if (/Color$/.test(key) || key === 'accentColor') {
+		if (/Color$/.test(key)) {
 			return normalizeHex(raw);
 		}
 		if (key === 'headerWeight') {
 			return CSS_WEIGHTS.indexOf(raw) !== -1 ? raw : '';
 		}
-		return CSS_SIZE.test(raw) ? raw : '';
+		if (key === 'fontSize') {
+			return normalizeCssFontSize(raw);
+		}
+		return normalizeCssSize(raw);
 	}
 
 	// Whether this entity currently inherits the site design. The checkbox in the form is
@@ -312,25 +316,6 @@
 		return lines.join('\n');
 	}
 
-	function copyText(text) {
-		if (navigator.clipboard && navigator.clipboard.writeText) {
-			return navigator.clipboard.writeText(text);
-		}
-		// Non-secure contexts (plain http on a LAN) have no async clipboard API; fall back to
-		// the classic hidden-textarea/execCommand route.
-		var deferred = $.Deferred();
-		var $area = $('<textarea>').val(text).css({position: 'fixed', opacity: '0'}).appendTo('body');
-		$area[0].select();
-		try {
-			document.execCommand('copy');
-			deferred.resolve();
-		} catch (error) {
-			deferred.reject(error);
-		}
-		$area.remove();
-		return deferred.promise();
-	}
-
 	function applyPreset(name) {
 		var isDefault = name === 'default';
 		var values = PRESETS[name];
@@ -368,7 +353,7 @@
 	// Inline -- that keeps the theme copy and the box from silently diverging.
 	function applyStyleMode() {
 		var external = fieldValue('styleMode') === 'external';
-		$('[data-btbl-external-note]').prop('hidden', !external);
+		$(designScope() + ' [data-btbl-external-note]').prop('hidden', !external);
 		field('customCss').prop('readonly', external).toggleClass('is-mode-disabled', external);
 	}
 
@@ -385,21 +370,28 @@
 				applyStyleMode();
 				return;
 			}
+			if (key === 'useSiteDesign') {
+				// The opt-out changes what every blank token inherits, so the preview has
+				// to be rebuilt: without this, unchecking the box leaves the inherited
+				// colours on screen until some other field changes.
+				applyStyle();
+				return;
+			}
 			if (Object.prototype.hasOwnProperty.call(config.varMap, key) || Object.prototype.hasOwnProperty.call(FEATURE_CLASS_MAP, key)) {
 				applyStyle();
 			}
 		});
 
-		$(document).on('click', '.btbl-preset-button', function(e) {
+		$(document).on('click', '[data-btbl-preset]', function(e) {
 			e.preventDefault();
 			applyPreset(String($(this).data('btbl-preset') || ''));
 		});
 
 		$(document).on('click', '[data-btbl-copy-css]', function(e) {
 			e.preventDefault();
-			var $status = $('[data-btbl-copy-status]');
-			var $output = $('.btbl-copy-css-output');
-			copyText(buildCssText()).then(function() {
+			var $status = $(designScope() + ' [data-btbl-copy-status]');
+			var $output = $(designScope() + ' .btbl-copy-css-output');
+			adminCore.copyText(buildCssText()).then(function() {
 				$status.text(config.copiedLabel);
 				$output.prop('hidden', true);
 			}, function() {

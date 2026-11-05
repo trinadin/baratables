@@ -126,6 +126,15 @@
 		return new TextDecoder().decode(bytes.subarray(0, end));
 	}
 
+	// Mirrors BaraTables_Service::sanitize_css_size(): one or two non-negative CSS lengths
+	// with an explicit safe unit, e.g. "12px", "1.5em", "8px 12px", "50%". The server
+	// trims before it matches, so this mirror trims too -- a value the server would keep
+	// must not be rejected here, or the preview would drop a size the page publishes.
+	function normalizeCssSize(raw) {
+		var value = String(raw === null || raw === undefined ? '' : raw).trim();
+		return /^\d{1,4}(?:\.\d{1,2})?(?:px|em|rem|%)(?: \d{1,4}(?:\.\d{1,2})?(?:px|em|rem|%))?$/.test(value) ? value : '';
+	}
+
 	// Mirrors BaraTables_Service::sanitize_chart_font_size(): a chart's font size is a
 	// number of PIXELS, because ECharts' fontSize is not a CSS length -- "2em" read as a
 	// number is 2, which renders a 2px label. Only pixels are accepted, and a bare
@@ -133,7 +142,34 @@
 	function normalizeChartFontSize(raw) {
 		var value = String(raw === null || raw === undefined ? '' : raw).trim();
 		var match = /^(\d{1,4})(?:px)?$/.exec(value);
-		return match ? match[1] + 'px' : '';
+		// Zero would make the chart's text invisible: ECharts draws every label at
+		// fontSize 0, so the axis, legend and tooltip would all disappear.
+		if (!match || parseInt(match[1], 10) < 1) { return ''; }
+		return match[1] + 'px';
+	}
+
+	// Mirrors BaraTables_Service::sanitize_css_font_size(): ONE non-negative CSS length
+	// with an explicit safe unit. A font size is not a two-value length: "12px 16px" is
+	// invalid CSS, so the browser drops the declaration and the field does nothing.
+	function normalizeCssFontSize(raw) {
+		var value = String(raw === null || raw === undefined ? '' : raw).trim();
+		return /^\d{1,4}(?:\.\d{1,2})?(?:px|em|rem|%)$/.test(value) ? value : '';
+	}
+
+	// The effective value of one design key: the entity's own value when it has one,
+	// otherwise the inherited site default. An entity that switched the site design off
+	// inherits nothing, so only its own value counts.
+	//
+	// This is the client-side mirror of BaraTables_Design::resolve_table_options() and
+	// resolve_chart_options(): the preview and Copy CSS must show the design the page
+	// will actually publish, not the raw form state.
+	function effectiveValue(key, ownValue, siteDefault, useSiteDesign) {
+		var own = ownValue === null || ownValue === undefined ? '' : String(ownValue);
+		if (own !== '') { return own; }
+		if (!useSiteDesign) { return ''; }
+		var defaults = siteDefault || {};
+		var inherited = defaults[key] === null || defaults[key] === undefined ? '' : String(defaults[key]);
+		return inherited;
 	}
 
 	// The design presets (2.1.0). One registry, two families: the table tokens and the
@@ -214,11 +250,99 @@
 		}
 	};
 
+	// The shared design-field feedback. Colours and sizes are checked as you type on
+	// every design surface -- the table editor's Design tab, the chart editor's Design
+	// tab and the site Design screen -- so a value the server would discard is flagged
+	// instead of disappearing silently on save. The checks are the server's own
+	// contracts, so a field and a save can never disagree.
+	function markValidity($field, valid) {
+		$field.toggleClass('is-invalid', !valid);
+		if (valid) {
+			$field.removeAttr('aria-invalid');
+		} else {
+			$field.attr('aria-invalid', 'true');
+		}
+	}
+
+	// Whether a size field's value is one the server would keep. An empty field is
+	// always fine: blank means "inherit".
+	function sizeValueIsValid(value, kind) {
+		var raw = String(value === null || value === undefined ? '' : value);
+		if (raw.trim() === '') { return true; }
+		if (kind === 'chart-font') { return normalizeChartFontSize(raw) !== ''; }
+		if (kind === 'font') { return normalizeCssFontSize(raw) !== ''; }
+		return normalizeCssSize(raw) !== '';
+	}
+
+	function initDesignFieldValidation() {
+		// The native swatch writes the hex value into its text field.
+		$(document).on('input', '.btbl-color-picker', function() {
+			var $value = $(this).closest('.btbl-color-field').find('.btbl-color-value');
+			if ($value.length) {
+				$value.val($(this).val()).trigger('change');
+			}
+		});
+		$(document).on('input change', '.btbl-color-value', function() {
+			var $field = $(this).closest('.btbl-color-field');
+			var $picker = $field.find('.btbl-color-picker');
+			// Masked as you type: only "#" and hex digits, seven characters at most. The value
+			// is rewritten ONLY when something was stripped, so normal typing never disturbs the
+			// caret. A non-empty value that is not yet a complete #rgb or #rrggbb flags the
+			// field as invalid -- the save pipeline drops such a value back to the theme color.
+			var raw = String($(this).val() || '');
+			var masked = raw.replace(/[^#0-9a-fA-F]/g, '').slice(0, 7);
+			if (masked !== raw) {
+				$(this).val(masked);
+				this.setSelectionRange(masked.length, masked.length);
+			}
+			// The server accepts "#" plus exactly three or six hex digits and rejects
+			// everything else, so the field has to agree with it exactly: a valid #rgb is not
+			// "not finished yet", and a bare "fff" or a doubled "##fff" is not a colour.
+			var complete = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(masked);
+			markValidity($(this), masked === '' || complete);
+			if (complete) {
+				$picker.val(masked);
+			} else if (masked === '') {
+				$picker.val($field.data('btbl-theme-accent') || '#2271b1');
+			}
+		});
+		$(document).on('input change', '[data-btbl-size-field]', function() {
+			markValidity($(this), sizeValueIsValid($(this).val(), String($(this).attr('data-btbl-size-kind') || 'css')));
+		});
+	}
+
+	// Copy text to the clipboard. The async Clipboard API is unavailable on a non-secure
+	// origin (plain http on a LAN) and in some webviews, so the classic hidden-textarea
+	// route is the fallback. Shared: both editors copy CSS, and a fallback that only
+	// one of them had would fail on exactly the page that needed it.
+	function copyText(text) {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			return navigator.clipboard.writeText(text);
+		}
+		var deferred = $.Deferred();
+		var $area = $('<textarea>').val(text).css({position: 'fixed', opacity: '0'}).appendTo('body');
+		$area[0].select();
+		try {
+			document.execCommand('copy');
+			deferred.resolve();
+		} catch (error) {
+			deferred.reject(error);
+		}
+		$area.remove();
+		return deferred.promise();
+	}
+
+	$(initDesignFieldValidation);
+
 	window.BaraTablesAdminCore = {
 		formAuth: formAuth,
 		designPresets: DESIGN_PRESETS,
 		normalizeHex: normalizeHex,
+		normalizeCssSize: normalizeCssSize,
+		normalizeCssFontSize: normalizeCssFontSize,
 		normalizeChartFontSize: normalizeChartFontSize,
+		effectiveValue: effectiveValue,
+		copyText: copyText,
 		sanitizeCustomCss: sanitizeCustomCss,
 		truncateUtf8: truncateUtf8,
 		requestFragment: requestFragment,

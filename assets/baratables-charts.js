@@ -1,15 +1,22 @@
 (function(window) {
+	// A colour is a "#" followed by exactly three or six hex digits -- the same contract
+	// the plugin's own sanitizer and the admin's colour mask apply. A four-, five- or
+	// eight-digit value passes the engine's old looser test and fails the server's, so
+	// the preview could paint a colour that a save would discard.
 	function validColor(value) {
-		return typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : '';
+		return typeof value === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : '';
 	}
 
 	// A chart font size is a number of PIXELS. ECharts' fontSize is not a CSS length, so
 	// a general CSS length would be read as its bare number -- "2em" as 2px. PHP
 	// normalizes the stored value to the px form; this re-checks it at runtime so a
-	// hand-built integration payload cannot smuggle a length back in.
+	// hand-built integration payload cannot smuggle a length back in. Zero is rejected
+	// too: ECharts draws every label at fontSize 0, which hides the chart's text.
 	function validSize(value) {
 		var match = typeof value === 'string' ? /^(\d{1,4}(?:\.\d{1,2})?)px$/.exec(value.trim()) : null;
-		return match ? parseFloat(match[1]) : 0;
+		if (!match) { return 0; }
+		var size = parseFloat(match[1]);
+		return size >= 1 ? size : 0;
 	}
 
 	// The palette the vendored ECharts build (v6.1.0) draws with. The plugin used to

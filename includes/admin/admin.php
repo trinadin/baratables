@@ -820,7 +820,7 @@ class BaraTables_Chart_Admin {
 
 	public function collect_chart_options_from_request(): array {
 		$p = BaraTables_Post_Input::class;
-		return [
+		$options = [
 			'type'           => $p::raw('btbl_chart_type'),
 			'x_axis'         => $p::raw('btbl_chart_x_axis'),
 			'series'         => $p::array_raw('btbl_chart_series'),
@@ -836,7 +836,7 @@ class BaraTables_Chart_Admin {
 			'heatmap_value'  => $p::raw('btbl_chart_heatmap_value'),
 			// Design tab (2.0): the palette arrives as a JSON array of hex strings from the
 			// chip editor; merge_chart_options() re-sanitizes every value, so decode is the
-			// only step needed here.
+			// only step here.
 			'stylePalette'   => self::decode_palette_input($p::raw('btbl_chart_style_palette')),
 			'styleBackground' => $p::raw('btbl_chart_style_background'),
 			'styleTextColor' => $p::raw('btbl_chart_style_text_color'),
@@ -846,10 +846,18 @@ class BaraTables_Chart_Admin {
 			// custom-property layer the table's tokens use.
 			'stylePadding'   => $p::raw('btbl_chart_style_padding'),
 			'styleRadius'    => $p::raw('btbl_chart_style_radius'),
-			// The site-design opt-out (2.1.0). A hidden "0" twin sits in front of the
-			// checkbox, so an unchecked box submits the opt-out rather than nothing.
-			'useSiteDesign'   => $p::raw('btbl_chart_use_site_design'),
 		];
+		// The site-design opt-out (2.1.0). A hidden "0" twin sits in front of the
+		// checkbox, so an unchecked box submits the opt-out rather than nothing.
+		//
+		// A MISSING field is not an opt-out. It means the request never carried the
+		// toggle, and reading that as "switched off" would drop the site design on a
+		// save that did not touch it, so an absent field leaves the key out entirely.
+		$use_site_design = $p::raw('btbl_chart_use_site_design');
+		if ((string) $use_site_design !== '') {
+			$options['useSiteDesign'] = $use_site_design;
+		}
+		return $options;
 	}
 
 	/** The palette chip editor serializes its colors as JSON; malformed input is just "no palette". */

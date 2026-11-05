@@ -202,9 +202,10 @@ jQuery(function($) {
 
 		// The grid color paints axis grid lines. A pie, donut, funnel or treemap has no
 		// axes at all, so offering the control there would be a promise the chart cannot
-		// keep.
-		var GRIDLESS_TYPES = ['pie', 'donut', 'funnel', 'treemap'];
-		$('[data-btbl-chart-grid-field]').toggleClass('is-hidden', GRIDLESS_TYPES.indexOf(type) !== -1);
+		// keep. The list comes from the chart-type registry on the server, so a new
+		// gridless type cannot arrive in PHP and stay unhandled here.
+		var gridlessTypes = gridlessChartTypes();
+		$('[data-btbl-chart-grid-field]').toggleClass('is-hidden', gridlessTypes.indexOf(type) !== -1);
 		// Match per FIELD (each .btbl-control card), mirroring render_chart_note(): the global
 		// count only coincides while every field ships the same type groups -- a future
 		// field-specific variant set would otherwise leave that field with no visible note.
@@ -373,27 +374,76 @@ jQuery(function($) {
 		$paletteInput.val(JSON.stringify(colors)).trigger('change');
 	}
 
-	function designHex(name) {
-		return normalizeHex(String($('[name="' + name + '"]').val() || ''));
-	}
-
-	// A chart's font size is a number of pixels, not a CSS length: ECharts' fontSize is
-	// a bare number, so a length would be read as its number ("2em" as 2px). The shared
-	// normalizer mirrors BaraTables_Service::sanitize_chart_font_size().
-	function designSize(name) {
-		return adminCore.normalizeChartFontSize(String($('[name="' + name + '"]').val() || ''));
-	}
-
 	// ------------------------------------------------------------------
 	// Chart presets and Copy CSS (2.1.0): the chart Design tab's parity
 	// with the table Design tab.
 	// ------------------------------------------------------------------
-	var CHART_PRESET_FIELDS = {
+	var CHART_STYLE_FIELDS = {
 		styleBackground: 'btbl_chart_style_background',
 		styleTextColor: 'btbl_chart_style_text_color',
 		styleGridColor: 'btbl_chart_style_grid_color',
-		styleFontSize: 'btbl_chart_style_font_size'
+		styleFontSize: 'btbl_chart_style_font_size',
+		stylePadding: 'btbl_chart_style_padding',
+		styleRadius: 'btbl_chart_style_radius'
 	};
+
+	// The chart editor's design context (2.1.0): the site default this chart inherits
+	// and whether it inherits at all. The site Design screen carries no such element --
+	// there the fields ARE the site default, so a blank field means "no default for this
+	// token" and must not fall back to anything.
+	// The chart types with no grid, from the server's chart-type registry.
+	function gridlessChartTypes() {
+		var context = chartDesignContext();
+		var types = context && context.gridlessTypes;
+		return Array.isArray(types) ? types : [];
+	}
+
+	function chartDesignContext() {
+		var $el = $('[data-btbl-chart-config]');
+		if (!$el.length) { return null; }
+		var value = $el.data('btbl-chart-config');
+		return value && typeof value === 'object' ? value : null;
+	}
+
+	// One chart design value, sanitized the way the server sanitizes it.
+	function sanitizedChartValue(key, raw) {
+		if (key === 'styleFontSize') {
+			return adminCore.normalizeChartFontSize(raw);
+		}
+		if (key === 'stylePadding' || key === 'styleRadius') {
+			return adminCore.normalizeCssSize(raw);
+		}
+		return normalizeHex(raw);
+	}
+
+	// The effective value of one chart design key: the chart's own value when it has
+	// one, otherwise the site default's -- unless the chart switched the site design
+	// off. Mirrors BaraTables_Design::resolve_chart_options(), so the editor's preview
+	// shows the design the published chart will use, not the raw form state.
+	function effectiveChartValue(key, context) {
+		var own = String($('[name="' + CHART_STYLE_FIELDS[key] + '"]').val() || '');
+		if (!context) {
+			return sanitizedChartValue(key, own);
+		}
+		var defaults = {};
+		var source = context.siteDefault || {};
+		defaults[key] = (source[key] === null || source[key] === undefined) ? '' : source[key];
+		return sanitizedChartValue(key, adminCore.effectiveValue(key, own, defaults, context.useSiteDesign !== false));
+	}
+
+	// The effective series palette: the chart's own when it has one, otherwise the site
+	// default's, unless the chart switched the site design off.
+	function effectiveChartPalette(context) {
+		var own = [];
+		if ($paletteInput.length) {
+			try { own = JSON.parse($paletteInput.val() || '[]'); } catch (paletteError) { own = []; }
+		}
+		if (!Array.isArray(own)) { own = []; }
+		if (own.length) { return own; }
+		if (!context || context.useSiteDesign === false) { return []; }
+		var inherited = (context.siteDefault && context.siteDefault.stylePalette) || [];
+		return Array.isArray(inherited) ? inherited : [];
+	}
 
 	// Apply one chart preset. The palette is replaced rather than merged, so a preset
 	// reads as a whole look instead of a tint over whatever was there before.
@@ -402,7 +452,7 @@ jQuery(function($) {
 		var isDefault = name === 'default';
 		var values = presets[name];
 		if (!values && !isDefault) { return; }
-		Object.keys(CHART_PRESET_FIELDS).forEach(function(key) {
+		Object.keys(CHART_STYLE_FIELDS).forEach(function(key) {
 			var value;
 			if (values && Object.prototype.hasOwnProperty.call(values, key)) {
 				value = values[key];
@@ -411,7 +461,7 @@ jQuery(function($) {
 			} else {
 				return;
 			}
-			var $f = $('[name="' + CHART_PRESET_FIELDS[key] + '"]');
+			var $f = $('[name="' + CHART_STYLE_FIELDS[key] + '"]');
 			if (!$f.length) { return; }
 			$f.val(value).trigger('input').trigger('change');
 		});
@@ -441,14 +491,18 @@ jQuery(function($) {
 			'   Additional CSS (or a child theme stylesheet). */'
 		];
 		var vars = [];
-		if (designHex('btbl_chart_style_background')) {
-			vars.push('--btbl-chart-bg:' + designHex('btbl_chart_style_background'));
+		var context = chartDesignContext();
+		var background = effectiveChartValue('styleBackground', context);
+		var padding = effectiveChartValue('stylePadding', context);
+		var radius = effectiveChartValue('styleRadius', context);
+		if (background) {
+			vars.push('--btbl-chart-bg:' + background);
 		}
-		if (designSize('btbl_chart_style_padding')) {
-			vars.push('--btbl-chart-padding:' + designSize('btbl_chart_style_padding'));
+		if (padding) {
+			vars.push('--btbl-chart-padding:' + padding);
 		}
-		if (designSize('btbl_chart_style_radius')) {
-			vars.push('--btbl-chart-radius:' + designSize('btbl_chart_style_radius'));
+		if (radius) {
+			vars.push('--btbl-chart-radius:' + radius);
 		}
 		if (vars.length) {
 			lines.push('.btbl-chart {');
@@ -460,43 +514,45 @@ jQuery(function($) {
 		return lines.join('\n');
 	}
 
-	function copyText(text) {
-		if (navigator.clipboard && navigator.clipboard.writeText) {
-			return navigator.clipboard.writeText(text);
-		}
-		// Non-secure contexts (plain http on a LAN) have no async clipboard API; fall back to
-		// the classic hidden-textarea/execCommand route.
-		var deferred = $.Deferred();
-		var $area = $('<textarea>').val(text).css({position: 'fixed', opacity: '0'}).appendTo('body');
-		$area[0].select();
-		try {
-			document.execCommand('copy');
-			deferred.resolve();
-		} catch (error) {
-			deferred.reject(error);
-		}
-		$area.remove();
-		return deferred.promise();
-	}
-
 	// The Design tab re-runs the preview chart through BaraTablesCharts.init() with the
 	// stashed init inputs (see baratables-charts.js), overriding the style keys with the
-	// current form values -- the same values the PHP sanitizers will accept, so the preview
-	// never diverges from what a save would persist.
+	// EFFECTIVE values -- the chart's own, else the site default's -- which are the same
+	// values the PHP sanitizers will accept and the same ones the published chart will
+	// use, so the preview never diverges from what a save would persist.
 	var chartStyleTimer;
 	function restyleChartPreview() {
 		var container = document.querySelector('.btbl-chart-preview-embed .btbl-chart');
 		var stash = container && container.__btblChart;
 		if (!stash || !window.BaraTablesCharts) { return; }
+		var context = chartDesignContext();
 		var config = JSON.parse(JSON.stringify(stash.config));
-		config.styleBackground = designHex('btbl_chart_style_background');
-		config.styleTextColor = designHex('btbl_chart_style_text_color');
-		config.styleGridColor = designHex('btbl_chart_style_grid_color');
-		config.styleFontSize = designSize('btbl_chart_style_font_size');
-		if ($paletteInput.length) {
-			try { config.stylePalette = JSON.parse($paletteInput.val() || '[]'); } catch (paletteError) { config.stylePalette = []; }
-		}
+		config.styleBackground = effectiveChartValue('styleBackground', context);
+		config.styleTextColor = effectiveChartValue('styleTextColor', context);
+		config.styleGridColor = effectiveChartValue('styleGridColor', context);
+		config.styleFontSize = effectiveChartValue('styleFontSize', context);
+		config.stylePalette = effectiveChartPalette(context);
+		applyChartContainerStyle(container, context);
 		window.BaraTablesCharts.init(config, null, stash.tableId, stash.slugToIndex, stash.helpers);
+	}
+
+	// The container's own shape is CSS on the container element, not on the canvas, so
+	// re-initializing the chart cannot touch it: the custom properties are updated here.
+	// Without this a padding or radius change sat in the form until the preview was
+	// reloaded, while the screen promised the preview changed as you type.
+	function applyChartContainerStyle(container, context) {
+		if (!container || !container.style) { return; }
+		var pairs = {
+			'--btbl-chart-bg': effectiveChartValue('styleBackground', context),
+			'--btbl-chart-padding': effectiveChartValue('stylePadding', context),
+			'--btbl-chart-radius': effectiveChartValue('styleRadius', context)
+		};
+		Object.keys(pairs).forEach(function(property) {
+			if (pairs[property]) {
+				container.style.setProperty(property, pairs[property]);
+			} else {
+				container.style.removeProperty(property);
+			}
+		});
 	}
 
 	function queueChartRestyle() {
@@ -560,7 +616,7 @@ jQuery(function($) {
 			});
 	}
 
-	$(document).on('input change', '[name="btbl_chart_style_background"], [name="btbl_chart_style_text_color"], [name="btbl_chart_style_grid_color"], [name="btbl_chart_style_font_size"], [data-btbl-palette-input]', queueChartRestyle);
+	$(document).on('input change', '[name="btbl_chart_style_background"], [name="btbl_chart_style_text_color"], [name="btbl_chart_style_grid_color"], [name="btbl_chart_style_font_size"], [name="btbl_chart_style_padding"], [name="btbl_chart_style_radius"], [data-btbl-palette-input]', queueChartRestyle);
 
 	// The chart presets, with the same names the table Design tab offers.
 	$(document).on('click', '[data-btbl-chart-preset]', function(e) {
@@ -576,7 +632,7 @@ jQuery(function($) {
 		var text = buildChartCssText();
 		$output.text(text).prop('hidden', false);
 		var $status = $('[data-btbl-chart-copy-status]');
-		copyText(text).then(function() {
+		adminCore.copyText(text).then(function() {
 			if ($status.length) {
 				$status.text(String($output.data('copied-label') || 'Copied to your clipboard.'));
 			}

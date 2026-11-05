@@ -954,7 +954,10 @@ class BaraTables_Admin_Assets {
 			&& in_array($hook_post_type, [BaraTables_Repository::CPT, BaraTables_Chart_Repository::CPT], true);
 		$page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading standard WP admin URL parameters.
 		$is_btbl_page = $page === BaraTables_Admin_Options::PAGE_SLUG;
-		if (!$is_btbl_list && !$is_btbl_editor && !$is_btbl_page) {
+		// The site Design screen (2.1.0) is the third design surface: it drives the same
+		// design script and the same chart palette editor as the two editors.
+		$is_design_page = $page === BaraTables_Admin_Design_Screen::PAGE_SLUG;
+		if (!$is_btbl_list && !$is_btbl_editor && !$is_btbl_page && !$is_design_page) {
 			return;
 		}
 
@@ -972,7 +975,7 @@ class BaraTables_Admin_Assets {
 
 		$is_table_editor = $is_btbl_editor && $hook_post_type === BaraTables_Repository::CPT;
 		$is_chart_editor = $is_btbl_editor && $hook_post_type === BaraTables_Chart_Repository::CPT;
-		if (($is_table_editor || $is_chart_editor) && $this->frontend !== null) {
+		if (($is_table_editor || $is_chart_editor || $is_design_page) && $this->frontend !== null) {
 			// The preview metaboxes render the actual front-end output, so the front-end
 			// stylesheets must be in <head> before that markup paints. A table editor pulls
 			// the DataTables chrome plus exactly this table's feature-gated vendor CSS --
@@ -987,6 +990,23 @@ class BaraTables_Admin_Assets {
 					: [];
 			}
 			$this->frontend->enqueue_preview_styles($is_table_editor, $table_features);
+		}
+		if ($is_design_page) {
+			// The Design screen's preview is a real table render, so it needs the same
+			// DataTables chrome the published page gets.
+			wp_enqueue_style(
+				'baratables-tom-select',
+				$this->plugin_url . 'assets/vendor/tom-select/tom-select.default.min.css',
+				[],
+				'2.6.2'
+			);
+			wp_enqueue_script(
+				'baratables-tom-select',
+				$this->plugin_url . 'assets/vendor/tom-select/tom-select.complete.min.js',
+				[],
+				'2.6.2',
+				true
+			);
 		}
 		if ($is_chart_editor) {
 			wp_enqueue_style(
@@ -1013,8 +1033,8 @@ class BaraTables_Admin_Assets {
 			['baratables-utils', 'assets/baratables-utils.js', [], $is_table_editor],
 			['baratables-admin-layout', 'assets/admin-layout.js', ['jquery', 'baratables-admin-core'], $is_table_editor],
 			['baratables-admin-grid', 'assets/admin-grid.js', ['jquery', 'baratables-utils'], $is_table_editor],
-			['baratables-admin-design', 'assets/admin-design.js', ['jquery', 'baratables-admin-core'], $is_table_editor],
-			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core', 'baratables-tom-select'], $is_chart_editor],
+			['baratables-admin-design', 'assets/admin-design.js', ['jquery', 'baratables-admin-core'], $is_table_editor || $is_design_page],
+			['baratables-admin-chart', 'assets/admin-chart.js', ['jquery', 'baratables-admin-core', 'baratables-tom-select'], $is_chart_editor || $is_design_page],
 			['baratables-admin', 'assets/admin.js', $admin_dependencies, $is_btbl_editor],
 		];
 		foreach ($scripts as [$handle, $relative, $dependencies, $enabled]) {

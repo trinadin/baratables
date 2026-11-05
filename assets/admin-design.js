@@ -33,50 +33,19 @@
 	// Curated starter looks. Values map 1:1 onto btbl_table_options keys; the "default"
 	// preset is special-cased below as "clear every token field" (Additional CSS and the
 	// output mode are the admin's own and are never touched by a preset).
-	var PRESETS = {
-		minimal: {
-			headerBgColor: '#fafbfc',
-			headerTextColor: '#24292f',
-			headerWeight: '600',
-			stripeColor: '',
-			hoverColor: '#f6f7f8',
-			borderColor: '#e5e7eb'
-		},
-		bold: {
-			headerBgColor: '#1f2937',
-			headerTextColor: '#f9fafb',
-			headerWeight: '700',
-			stripeColor: '#f3f4f6',
-			hoverColor: '#e5e7eb',
-			borderColor: '#d1d5db'
-		},
-		midnight: {
-			// Dark chrome on a light page: the body background is the theme's, so body text
-			// keeps the theme color and only the striped/hover bands and chrome go dark. A
-			// light body text here would strand unstriped rows on the page's white canvas.
-			headerBgColor: '#111827',
-			headerTextColor: '#f9fafb',
-			headerWeight: '600',
-			stripeColor: '#e5e7eb',
-			hoverColor: '#d1d5db',
-			borderColor: '#9ca3af',
-			footerBgColor: '#111827',
-			footerTextColor: '#f9fafb'
-		},
-		paper: {
-			headerBgColor: '#f5f0e8',
-			headerTextColor: '#3f3a34',
-			headerWeight: '600',
-			stripeColor: '#faf7f2',
-			hoverColor: '#f1ebe0',
-			borderColor: '#d9d2c5',
-			footerBgColor: '#f5f0e8',
-			footerTextColor: '#3f3a34'
-		}
-	};
+	// The presets live in admin-core.js so the table editor, the chart editor and the site
+	// Design screen offer the same names for the same looks.
+	var PRESETS = adminCore.designPresets.table;
+
+	// The design form this script drives. The table editor's Design tab is the default;
+	// the site-level Design screen binds the same script to its own form, which is how
+	// the two surfaces stay in step instead of drifting apart.
+	function designScope() {
+		return (config && config.scope) || '#btbl-tab-design';
+	}
 
 	function field(key) {
-		return $('#btbl-tab-design [name="btbl_table_options[' + key + ']"]');
+		return $(designScope() + ' [name="btbl_table_options[' + key + ']"]');
 	}
 
 	function fieldValue(key) {
@@ -101,11 +70,37 @@
 		return CSS_SIZE.test(raw) ? raw : '';
 	}
 
+	// Whether this entity currently inherits the site design. The checkbox in the form is
+	// authoritative, so switching it off drops the inherited values from the preview
+	// straight away; the server-sent flag is the fallback for a form without the toggle.
+	function usesSiteDesign() {
+		var $toggle = $(designScope() + ' input[type="checkbox"][name="btbl_table_options[useSiteDesign]"]');
+		if ($toggle.length) {
+			return $toggle.is(':checked');
+		}
+		return !(config && config.useSiteDesign === false);
+	}
+
+	// The site default's value for a token, when this entity inherits the site design.
+	// A table that opted out resolves against the theme alone, so it gets nothing here.
+	function siteDefaultValue(key) {
+		if (!usesSiteDesign()) { return ''; }
+		var defaults = (config && config.siteDefault) || {};
+		return sanitizedValue(key, defaults[key] || '');
+	}
+
+	// The effective value of a token: the table's own value wins, a blank one inherits
+	// the site default, and a blank one in both places stays blank. The preview and Copy
+	// CSS both read this, so neither can show something the page will not publish.
+	function effectiveValue(key) {
+		return sanitizedValue(key, fieldValue(key)) || siteDefaultValue(key);
+	}
+
 	function buildVars() {
 		var vars = [];
 		var map = (config && config.varMap) || {};
 		Object.keys(map).forEach(function(key) {
-			var value = sanitizedValue(key, fieldValue(key));
+			var value = effectiveValue(key);
 			if (!value) { return; }
 			map[key].forEach(function(property) {
 				vars.push(property + ':' + value);
@@ -293,7 +288,11 @@
 	function buildCssText() {
 		var vars = buildVars();
 		var tableId = previewBaseId();
-		var scope = '.btbl-table-wrapper[data-btbl-table-id="' + (tableId || 'your-table-id') + '"]';
+		// The site Design screen's CSS applies to every table, so its scope is the wrapper
+		// itself; a table's own Copy CSS stays scoped to that table.
+		var scope = (config && config.siteScope)
+			? '.btbl-table-wrapper'
+			: '.btbl-table-wrapper[data-btbl-table-id="' + (tableId || 'your-table-id') + '"]';
 		var lines = [
 			'/* BaraTables table styles. Paste into Appearance > Customize > Additional CSS (or a',
 			'   child theme stylesheet), then switch the Design tab to "Theme CSS" so this plugin',
@@ -373,7 +372,7 @@
 		field('customCss').prop('readonly', external).toggleClass('is-mode-disabled', external);
 	}
 
-	$(document).on('input change', '#btbl-tab-design [name^="btbl_table_options["]', function() {
+	$(document).on('input change', designScope() + ' [name^="btbl_table_options["]', function() {
 			var match = String($(this).attr('name') || '').match(/^btbl_table_options\[(.+?)\]$/);
 			if (!match) { return; }
 			var key = match[1];

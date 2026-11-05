@@ -29,6 +29,9 @@ class BaraTables_Admin {
 		$list_columns = new BaraTables_Admin_List_Columns();
 		$slug_manager = new BaraTables_Admin_Slug_Manager($repo);
 		$options_page = new BaraTables_Admin_Options($service);
+		// The site-wide default design screen (2.1.0): the third surface of the design
+		// system, alongside the table editor's Design tab and the chart editor's.
+		$design_screen = new BaraTables_Admin_Design_Screen($service, $frontend);
 
 		add_action('save_post_' . BaraTables_Repository::CPT, [$slug_manager, 'ensure_slug_on_save'], 10, 2);
 		add_action('added_post_meta', [$slug_manager, 'ensure_slug_on_meta'], 10, 3);
@@ -36,6 +39,7 @@ class BaraTables_Admin {
 		add_filter('manage_' . BaraTables_Repository::CPT . '_posts_columns', [$list_columns, 'register_list_columns']);
 		add_action('manage_' . BaraTables_Repository::CPT . '_posts_custom_column', [$list_columns, 'render_list_columns'], 10, 2);
 		add_action('admin_menu', [$options_page, 'register_menu']);
+		add_action('admin_menu', [$design_screen, 'register_menu']);
 		add_action('add_meta_boxes_' . BaraTables_Repository::CPT, [$this, 'register_meta_boxes']);
 		add_action('save_post_' . BaraTables_Repository::CPT, [$this, 'save_table_from_editor'], 9, 3);
 		add_action('admin_notices', ['BaraTables_Admin_Notice', 'render']);
@@ -838,6 +842,13 @@ class BaraTables_Chart_Admin {
 			'styleTextColor' => $p::raw('btbl_chart_style_text_color'),
 			'styleGridColor' => $p::raw('btbl_chart_style_grid_color'),
 			'styleFontSize'  => $p::raw('btbl_chart_style_font_size'),
+			// The chart container's shape (2.1.0): CSS-visible, so they ride the same
+			// custom-property layer the table's tokens use.
+			'stylePadding'   => $p::raw('btbl_chart_style_padding'),
+			'styleRadius'    => $p::raw('btbl_chart_style_radius'),
+			// The site-design opt-out (2.1.0). A hidden "0" twin sits in front of the
+			// checkbox, so an unchecked box submits the opt-out rather than nothing.
+			'useSiteDesign'   => $p::raw('btbl_chart_use_site_design'),
 		];
 	}
 

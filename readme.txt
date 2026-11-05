@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.1
+Stable tag: 2.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -20,18 +20,18 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 **Features:**
 
-* Search, sorting, pagination, and dropdown, multi-select, checkbox, or radio filters, with category and tag filtering
-* Export to CSV, Excel, or PDF, copy, or print
+* Search, sorting, pagination, and dropdown, multi-select, checkbox or radio filters, with category and tag filtering
+* Export to CSV, Excel or PDF, copy or print
 * Reorder columns, control visibility, keep headers visible, freeze leading columns on scroll
-* Strict numeric sorting, conditional colors, and filtered sum, average, min, or max footers
-* Fetch a bounded snapshot from a public CSV, JSON, or Google Sheet; pages never contact the source
+* Strict numeric sorting, conditional colors and filtered sum, average, min or max footers
+* Fetch a bounded snapshot from a public CSV, JSON or Google Sheet; pages never contact the source
 * Page large external MySQL/MariaDB tables on demand
 * Collapse wide tables into stacked rows on small screens
-* Match your theme automatically: colors follow its palette, with an optional accent
+* Match your theme automatically, or set one design for every table and chart
 * Style tables and charts without code in the Design tab, with a live preview
 * Restrict rows by role or user metadata
-* Remember table state between visits; control scrolling, column sizing, and row limits
-* Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel, and Gantt charts
+* Remember table state between visits; control scrolling, column sizing and row limits
+* Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel and Gantt charts
 * Light frontend styles that are easy to override
 
 == Installation ==
@@ -46,7 +46,7 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected. JSON endpoints may also be served as `text/plain`. Authentication, private Sheets, scheduled refresh, and schema changes are not supported; re-create the table when remote columns change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected. JSON endpoints may also be served as `text/plain`. Authentication, private Sheets, scheduled refresh and schema changes are not supported; re-create the table when remote columns change.
 
 = Which plugin exports can I import? =
 
@@ -72,6 +72,10 @@ Create a table first, then go to Charts and create a chart linked to it, embedde
 
 Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so your theme keeps what you leave blank.
 
+= Can I set one design for the whole site? =
+
+Yes. BaraTables > Design sets the design every table and chart starts from. A table or chart that sets its own value keeps it, value by value; one that switches the site design off follows your theme instead. The screen previews the result as you type, and Copy CSS hands the whole design back as CSS.
+
 = How do numeric rules and footer calculations work? =
 
 Choose Number in a column's settings: plain decimals such as -12.5 join numeric sorting, conditional styles, and footers, while currency symbols, percentages, grouped numbers, words, blanks, and out-of-range values stay visible but are excluded. Footers calculate every loaded row matching the current search and filters, not only the current page; rows beyond the row limit and exports are excluded.
@@ -79,6 +83,8 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 = Can I style BaraTables with custom CSS? =
 
 Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set them globally to re-skin every table, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
+
+A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's background, padding and radius are CSS, and ride the token layer with the tables.
 
 = Where can I see examples? =
 
@@ -93,6 +99,19 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or t
 5. Responsive table on a phone.
 
 == Changelog ==
+
+= 2.1.0 =
+New:
+
+* Set one design for the whole site. BaraTables > Design holds the colors, typography and chart palette every table and chart starts from. A table or chart that sets its own value keeps it, and one that switches the site design off follows your theme instead.
+* The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
+
+Fixes:
+
+* The chart Design tab's controls now reach every chart type: the palette colors a heatmap's cells and a Gantt's task groups, and the text and grid colors reach radar labels, treemap labels and tooltips.
+* A chart font size is now in pixels. A size of 2em used to render as 2px.
+* Charts with no palette of their own now use the color scheme ECharts ships with, instead of a stale copy of an older one.
+* The Grid color control is no longer offered on charts that have no grid.
 
 = 2.0.1 =
 New:
@@ -115,7 +134,7 @@ Security:
 = 2.0.0 =
 New:
 
-* A Design tab for tables and charts: presets, colors, typography, spacing, and a per-chart series palette, with a live preview updating as you type.
+* A Design tab for tables and charts: presets, colors, typography, spacing and a per-chart series palette, with a live preview updating as you type.
 * The table preview now renders the real table visitors see, so what you style is what you publish.
 * Copy CSS hands the styles to your theme, and the "Theme CSS" output mode lets that copy take over.
 * Per-table Additional CSS, auto-scoped to the table, plus a documented `--btbl-*` token API for themes.
@@ -124,11 +143,11 @@ New:
 = 1.4.0 =
 New:
 
-* Import XLSX and ODS workbooks, including stored results for formulas without executing them.
-* Fetch a stored table snapshot from a public CSV, JSON-record, or Google Sheets URL.
+* Import XLSX and ODS workbooks, including stored formula results without executing them.
+* Fetch a stored table snapshot from a public CSV, JSON-record or Google Sheets URL.
 * Keep headers visible and freeze leading columns while a wide table scrolls.
-* Add strict numeric sorting, conditional color rules, and filtered footer calculations.
-* Page, sort, and search large external MySQL/MariaDB tables on demand with bounded queries.
+* Add strict numeric sorting, conditional color rules and filtered footer calculations.
+* Page, sort and search large external MySQL/MariaDB tables on demand with bounded queries.
 * Table summaries and the per-page selector say "rows" instead of "entries".
 * Charts follow the table's accent color.
 
@@ -142,8 +161,8 @@ Security:
 * Exported and copied table content neutralizes spreadsheet formulas, so cells from imported or remotely sourced tables no longer execute when the file is opened.
 
 = 1.3.2 =
-* The table preview now clearly indicates when it needs refreshing, stays unavailable until refreshed, and recognizes when changes are undone.
-* Option settings remain visible while switched off, with clearer grouping and more consistent spacing.
+* The table preview now says when it needs refreshing, stays unavailable until refreshed, and recognizes undone changes.
+* Option settings stay visible while switched off, with clearer grouping and more consistent spacing.
 
 = 1.3.1 =
 Fixes:
@@ -165,18 +184,18 @@ Developer:
 = 1.3.0 =
 New:
 
-* New block editor blocks: add any table or chart from the block picker instead of pasting a shortcode.
+* New block editor blocks: add any table or chart from the block picker instead of a shortcode.
 * Wide tables can collapse into stacked, expandable rows on small screens.
 * Export any table to PDF with a new Export PDF button.
-* Tables match your theme automatically: colors follow its palette, with an optional custom accent color per table.
+* Tables match your theme automatically: colors follow its palette, with an optional accent color per table.
 
 Improvements:
 
 * Table pages no longer load jQuery, and dropdown filters use a lighter picker, so they load faster.
 * The table engine is now DataTables 3; pages with export buttons load fewer files.
-* Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column cannot make the page unresponsive.
+* Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column cannot stall the page.
 * The editor's Options tab is reorganized, and every field shows its default until you change it.
-* Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable fallback without JavaScript.
+* Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable no-JavaScript fallback.
 * Publishing a table for the first time shows its shortcode and block.
 
 Fixes:
@@ -184,9 +203,9 @@ Fixes:
 * Day-first dates such as 25/12/2026 now format correctly with "Format as date".
 * Chart values written with a decimal comma (1.234,56) plot at the correct magnitude.
 * Tab-delimited files import as separate columns instead of one long column.
-* An invalid external database edit no longer silently keeps the previous connection, and clearing every field removes it.
+* An invalid external database edit no longer silently keeps the previous connection; clearing every field removes it.
 * Search limited to chosen columns follows columns you move by dragging.
-* The settings gear no longer appears on a switched-off control when its inner option is still checked.
+* The settings gear no longer appears on a switched-off control whose inner option is still checked.
 * Layout builder drop zones sit where their labels say.
 
 = 1.2.5 =
@@ -202,17 +221,17 @@ Improvements:
 
 Fixes:
 
-* Empty or incomplete Ninja Tables exports no longer become a live table of WordPress posts.
+* Empty or incomplete Ninja Tables exports no longer become a table of WordPress posts.
 * Quoted commas and multiline headings no longer break semicolon-delimited imports.
 * Hidden columns, footer values, intentional blank rows, and nested cell values are preserved.
 * A failed import no longer leaves an incomplete published table behind.
 * The plugin activates normally on PHP 7.4 through PHP 8.1.
-* A failed table or chart save keeps its data, ID, and linked charts.
+* A failed table or chart save keeps its data, ID and linked charts.
 * Duplicating a table or chart more than once gives every copy its own ID.
 * Missing CSV files and external database failures show a clear error instead of an empty table.
-* If an interactive table or chart script fails to load, the loading screen clears to show the table or an error.
+* If a table or chart script fails to load, the loading screen clears to show the table or an error.
 * Renaming a Table ID no longer removes backslashes from linked chart names.
-* Manual column headings saved by early versions follow the site language after a direct upgrade.
+* Manual column headings from early versions follow the site language after a direct upgrade.
 
 Security:
 
@@ -226,7 +245,7 @@ Security:
 Improvements:
 
 * Fixed scroll height is now a Table controls option, with its height and collapse settings inside. Existing heights carry over.
-* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading, and the result summary. Saved tables are included, and your own wording is kept.
+* Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading and the result summary. Your own wording is kept.
 * Tables load without a flash of unstyled content.
 * Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space to open the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the layout.
 * Pages with a table and its chart, or the same table twice, load faster on large tables.
@@ -255,21 +274,21 @@ New:
 Fixes:
 
 * Filtering by category or tag.
-* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy, or Repeater columns load correctly, showing their title, name, or contents.
-* Manual data grids hold up to 25,000 cells; the editor warns when your server's form-field limit is too low for that size.
+* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy or Repeater columns load correctly, showing their title, name or contents.
+* Manual data grids hold up to 25,000 cells; the editor warns when your server's form-field limit is too low.
 * Two tables on the same page keep their own filters in the shareable link.
 * An import that fails to save can be retried without uploading the file again.
 * Importing a large table keeps more of its rows and columns.
 * Ninja Tables exports apply their saved search, sorting, and pagination settings.
 * Editing an external database connection keeps your column and filter setup.
-* Saved table state keeps sorting, search, page, and page length between visits.
+* Saved table state keeps sorting, search, page and page length between visits.
 * A restored search respects the columns you set as searchable.
 * "Value overrides" apply to CSV and external database tables.
-* "Format as date" is available on CSV, external database, manual, and custom field columns.
+* "Format as date" is available on CSV, external database, manual and custom field columns.
 * Date columns show the time of day, and timestamps use your site's timezone.
 * Blank lines in a CSV file are skipped.
 * Custom WP Query tables load up to the row limit you set.
-* On CSV and external database tables, row-level access control shows every row a visitor may see, even past the row limit.
+* On CSV and external database tables, row-level access control shows every row a visitor may see, past the row limit.
 * Shareable filter links work for a value of 0.
 * Unnamed columns from a headerless CSV follow the site language.
 * The editor preview uses the same export button labels as the published table.
@@ -277,7 +296,7 @@ Fixes:
 
 Improvements:
 
-* A table loads only the export, column-reorder, and dropdown-filter libraries it uses, cutting about 265KB per page.
+* A table loads only the export, column-reorder and dropdown-filter libraries it uses, cutting about 265KB per page.
 * Large tables sort, page, and filter faster.
 * The term picker lists the first 200 terms of a taxonomy, plus any already selected.
 * The "Strict matching" filter option is removed; filters match whole values exactly.
@@ -294,19 +313,19 @@ Security:
 
 = 1.2.1 =
 * Export a table to Excel with a new table button option.
-* Five new chart types: horizontal bar, donut, scatter, bubble, and funnel, each with a preview in the chart-type gallery.
+* Five new chart types: horizontal bar, donut, scatter, bubble and funnel, each with a preview in the gallery.
 * Remember table state: a table can keep its sorting, search, page, and page length.
-* New table controls for horizontal scrolling, vertical scroll height, and column auto-sizing.
+* New table controls for horizontal scrolling, vertical scroll height and column auto-sizing.
 * Configurable row loading limit per table (default 1,000 rows, up to 10,000).
 
 = 1.1.1 =
 Fixes:
 
-* "Format as date" displays the formatted date (e.g. "Mar 18, 2026") on manual data columns.
+* "Format as date" shows the formatted date (e.g. "Mar 18, 2026") on manual data columns.
 * Plain numbers such as a year or a count are not read as dates.
-* A [bara_table] or [bara_chart] shortcode used without an id shows a "not found" message on WordPress 6.2 through 6.4.
+* A [bara_table] or [bara_chart] shortcode without an id shows a "not found" message on WordPress 6.2 through 6.4.
 * Importing a file with only a header row, or no rows, creates an empty table.
-* Front-end table controls (export buttons, column-visibility menu, "Search in") and the CSV file picker follow the site language.
+* Front-end table controls (export buttons, column-visibility menu, "Search in") and the CSV picker follow the site language.
 
 Security:
 
@@ -315,8 +334,8 @@ Security:
 = 1.1.0 =
 New:
 
-* Import a table from another table plugin or a spreadsheet: upload a JSON, XML, or CSV export and BaraTables creates a matching table.
-* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes already in your content.
+* Import a table from another plugin or a spreadsheet: upload a JSON, XML or CSV export and BaraTables creates a matching table.
+* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes in your content.
 * Reorder manual-data rows in the editor with up and down controls.
 * Manual-table column headers are translation-ready and follow the site language.
 
@@ -343,6 +362,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.1.0 =
+Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.
 
 = 2.0.1 =
 Adds TLS for external database sources, and fixes tables with a hidden column, Additional CSS that uses a "<", styles reaching a sibling table, and a preview that could show a color a save would drop.

@@ -199,6 +199,12 @@ jQuery(function($) {
 		// renders it visible for a saved heatmap/gantt chart, and it must go away the moment a
 		// standard type is chosen).
 		var type = $('#btbl_chart_type').val() || 'bar';
+
+		// The grid color paints axis grid lines. A pie, donut, funnel or treemap has no
+		// axes at all, so offering the control there would be a promise the chart cannot
+		// keep.
+		var GRIDLESS_TYPES = ['pie', 'donut', 'funnel', 'treemap'];
+		$('[data-btbl-chart-grid-field]').toggleClass('is-hidden', GRIDLESS_TYPES.indexOf(type) !== -1);
 		// Match per FIELD (each .btbl-control card), mirroring render_chart_note(): the global
 		// count only coincides while every field ships the same type groups -- a future
 		// field-specific variant set would otherwise leave that field with no visible note.
@@ -371,9 +377,106 @@ jQuery(function($) {
 		return normalizeHex(String($('[name="' + name + '"]').val() || ''));
 	}
 
+	// A chart's font size is a number of pixels, not a CSS length: ECharts' fontSize is
+	// a bare number, so a length would be read as its number ("2em" as 2px). The shared
+	// normalizer mirrors BaraTables_Service::sanitize_chart_font_size().
 	function designSize(name) {
-		var raw = String($('[name="' + name + '"]').val() || '');
-		return /^\d{1,4}(\.\d{1,2})?(px|em|rem|%)( \d{1,4}(\.\d{1,2})?(px|em|rem|%))?$/.test(raw) ? raw : '';
+		return adminCore.normalizeChartFontSize(String($('[name="' + name + '"]').val() || ''));
+	}
+
+	// ------------------------------------------------------------------
+	// Chart presets and Copy CSS (2.1.0): the chart Design tab's parity
+	// with the table Design tab.
+	// ------------------------------------------------------------------
+	var CHART_PRESET_FIELDS = {
+		styleBackground: 'btbl_chart_style_background',
+		styleTextColor: 'btbl_chart_style_text_color',
+		styleGridColor: 'btbl_chart_style_grid_color',
+		styleFontSize: 'btbl_chart_style_font_size'
+	};
+
+	// Apply one chart preset. The palette is replaced rather than merged, so a preset
+	// reads as a whole look instead of a tint over whatever was there before.
+	function applyChartPreset(name) {
+		var presets = adminCore.designPresets.chart;
+		var isDefault = name === 'default';
+		var values = presets[name];
+		if (!values && !isDefault) { return; }
+		Object.keys(CHART_PRESET_FIELDS).forEach(function(key) {
+			var value;
+			if (values && Object.prototype.hasOwnProperty.call(values, key)) {
+				value = values[key];
+			} else if (isDefault) {
+				value = '';
+			} else {
+				return;
+			}
+			var $f = $('[name="' + CHART_PRESET_FIELDS[key] + '"]');
+			if (!$f.length) { return; }
+			$f.val(value).trigger('input').trigger('change');
+		});
+		if (!$paletteEditor.length) { return; }
+		var colors = isDefault ? [] : (values && values.stylePalette) || [];
+		$paletteEditor.find('.btbl-palette-chip').remove();
+		colors.forEach(function(color) {
+			var hex = normalizeHex(String(color || ''));
+			if (!hex) { return; }
+			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(hex, paletteRemoveLabel()));
+		});
+		syncPalette();
+	}
+
+	function paletteRemoveLabel() {
+		return String($paletteEditor.data('label-remove') || 'Remove color');
+	}
+
+	// The chart's CSS-visible design: the container's background, padding and radius.
+	// The canvas-drawn colours (text, grid, palette) are not CSS and stay in the chart
+	// options, so the block says so rather than pretending to carry the whole design.
+	function buildChartCssText() {
+		var lines = [
+			'/* BaraTables chart container styles. The chart\'s background, padding and radius',
+			'   live on the container; its text, grid and series colors are drawn on the',
+			'   canvas and stay in the chart options. Paste this into Appearance > Customize >',
+			'   Additional CSS (or a child theme stylesheet). */'
+		];
+		var vars = [];
+		if (designHex('btbl_chart_style_background')) {
+			vars.push('--btbl-chart-bg:' + designHex('btbl_chart_style_background'));
+		}
+		if (designSize('btbl_chart_style_padding')) {
+			vars.push('--btbl-chart-padding:' + designSize('btbl_chart_style_padding'));
+		}
+		if (designSize('btbl_chart_style_radius')) {
+			vars.push('--btbl-chart-radius:' + designSize('btbl_chart_style_radius'));
+		}
+		if (vars.length) {
+			lines.push('.btbl-chart {');
+			vars.forEach(function(pair) {
+				lines.push('\t' + pair + ';');
+			});
+			lines.push('}');
+		}
+		return lines.join('\n');
+	}
+
+	function copyText(text) {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			return navigator.clipboard.writeText(text);
+		}
+		// Non-secure contexts (plain http on a LAN) have no async clipboard API; fall back to
+		// the classic hidden-textarea/execCommand route.
+		var deferred = $.Deferred();
+		var $area = $('<textarea>').val(text).css({position: 'fixed', opacity: '0'}).appendTo('body');
+		$area[0].select();
+		try {
+			document.execCommand('copy');
+			deferred.resolve();
+		} catch (error) {
+			deferred.reject(error);
+		}
+		$area.remove();
+		return deferred.promise();
 	}
 
 	// The Design tab re-runs the preview chart through BaraTablesCharts.init() with the
@@ -458,6 +561,32 @@ jQuery(function($) {
 	}
 
 	$(document).on('input change', '[name="btbl_chart_style_background"], [name="btbl_chart_style_text_color"], [name="btbl_chart_style_grid_color"], [name="btbl_chart_style_font_size"], [data-btbl-palette-input]', queueChartRestyle);
+
+	// The chart presets, with the same names the table Design tab offers.
+	$(document).on('click', '[data-btbl-chart-preset]', function(e) {
+		e.preventDefault();
+		applyChartPreset(String($(this).data('btbl-chart-preset') || ''));
+	});
+
+	// Copy CSS: the chart container's CSS-visible design.
+	$(document).on('click', '[data-btbl-chart-copy-css]', function(e) {
+		e.preventDefault();
+		var $output = $('[data-btbl-chart-copy-css-output]');
+		if (!$output.length) { return; }
+		var text = buildChartCssText();
+		$output.text(text).prop('hidden', false);
+		var $status = $('[data-btbl-chart-copy-status]');
+		copyText(text).then(function() {
+			if ($status.length) {
+				$status.text(String($output.data('copied-label') || 'Copied to your clipboard.'));
+			}
+		}, function() {
+			if ($status.length) {
+				$status.text(String($output.data('unavailable-label') || 'Clipboard unavailable.'));
+			}
+			$output.trigger('select');
+		});
+	});
 
 	initChartTypeChooser();
 });

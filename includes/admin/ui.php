@@ -1348,6 +1348,12 @@ class BaraTables_Admin_Tab_Design {
 		$config = [
 			'previewSelector' => '#btbl-preview-target .btbl-table-wrapper',
 			'varMap' => BaraTables_Service::STYLE_VAR_MAP,
+			// The site default design (2.1.0), so the preview and Copy CSS show the
+			// EFFECTIVE design: the table's own token, else the site default, else the
+			// theme. Without this the preview would show a blank where the published
+			// page shows the inherited colour.
+			'siteDefault' => BaraTables_Design::site_default()['table'],
+			'useSiteDesign' => !BaraTables_Design::opts_out($table_options),
 			// The Additional CSS byte budget, so the editor's preview caps the payload
 			// exactly where the server will.
 			'maxCssBytes' => BaraTables_Service::MAX_CUSTOM_CSS_BYTES,
@@ -1361,6 +1367,26 @@ class BaraTables_Admin_Tab_Design {
 		?>
 		<div id="btbl-tab-design" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-design-label">
 			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Table preview below the builder as you edit, and publish with the table. Leave anything blank to follow your theme.', 'baratables'); ?></p>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Site design', 'baratables'); ?></strong>
+				<p class="description"><?php esc_html_e('The site default applies to every table that does not set its own colors here.', 'baratables'); ?></p>
+				<div class="btbl-checkbox btbl-design-field">
+					<input type="hidden" name="btbl_table_options[useSiteDesign]" value="0" />
+					<span class="btbl-checkbox-top">
+						<label class="btbl-checkbox-main" for="btbl_design_useSiteDesign">
+							<input
+								type="checkbox"
+								id="btbl_design_useSiteDesign"
+								name="btbl_table_options[useSiteDesign]"
+								value="1"
+								data-default="1"
+								<?php checked(!BaraTables_Design::opts_out($table_options)); ?>
+							/>
+							<span class="btbl-field-name"><?php esc_html_e('Use the site default design', 'baratables'); ?></span>
+						</label>
+					</span>
+				</div>
+			</div>
 			<div class="btbl-control" data-btbl-design-config="<?php echo esc_attr(wp_json_encode($config)); ?>">
 				<strong class="btbl-small-heading"><?php esc_html_e('Style presets', 'baratables'); ?></strong>
 				<p class="description"><?php esc_html_e('One click fills the controls below; keep tweaking from there. Your data and table settings are not touched.', 'baratables'); ?></p>
@@ -1460,66 +1486,7 @@ class BaraTables_Admin_Tab_Design {
 	}
 
 	private function render_field(string $key, array $config, array $table_options, string $theme_accent): void {
-		$label = (string) ($config['label'] ?? $key);
-		$description = (string) ($config['description'] ?? '');
-		// Raw schema key, matching the Options tab's btbl_rowLimit precedent: the id mirrors
-		// the stored camelCase option key (sanitize_key would lowercase it).
-		$input_id = 'btbl_design_' . $key;
-		$value = (string) ($table_options[$key] ?? '');
-		?>
-		<div class="btbl-checkbox btbl-design-field" data-btbl-design-field="<?php echo esc_attr($key); ?>">
-			<span class="btbl-checkbox-top">
-				<span class="btbl-field-name"><?php echo esc_html($label); ?></span>
-			</span>
-			<?php if (($config['type'] ?? '') === 'color') : ?>
-				<div class="btbl-color-field" data-btbl-theme-accent="<?php echo esc_attr($key === 'accentColor' ? $theme_accent : ''); ?>">
-					<input
-						type="text"
-						id="<?php echo esc_attr($input_id); ?>"
-						name="btbl_table_options[<?php echo esc_attr($key); ?>]"
-						class="btbl-color-value"
-						value="<?php echo esc_attr($value); ?>"
-						placeholder="<?php echo esc_attr($key === 'accentColor' ? $theme_accent : __('Theme default', 'baratables')); ?>"
-						data-btbl-live-style
-					/>
-					<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : ($key === 'accentColor' ? $theme_accent : '#ffffff')); ?>" aria-label="<?php echo esc_attr(sprintf(
-					/* translators: %s is the control label, e.g. "Background". */
-					__('Pick %s', 'baratables'),
-					$label
-				)); ?>" />
-				</div>
-			<?php elseif (!empty($config['choices']) && is_array($config['choices'])) : ?>
-				<select id="<?php echo esc_attr($input_id); ?>" name="btbl_table_options[<?php echo esc_attr($key); ?>]" data-btbl-live-style>
-					<option value=""><?php echo esc_html($config['type'] === 'css_weight' ? __('Theme default', 'baratables') : ''); ?></option>
-					<?php foreach ($config['choices'] as $choice_value => $choice_label) : ?>
-						<option value="<?php echo esc_attr((string) $choice_value); ?>" <?php selected($value, (string) $choice_value); ?>><?php echo esc_html((string) $choice_label); ?></option>
-					<?php endforeach; ?>
-				</select>
-			<?php else : ?>
-				<input
-					type="text"
-					id="<?php echo esc_attr($input_id); ?>"
-					name="btbl_table_options[<?php echo esc_attr($key); ?>]"
-					class="small-text"
-					value="<?php echo esc_attr($value); ?>"
-					placeholder="<?php echo esc_attr($this->size_placeholder($key)); ?>"
-					data-btbl-live-style
-				/>
-			<?php endif; ?>
-			<?php if ($description !== '') : ?>
-				<p class="description btbl-field-hint"><?php echo esc_html($description); ?></p>
-			<?php endif; ?>
-		</div>
-		<?php
-	}
-
-	private function size_placeholder(string $key): string {
-		$placeholders = [
-			'fontSize' => '14px',
-			'cellPadding' => '8px 12px',
-			'borderRadius' => '6px',
-		];
-		return $placeholders[$key] ?? '';
+		BaraTables_Admin_Design_Fields::render_field($key, $config, $table_options, $theme_accent);
 	}
 }
 
@@ -1862,6 +1829,37 @@ class BaraTables_Admin_Tab_Chart_Design {
 		<div id="btbl-tab-chart-design" class="btbl-tab-panel" role="tabpanel" aria-labelledby="btbl-tab-chart-design-label">
 			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Chart preview as you edit and publish with the chart. Leave anything blank to keep the current look.', 'baratables'); ?></p>
 			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Site design', 'baratables'); ?></strong>
+				<p class="description"><?php esc_html_e('The site default applies to every chart that does not set its own colors here.', 'baratables'); ?></p>
+				<div class="btbl-checkbox btbl-design-field">
+					<input type="hidden" name="btbl_chart_use_site_design" value="0" />
+					<span class="btbl-checkbox-top">
+						<label class="btbl-checkbox-main" for="btbl_chart_use_site_design">
+							<input
+								type="checkbox"
+								id="btbl_chart_use_site_design"
+								name="btbl_chart_use_site_design"
+								value="1"
+								data-default="1"
+								<?php checked(!BaraTables_Design::opts_out((array) $chart_options)); ?>
+							/>
+							<span class="btbl-field-name"><?php esc_html_e('Use the site default design', 'baratables'); ?></span>
+						</label>
+					</span>
+				</div>
+			</div>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Style presets', 'baratables'); ?></strong>
+				<p class="description"><?php esc_html_e('One click fills the controls below; keep tweaking from there. Your chart and its data are not touched.', 'baratables'); ?></p>
+				<div class="btbl-flag-grid btbl-preset-grid">
+					<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="default"><?php esc_html_e('Theme default', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="minimal"><?php esc_html_e('Minimal', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="bold"><?php esc_html_e('Bold header', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="midnight"><?php esc_html_e('Midnight', 'baratables'); ?></button>
+					<button type="button" class="button btbl-preset-button" data-btbl-chart-preset="paper"><?php esc_html_e('Paper', 'baratables'); ?></button>
+				</div>
+			</div>
+			<div class="btbl-control">
 				<strong class="btbl-small-heading"><?php esc_html_e('Series palette', 'baratables'); ?></strong>
 				<p class="description"><?php esc_html_e('Colors are used in order across series and slices. Drag to reorder. An empty palette keeps the table accent leading the default colors.', 'baratables'); ?></p>
 				<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php esc_attr_e('Remove color', 'baratables'); ?>">
@@ -1892,7 +1890,7 @@ class BaraTables_Admin_Tab_Chart_Design {
 					<?php
 					$this->render_color_card('btbl_chart_style_background', __('Background', 'baratables'), (string) ($chart_options['styleBackground'] ?? ''), __('Canvas default', 'baratables'));
 					$this->render_color_card('btbl_chart_style_text_color', __('Text color', 'baratables'), (string) ($chart_options['styleTextColor'] ?? ''), __('ECharts default', 'baratables'));
-					$this->render_color_card('btbl_chart_style_grid_color', __('Grid color', 'baratables'), (string) ($chart_options['styleGridColor'] ?? ''), __('ECharts default', 'baratables'));
+					$this->render_color_card('btbl_chart_style_grid_color', __('Grid color', 'baratables'), (string) ($chart_options['styleGridColor'] ?? ''), __('ECharts default', 'baratables'), 'data-btbl-chart-grid-field');
 					?>
 					<div class="btbl-checkbox btbl-design-field">
 						<span class="btbl-checkbox-top">
@@ -1907,7 +1905,26 @@ class BaraTables_Admin_Tab_Chart_Design {
 						/>
 					</div>
 				</div>
-				<p class="description btbl-field-hint"><?php esc_html_e('Text and grid colors apply to axis labels, legends, and grid lines. Gantt palettes keep their progress-state colors.', 'baratables'); ?></p>
+				<p class="description btbl-field-hint"><?php esc_html_e('Text and grid colors apply to axis labels, legends, and grid lines. The palette colors the series, the slices, and a Gantt\'s task groups.', 'baratables'); ?></p>
+			</div>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Chart container', 'baratables'); ?></strong>
+				<p class="description"><?php esc_html_e('The space and rounding around the chart itself, rather than inside it.', 'baratables'); ?></p>
+				<div class="btbl-flag-grid btbl-table-flags btbl-design-fields">
+					<?php
+					$this->render_size_card('btbl_chart_style_padding', __('Padding', 'baratables'), (string) ($chart_options['stylePadding'] ?? ''), __('None', 'baratables'));
+					$this->render_size_card('btbl_chart_style_radius', __('Corner radius', 'baratables'), (string) ($chart_options['styleRadius'] ?? ''), __('None', 'baratables'));
+					?>
+				</div>
+			</div>
+			<div class="btbl-control">
+				<strong class="btbl-small-heading"><?php esc_html_e('Style output', 'baratables'); ?></strong>
+				<div class="btbl-options-row btbl-copy-css-row">
+					<button type="button" class="button" data-btbl-chart-copy-css><?php esc_html_e('Copy CSS', 'baratables'); ?></button>
+					<span class="description" aria-live="polite" data-btbl-chart-copy-status></span>
+				</div>
+				<pre class="btbl-copy-css-output" hidden tabindex="0" aria-label="<?php esc_attr_e('Generated chart CSS', 'baratables'); ?>" data-btbl-chart-copy-css-output data-copied-label="<?php esc_attr_e('Copied to your clipboard.', 'baratables'); ?>" data-unavailable-label="<?php esc_attr_e('Clipboard unavailable - the CSS is selected below; copy it manually.', 'baratables'); ?>"></pre>
+				<p class="description btbl-field-hint"><?php esc_html_e('Copies the chart container\'s background, padding and radius as CSS. The chart\'s text, grid and series colors are drawn on the canvas, so they stay in the chart options.', 'baratables'); ?></p>
 			</div>
 		</div>
 		<?php
@@ -1924,27 +1941,12 @@ class BaraTables_Admin_Tab_Chart_Design {
 		<?php
 	}
 
-	private function render_color_card(string $name, string $label, string $value, string $placeholder): void {
-		?>
-		<div class="btbl-checkbox btbl-design-field">
-			<span class="btbl-checkbox-top">
-				<span class="btbl-field-name"><?php echo esc_html($label); ?></span>
-			</span>
-			<div class="btbl-color-field">
-				<input
-					type="text"
-					class="btbl-color-value"
-					name="<?php echo esc_attr($name); ?>"
-					value="<?php echo esc_attr($value); ?>"
-					placeholder="<?php echo esc_attr($placeholder); ?>"
-				/>
-				<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : '#ffffff'); ?>" aria-label="<?php echo esc_attr(sprintf(
-					/* translators: %s is the control label, e.g. "Background". */
-					__('Pick %s', 'baratables'),
-					$label
-				)); ?>" />
-			</div>
-		</div>
-		<?php
+	private function render_size_card(string $name, string $label, string $value, string $placeholder): void {
+		BaraTables_Admin_Design_Fields::render_size_card($name, $label, $value, $placeholder);
 	}
+
+	private function render_color_card(string $name, string $label, string $value, string $placeholder, string $marker = ''): void {
+		BaraTables_Admin_Design_Fields::render_color_card($name, $label, $value, $placeholder, $marker);
+	}
+
 }

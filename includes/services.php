@@ -79,6 +79,10 @@ class BaraTables_Service {
 		'borderRadius'            => ['css_size', ''],
 		'styleMode'               => ['style_mode', 'inline'],
 		'customCss'               => ['css', ''],
+		// The site-wide default design (2.1.0). Absent on every table saved before 2.1.0,
+		// and absent means "use the site default", so an upgrade never changes how an
+		// existing table looks. Switching it off resolves the table against the theme alone.
+		'useSiteDesign'           => ['checkbox', true],
 		'pageLength'              => ['number', 25, 1, 500],
 		'rowLimit'                => ['number', 1000, 1, 10000],
 		'lengthMenuPrefix'        => ['text_html', ''],
@@ -236,6 +240,12 @@ class BaraTables_Service {
 		'styleTextColor' => '',
 		'styleGridColor' => '',
 		'styleFontSize' => '',
+		// The chart container's CSS-visible shape (2.1.0). These print as custom properties
+		// on the container, so a theme can reach them the same way it reaches the table's.
+		'stylePadding' => '',
+		'styleRadius' => '',
+		// The site-wide default design (2.1.0). Absent means "use the site default".
+		'useSiteDesign' => true,
 	];
 
 	/** Hard ceiling on the Design tab's series palette; sane ECharts palettes run 6-10 colors. */
@@ -904,6 +914,26 @@ class BaraTables_Service {
 		return $value;
 	}
 
+	/**
+	 * A chart font size, in pixels.
+	 *
+	 * A chart's font size is consumed by ECharts as a NUMBER of pixels, not as a CSS
+	 * length, so a general CSS length is the wrong contract here: "2em" parsed as a
+	 * number is 2, which renders a 2px label. Only pixels are accepted, and a bare
+	 * number is normalized to the px form so the stored value and the rendered one are
+	 * the same string.
+	 */
+	public static function sanitize_chart_font_size($raw): string {
+		$value = trim((string) $raw);
+		if ($value === '') {
+			return '';
+		}
+		if (!preg_match('/^(\d{1,4})(?:px)?$/', $value, $matches)) {
+			return '';
+		}
+		return $matches[1] . 'px';
+	}
+
 	/** Curated font weights only; the empty string means "follow the theme/table default". */
 	public static function sanitize_css_weight($raw): string {
 		$value = trim((string) $raw);
@@ -1305,7 +1335,17 @@ class BaraTables_Service {
 				? self::normalize_hex_color((string) $options_raw[$key])
 				: '';
 		}
-		$options['styleFontSize'] = self::sanitize_css_size($options_raw['styleFontSize'] ?? '');
+		$options['styleFontSize'] = self::sanitize_chart_font_size($options_raw['styleFontSize'] ?? '');
+		foreach (['stylePadding', 'styleRadius'] as $key) {
+			$options[$key] = isset($options_raw[$key])
+				? self::sanitize_css_size((string) $options_raw[$key])
+				: '';
+		}
+		// The site-design opt-out. Absent means "use the site default", so a chart saved
+		// before 2.1.0 keeps inheriting it.
+		if (array_key_exists('useSiteDesign', $options_raw)) {
+			$options['useSiteDesign'] = !empty($options_raw['useSiteDesign']);
+		}
 
 		return $options;
 	}

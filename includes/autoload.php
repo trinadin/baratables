@@ -22,6 +22,7 @@ spl_autoload_register(static function (string $class): void {
 		'services.php' => ['BaraTables_Service'],
 		'table-presentation.php' => ['BaraTables_Table_Presentation'],
 		'chart-types.php' => ['BaraTables_Chart_Types'],
+		'design.php' => ['BaraTables_Design'],
 		'chart-service.php' => ['BaraTables_Chart_Service'],
 		'frontend.php' => ['BaraTables_Frontend'],
 		'admin/support.php' => [
@@ -36,6 +37,8 @@ spl_autoload_register(static function (string $class): void {
 		'admin/ui.php' => ['BaraTables_Admin_Tab_Advanced', 'BaraTables_Admin_Tab_Chart', 'BaraTables_Admin_Tab_Columns', 'BaraTables_Admin_Tab_General', 'BaraTables_Admin_Tab_Table'],
 		'admin/actions.php' => ['BaraTables_Admin_Action_Handler'],
 		'admin/preview.php' => ['BaraTables_Admin_Preview_Renderer'],
+		'admin/design-fields.php' => ['BaraTables_Admin_Design_Fields'],
+		'admin/design-screen.php' => ['BaraTables_Admin_Design_Screen'],
 		'admin/pages.php' => ['BaraTables_Admin_Pages'],
 		'admin/options.php' => ['BaraTables_Admin_Options'],
 		'admin/admin.php' => ['BaraTables_Admin', 'BaraTables_Chart_Admin'],

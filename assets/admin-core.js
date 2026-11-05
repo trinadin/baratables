@@ -126,9 +126,99 @@
 		return new TextDecoder().decode(bytes.subarray(0, end));
 	}
 
+	// Mirrors BaraTables_Service::sanitize_chart_font_size(): a chart's font size is a
+	// number of PIXELS, because ECharts' fontSize is not a CSS length -- "2em" read as a
+	// number is 2, which renders a 2px label. Only pixels are accepted, and a bare
+	// number is normalized to the px form so the preview and the saved value agree.
+	function normalizeChartFontSize(raw) {
+		var value = String(raw === null || raw === undefined ? '' : raw).trim();
+		var match = /^(\d{1,4})(?:px)?$/.exec(value);
+		return match ? match[1] + 'px' : '';
+	}
+
+	// The design presets (2.1.0). One registry, two families: the table tokens and the
+	// chart's own colours. They live here rather than in one editor's script so the table
+	// editor, the chart editor and the site Design screen offer the same names for the
+	// same looks, and a preset cannot drift between two surfaces.
+	var DESIGN_PRESETS = {
+		table: {
+			minimal: {
+				headerBgColor: '#fafbfc',
+				headerTextColor: '#24292f',
+				headerWeight: '600',
+				stripeColor: '',
+				hoverColor: '#f6f7f8',
+				borderColor: '#e5e7eb'
+			},
+			bold: {
+				headerBgColor: '#1f2937',
+				headerTextColor: '#f9fafb',
+				headerWeight: '700',
+				stripeColor: '#f3f4f6',
+				hoverColor: '#e5e7eb',
+				borderColor: '#d1d5db'
+			},
+			midnight: {
+				// Dark chrome on a light page: the body background is the theme's, so body text
+				// keeps the theme color and only the striped/hover bands and chrome go dark. A
+				// light body text here would strand unstriped rows on the page's white canvas.
+				headerBgColor: '#111827',
+				headerTextColor: '#f9fafb',
+				headerWeight: '600',
+				stripeColor: '#e5e7eb',
+				hoverColor: '#d1d5db',
+				borderColor: '#9ca3af',
+				footerBgColor: '#111827',
+				footerTextColor: '#f9fafb'
+			},
+			paper: {
+				headerBgColor: '#f5f0e8',
+				headerTextColor: '#3f3a34',
+				headerWeight: '600',
+				stripeColor: '#faf7f2',
+				hoverColor: '#f1ebe0',
+				borderColor: '#d9d2c5',
+				footerBgColor: '#f5f0e8',
+				footerTextColor: '#3f3a34'
+			}
+		},
+		chart: {
+			minimal: {
+				styleBackground: '#ffffff',
+				styleTextColor: '#24292f',
+				styleGridColor: '#e5e7eb',
+				styleFontSize: '14px',
+				stylePalette: ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df']
+			},
+			bold: {
+				styleBackground: '#1f2937',
+				styleTextColor: '#f9fafb',
+				styleGridColor: '#4b5563',
+				styleFontSize: '15px',
+				stylePalette: ['#fb628b', '#ffd10a', '#3fbe95', '#0ca8df', '#785db0']
+			},
+			midnight: {
+				styleBackground: '#111827',
+				styleTextColor: '#f9fafb',
+				styleGridColor: '#374151',
+				styleFontSize: '14px',
+				stylePalette: ['#5070dd', '#3fbe95', '#b6d634', '#ff994d', '#fb628b']
+			},
+			paper: {
+				styleBackground: '#faf7f2',
+				styleTextColor: '#3f3a34',
+				styleGridColor: '#e5ded2',
+				styleFontSize: '14px',
+				stylePalette: ['#9a60b4', '#c98a3b', '#5b8c5a', '#b0555a', '#4a6fa5']
+			}
+		}
+	};
+
 	window.BaraTablesAdminCore = {
 		formAuth: formAuth,
+		designPresets: DESIGN_PRESETS,
 		normalizeHex: normalizeHex,
+		normalizeChartFontSize: normalizeChartFontSize,
 		sanitizeCustomCss: sanitizeCustomCss,
 		truncateUtf8: truncateUtf8,
 		requestFragment: requestFragment,

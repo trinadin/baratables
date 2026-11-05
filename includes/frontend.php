@@ -213,6 +213,33 @@ class BaraTables_Frontend {
 	 * @param array $rows       Preview rows, already capped by the caller.
 	 * @return array{html: string, payload: array}
 	 */
+	/**
+	 * Editor preview of a chart built from an unsaved definition and a set of chart options.
+	 *
+	 * The chart editor's preview metabox renders a SAVED chart, which a settings page has no
+	 * way to provide. This is the same render path the public shortcode uses, without the
+	 * saved-chart dependency, so the site Design screen can show the chart design it is
+	 * editing.
+	 *
+	 * @param array $definition    The source table definition.
+	 * @param array $rows          The source rows.
+	 * @param array $chart_options The chart options to render with.
+	 */
+	public function render_chart_preview(array $definition, array $rows, array $chart_options): string {
+		if (empty($definition['columns']) || empty($rows)) {
+			return '';
+		}
+		$this->enqueue_frontend_assets(false, true);
+		$instance_id = $this->get_render_instance_id('chart-site-design-preview');
+		$type_label = BaraTables_Chart_Types::get((string) ($chart_options['type'] ?? 'bar'))['label'];
+		$chart_aria_label = sprintf(
+			/* translators: %s: the chart type label. */
+			__('%s chart', 'baratables'),
+			$type_label
+		);
+		return $this->render_table_view($definition, $rows, $chart_options, true, $instance_id, false, $chart_aria_label);
+	}
+
 	public function render_table_preview(array $definition, array $rows): array {
 		$this->last_preview_payload = null;
 		if (empty($definition['columns']) || empty($rows)) {
@@ -495,6 +522,15 @@ class BaraTables_Frontend {
 		$presentation = $render_table ? $this->table_presentation()->build($definition, $rows) : null;
 		$allowed_inline = $render_table ? BaraTables_Service::allowed_inline_html() : [];
 		$table_options = $render_table ? $presentation['options'] : $this->service->get_table_options($definition);
+		// The site-wide default design (2.1.0): the table's own token wins, a blank token
+		// inherits the site default, and a table that opted out resolves against the theme
+		// alone. Resolved before anything else reads the options, so the printed styles and
+		// the payload describe the same effective design.
+		$table_options = BaraTables_Design::resolve_table_options($table_options);
+		if ($presentation !== null) {
+			$presentation['options'] = $table_options;
+		}
+		$chart_options = BaraTables_Design::resolve_chart_options($chart_options);
 		$wrapper_compact_class = !empty($table_options['compact']) ? ' is-compact' : '';
 		$table_class_attr = $render_table
 			? implode(' ', array_merge(['btbl-table'], $presentation['style_classes']))
@@ -593,9 +629,13 @@ class BaraTables_Frontend {
 			// capture it too); the remaining chart tokens travel through the JS payload
 			// because they restyle canvas-drawn content, which CSS cannot reach.
 			$chart_style_parts = $chart_height > 0 ? ['height:' . (string) $chart_height . 'px'] : [];
-			$chart_background = $chart_enabled ? BaraTables_Service::normalize_hex_color((string) ($chart_options['styleBackground'] ?? '')) : '';
-			if ($chart_background) {
-				$chart_style_parts[] = '--btbl-chart-bg:' . $chart_background;
+			// The chart container's CSS-visible design tokens: background, padding and
+			// radius. The background also paints behind ECharts' transparent canvas, so
+			// copy and image exports without a canvas background still show it.
+			if ($chart_enabled) {
+				foreach (BaraTables_Design::chart_vars_from_options($chart_options) as $property => $value) {
+					$chart_style_parts[] = $property . ':' . $value;
+				}
 			}
 			$chart_style = !empty($chart_style_parts) ? ' style="' . esc_attr(implode(';', $chart_style_parts)) . '"' : '';
 			// Built once: the chart container is emitted from three mutually exclusive branches

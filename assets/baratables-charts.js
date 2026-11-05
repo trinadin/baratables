@@ -1,4 +1,52 @@
 (function(window) {
+	function validColor(value) {
+		return typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : '';
+	}
+
+	// A chart font size is a number of PIXELS. ECharts' fontSize is not a CSS length, so
+	// a general CSS length would be read as its bare number -- "2em" as 2px. PHP
+	// normalizes the stored value to the px form; this re-checks it at runtime so a
+	// hand-built integration payload cannot smuggle a length back in.
+	function validSize(value) {
+		var match = typeof value === 'string' ? /^(\d{1,4}(?:\.\d{1,2})?)px$/.exec(value.trim()) : null;
+		return match ? parseFloat(match[1]) : 0;
+	}
+
+	// The palette the vendored ECharts build (v6.1.0) draws with. The plugin used to
+	// carry its own hardcoded copy of the older ECharts 5 palette, which no longer
+	// matched the library it renders with.
+	var CHART_PALETTE = ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df', '#ffd10a', '#fb628b', '#785db0', '#3fbe95'];
+
+	// The default series colors lead with the table's accent, so a themed accent colors
+	// the chart too; the rest of the palette follows.
+	function accentPalette(accent) {
+		var palette = [accent];
+		CHART_PALETTE.forEach(function(color) {
+			if (palette.indexOf(color) === -1) {
+				palette.push(color);
+			}
+		});
+		return palette;
+	}
+
+	// The palette the chart draws with: the admin's own series palette when set, and the
+	// accent-led default otherwise. Resolved BEFORE the option is built, because a
+	// Gantt bakes its group colors into the data items while the option is assembled.
+	function resolveSeriesPalette(chartConfig, container) {
+		var style = chartConfig || {};
+		var palette = Array.isArray(style.stylePalette) ? style.stylePalette.filter(validColor) : [];
+		if (palette.length) {
+			return palette;
+		}
+		var accent = '';
+		try {
+			accent = validColor(String(window.getComputedStyle(container).getPropertyValue('--btbl-accent') || '').trim());
+		} catch (err) {
+			accent = '';
+		}
+		return accent ? accentPalette(accent) : [];
+	}
+
 	function normalizeConfig(config) {
 		var normalized = Object.assign({}, config || {});
 		[
@@ -197,7 +245,10 @@
 		var progressIdx = helpers.slugIdx(context.slugToIndex, chartConfig.gantt_progress);
 		var categories = [];
 		var categoryIndex = {};
-		var palette = ['#5470C6', '#91CC75', '#EE6666', '#73C0DE', '#FAC858', '#9A60B4', '#EA7CCC'];
+		// The group colors come from the chart's own palette, so a Gantt is styled by
+		// exactly the same controls as every other chart type. Ungrouped tasks fall
+		// through to the series color, which leads with the accent.
+		var palette = context.palette && context.palette.length ? context.palette : CHART_PALETTE;
 		var groupColor = {};
 
 		function getGroupColor(group) {
@@ -522,10 +573,6 @@
 		return buildCartesianOption(type, prepared, context.columnsMeta, context.chartConfig);
 	}
 
-	function validColor(value) {
-		return typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : '';
-	}
-
 	function eachItem(value, callback) {
 		var list = Array.isArray(value) ? value : (value ? [value] : []);
 		list.forEach(callback);
@@ -564,33 +611,29 @@
 	}
 
 	/**
-	 * Design tokens (2.0). The chart's own palette replaces the accent-led default series
-	 * colors wherever ECharts has not chosen its own -- a builder that sets option.color
-	 * (the Gantt progress palette) keeps it. Text, grid, and background then restyle the
-	 * built option on top; the background also prints as --btbl-chart-bg on the container
-	 * from PHP, so copy/image exports without a canvas background still show it. Colors
-	 * arrive sanitized from PHP, but the runtime re-checks so a hand-built integration
-	 * payload can never inject a malformed value.
+	 * Design tokens (2.0, extended in 2.1.0). The chart's own palette replaces the
+	 * accent-led default series colors wherever ECharts has not chosen its own; a builder
+	 * that sets option.color keeps it. Text, grid, and background then restyle the built
+	 * option on top; the background also prints as --btbl-chart-bg on the container from
+	 * PHP, so copy/image exports without a canvas background still show it. Colors arrive
+	 * sanitized from PHP, but the runtime re-checks so a hand-built integration payload
+	 * can never inject a malformed value.
+	 *
+	 * Every chart type is covered, including the ones whose drawing has no x/y axes: a
+	 * radar's indicator names and web, a treemap's tile labels, a heatmap's visualMap
+	 * gradient and legend, and the tooltip, which is the one piece of text that never
+	 * touches the canvas.
 	 */
-	function applyChartStyle(option, chartConfig, container) {
+	function applyChartStyle(option, chartConfig, container, palette) {
 		var style = chartConfig || {};
 		var textColor = validColor(style.styleTextColor);
 		var gridColor = validColor(style.styleGridColor);
-		var fontSize = parseFloat(style.styleFontSize);
+		var fontSize = validSize(style.styleFontSize);
 		var background = validColor(style.styleBackground);
-		var palette = Array.isArray(style.stylePalette) ? style.stylePalette.filter(validColor) : [];
+		var seriesPalette = palette || [];
 
-		if (!option.color && chartConfig.type !== 'gantt' && palette.length) {
-			option.color = palette;
-		}
-		// Lead the series palette with the table's accent so a themed accent colors the
-		// chart too; charts without a resolved accent keep ECharts' default palette.
-		if (!option.color) {
-			var accent = '';
-			try { accent = String(window.getComputedStyle(container).getPropertyValue('--btbl-accent') || '').trim(); } catch (err) { accent = ''; }
-			if (accent) {
-				option.color = [accent, '#91CC75', '#EE6666', '#73C0DE', '#FAC858', '#9A60B4', '#EA7CCC'];
-			}
+		if (!option.color && seriesPalette.length) {
+			option.color = seriesPalette;
 		}
 		if (background) {
 			option.backgroundColor = background;
@@ -605,9 +648,72 @@
 			if (textColor) { legend.textStyle.color = textColor; }
 			if (fontSize) { legend.textStyle.fontSize = fontSize; }
 		});
+		// The tooltip is the one piece of text that is not drawn on the canvas, so it
+		// needs its own color: on a dark background ECharts' default tooltip text is
+		// unreadable.
+		if (textColor || fontSize) {
+			option.tooltip = option.tooltip || {};
+			option.tooltip.textStyle = option.tooltip.textStyle || {};
+			if (textColor) { option.tooltip.textStyle.color = textColor; }
+			if (fontSize) { option.tooltip.textStyle.fontSize = fontSize; }
+		}
 		if (gridColor || textColor || fontSize) {
 			eachItem(option.xAxis, function(axis) { applyAxisStyle(axis, textColor, gridColor, fontSize); });
 			eachItem(option.yAxis, function(axis) { applyAxisStyle(axis, textColor, gridColor, fontSize); });
+		}
+		// A radar has no x/y axes: its indicator names and its web live on the radar
+		// component, so they need the same treatment the cartesian axes get.
+		if (option.radar && (gridColor || textColor || fontSize)) {
+			applyRadarStyle(option.radar, textColor, gridColor, fontSize);
+		}
+		// A treemap's tile labels carry their own default color, which the global text
+		// style does not reach.
+		if (textColor) {
+			eachItem(option.series, function(series) {
+				if (series && series.type === 'treemap') {
+					series.label = series.label || {};
+					series.label.color = textColor;
+				}
+			});
+		}
+		// A heatmap's cells are painted by the visualMap rather than by the series
+		// palette, so the palette only reaches it through the visualMap's own gradient.
+		if (option.visualMap) {
+			if (seriesPalette.length) {
+				option.visualMap.inRange = option.visualMap.inRange || {};
+				option.visualMap.inRange.color = seriesPalette;
+			}
+			if (textColor || fontSize) {
+				option.visualMap.textStyle = option.visualMap.textStyle || {};
+				if (textColor) { option.visualMap.textStyle.color = textColor; }
+				if (fontSize) { option.visualMap.textStyle.fontSize = fontSize; }
+			}
+		}
+	}
+
+	/**
+	 * A radar's own chrome: the indicator names around the web, the web lines, and the
+	 * outer axis line. The split areas keep their own background, because the grid color
+	 * is a LINE color everywhere else in the plugin.
+	 */
+	function applyRadarStyle(radar, textColor, gridColor, fontSize) {
+		if (!radar || typeof radar !== 'object') { return; }
+		if (textColor || fontSize) {
+			radar.axisName = radar.axisName || {};
+			if (textColor) { radar.axisName.color = textColor; }
+			if (fontSize) { radar.axisName.fontSize = fontSize; }
+			radar.splitArea = radar.splitArea || {};
+			radar.splitArea.axisName = radar.splitArea.axisName || {};
+			if (textColor) { radar.splitArea.axisName.color = textColor; }
+			if (fontSize) { radar.splitArea.axisName.fontSize = fontSize; }
+		}
+		if (gridColor) {
+			radar.splitLine = radar.splitLine || {};
+			radar.splitLine.lineStyle = radar.splitLine.lineStyle || {};
+			radar.splitLine.lineStyle.color = gridColor;
+			radar.axisLine = radar.axisLine || {};
+			radar.axisLine.lineStyle = radar.axisLine.lineStyle || {};
+			radar.axisLine.lineStyle.color = gridColor;
 		}
 	}
 
@@ -645,7 +751,11 @@
 			tableInstance: tableInstance,
 			slugToIndex: baseSlugToIndex,
 			helpers: helpers,
-			columnsMeta: buildColumnsMeta(chartConfig.columns)
+			columnsMeta: buildColumnsMeta(chartConfig.columns),
+			// Resolved once, before any option is built: a Gantt bakes its group colors
+			// into the data items while the option is assembled, so the palette has to
+			// exist by then.
+			palette: resolveSeriesPalette(chartConfig, container)
 		};
 
 		var rendered = false;
@@ -656,7 +766,7 @@
 			var option = buildChartOption(context);
 			if (option) {
 				rendered = true;
-				applyChartStyle(option, chartConfig, container);
+				applyChartStyle(option, chartConfig, container, context.palette);
 				chart.setOption(option, true);
 			}
 		}

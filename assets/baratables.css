@@ -63,9 +63,13 @@
 }
 
 /* The chart container paints the chart's own background token behind ECharts' transparent
-   canvas; every other chart token is canvas-drawn and travels through the JS payload. */
+   canvas; the padding and radius are the container's shape, which CSS can reach even though
+   the chart's drawn content cannot. Every other chart token is canvas-drawn and travels
+   through the JS payload. */
 .btbl-chart {
 	background-color: var(--btbl-chart-bg, transparent);
+	padding: var(--btbl-chart-padding, 0);
+	border-radius: var(--btbl-chart-radius, 0);
 }
 
 /* The aggregate footer reads as part of the table: a strong top rule and a quiet tint, so

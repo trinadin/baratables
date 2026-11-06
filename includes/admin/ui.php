@@ -1372,7 +1372,7 @@ class BaraTables_Admin_Tab_Design {
 					<?php BaraTables_Admin_Design_Fields::render_preset_buttons('data-btbl-preset'); ?>
 				</div>
 			</div>
-			<?php BaraTables_Admin_Design_Fields::render_table_groups($table_options); ?>
+			<?php BaraTables_Admin_Design_Fields::render_table_groups($table_options, 'btbl_table_options', 'btbl_design', BaraTables_Design::blank_accent($table_options)); ?>
 			<?php if (!empty($style_keys)) : ?>
 				<div class="btbl-control btbl-design-fields">
 					<strong class="btbl-small-heading"><?php esc_html_e('Table features', 'baratables'); ?></strong>

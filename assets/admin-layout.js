@@ -121,7 +121,7 @@ jQuery(function($) {
 			$card.find('[data-btbl-override-field]').val('');
 			// The swatch cannot be blank: park it back on the theme accent the field renders.
 			var $colorField = $card.find('.btbl-color-field');
-			$card.find('.btbl-color-picker').val(($colorField.data('btbl-theme-accent') || '#2271b1'));
+			$card.find('.btbl-color-picker').val(($colorField.data('btbl-blank-accent') || '#2271b1'));
 			$body.removeClass('is-open').addClass('is-hidden');
 		} else {
 			$body.removeClass('is-hidden');

@@ -335,7 +335,7 @@
 			if (complete) {
 				$picker.val(masked);
 			} else if (masked === '') {
-				$picker.val($field.data('btbl-theme-accent') || '#2271b1');
+				$picker.val($field.data('btbl-blank-accent') || '#2271b1');
 			}
 		});
 		$(document).on('input change', '[data-btbl-size-field]', function() {

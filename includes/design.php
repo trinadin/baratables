@@ -358,6 +358,26 @@ class BaraTables_Design {
 	}
 
 	/**
+	 * The accent that resolves when a table's own accent is blank.
+	 *
+	 * The site default comes first and the theme second, so this is the colour a blank
+	 * accent field actually produces. The table editor's placeholder has to name THAT
+	 * colour: with a site default in play, the theme's accent is not what a blank field
+	 * resolves to, and a placeholder that named it would promise the wrong colour.
+	 *
+	 * @param array $table_options The table's own stored options.
+	 */
+	public static function blank_accent(array $table_options): string {
+		if (!self::opts_out($table_options)) {
+			$site_accent = (string) (self::site_default()['table']['accentColor'] ?? '');
+			if ($site_accent !== '') {
+				return $site_accent;
+			}
+		}
+		return BaraTables_Service::resolve_theme_accent();
+	}
+
+	/**
 	 * The effective design for a chart.
 	 *
 	 * @param array $chart_options The chart's stored options.

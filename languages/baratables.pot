@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-06T04:59:34+00:00\n"
+"POT-Creation-Date: 2026-11-06T05:54:19+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -34,11 +34,11 @@ msgstr ""
 msgid "https://profiles.wordpress.org/nathannoom/"
 msgstr ""
 
-#: includes/admin/actions.php:241
+#: includes/admin/actions.php:244
 msgid "Untitled table"
 msgstr ""
 
-#: includes/admin/actions.php:280
+#: includes/admin/actions.php:283
 msgid "The external database settings were not valid, so the previous connection was kept. Check the host, database name, user, and table name."
 msgstr ""
 
@@ -176,7 +176,7 @@ msgid "Chart builder"
 msgstr ""
 
 #: includes/admin/admin.php:576
-#: includes/admin/design-screen.php:293
+#: includes/admin/design-screen.php:318
 msgid "Chart preview"
 msgstr ""
 
@@ -260,155 +260,155 @@ msgstr ""
 msgid "Used by the per-column conditional formatting rules on the Columns & filters tab."
 msgstr ""
 
-#: includes/admin/design-fields.php:91
+#: includes/admin/design-fields.php:94
 msgid "Typography & shape"
 msgstr ""
 
-#: includes/admin/design-fields.php:115
+#: includes/admin/design-fields.php:118
 msgid "Background"
 msgstr ""
 
-#: includes/admin/design-fields.php:118
+#: includes/admin/design-fields.php:121
 msgid "Canvas default"
 msgstr ""
 
-#: includes/admin/design-fields.php:122
+#: includes/admin/design-fields.php:125
 #: includes/services.php:3551
 msgid "Text color"
 msgstr ""
 
-#: includes/admin/design-fields.php:125
-#: includes/admin/design-fields.php:132
+#: includes/admin/design-fields.php:128
+#: includes/admin/design-fields.php:135
 msgid "ECharts default"
 msgstr ""
 
-#: includes/admin/design-fields.php:129
+#: includes/admin/design-fields.php:132
 msgid "Grid color"
 msgstr ""
 
-#: includes/admin/design-fields.php:139
+#: includes/admin/design-fields.php:142
 #: includes/services.php:3553
 msgid "Font size"
 msgstr ""
 
-#: includes/admin/design-fields.php:146
+#: includes/admin/design-fields.php:149
 msgid "Padding"
 msgstr ""
 
-#: includes/admin/design-fields.php:149
-#: includes/admin/design-fields.php:156
+#: includes/admin/design-fields.php:152
+#: includes/admin/design-fields.php:159
 #: includes/admin/ui.php:847
 #: includes/admin/ui.php:1666
 #: includes/admin/ui.php:1671
 msgid "None"
 msgstr ""
 
-#: includes/admin/design-fields.php:153
+#: includes/admin/design-fields.php:156
 #: includes/services.php:3574
 msgid "Corner radius"
 msgstr ""
 
-#: includes/admin/design-fields.php:183
+#: includes/admin/design-fields.php:186
 msgid "Colors & type"
 msgstr ""
 
-#: includes/admin/design-fields.php:199
+#: includes/admin/design-fields.php:202
 msgid "Text and grid colors apply to axis labels, legends, and grid lines. The palette colors the series, the slices, and a Gantt's task groups."
 msgstr ""
 
-#: includes/admin/design-fields.php:202
+#: includes/admin/design-fields.php:205
 msgid "Chart container"
 msgstr ""
 
-#: includes/admin/design-fields.php:203
+#: includes/admin/design-fields.php:206
 msgid "The space and rounding around the chart itself, rather than inside it."
-msgstr ""
-
-#: includes/admin/design-fields.php:232
-#: includes/admin/design-fields.php:240
-msgid "Clear overrides"
-msgstr ""
-
-#: includes/admin/design-fields.php:233
-#: includes/admin/design-fields.php:241
-msgid "Minimal"
-msgstr ""
-
-#: includes/admin/design-fields.php:234
-msgid "High contrast"
 msgstr ""
 
 #: includes/admin/design-fields.php:235
 #: includes/admin/design-fields.php:243
-msgid "Midnight"
+msgid "Clear overrides"
 msgstr ""
 
 #: includes/admin/design-fields.php:236
 #: includes/admin/design-fields.php:244
+msgid "Minimal"
+msgstr ""
+
+#: includes/admin/design-fields.php:237
+msgid "High contrast"
+msgstr ""
+
+#: includes/admin/design-fields.php:238
+#: includes/admin/design-fields.php:246
+msgid "Midnight"
+msgstr ""
+
+#: includes/admin/design-fields.php:239
+#: includes/admin/design-fields.php:247
 msgid "Paper"
 msgstr ""
 
-#: includes/admin/design-fields.php:242
+#: includes/admin/design-fields.php:245
 msgid "Bold header"
 msgstr ""
 
-#: includes/admin/design-fields.php:303
-#: includes/admin/design-fields.php:315
+#: includes/admin/design-fields.php:307
+#: includes/admin/design-fields.php:319
 msgid "Inherit"
 msgstr ""
 
 #. translators: %s is the control label, e.g. "Background".
-#: includes/admin/design-fields.php:309
-#: includes/admin/design-fields.php:359
+#: includes/admin/design-fields.php:313
+#: includes/admin/design-fields.php:363
 #, php-format
 msgid "Pick %s"
 msgstr ""
 
-#: includes/admin/design-fields.php:399
+#: includes/admin/design-fields.php:403
 msgid "Colors are used in order across series and slices. Drag to reorder. An empty palette leaves the series to the default colors, led by the accent."
 msgstr ""
 
-#: includes/admin/design-fields.php:401
+#: includes/admin/design-fields.php:405
 msgid "Colors are used in order across series and slices. Drag to reorder. An empty palette inherits the site default's palette, or the default colors led by the accent."
 msgstr ""
 
 #. translators: %s is a hex color, e.g. "#2271b1".
-#: includes/admin/design-fields.php:417
-#: includes/admin/design-fields.php:452
+#: includes/admin/design-fields.php:421
+#: includes/admin/design-fields.php:456
 #, php-format
 msgid "Remove color %s"
 msgstr ""
 
-#: includes/admin/design-fields.php:418
-#: includes/admin/design-fields.php:447
+#: includes/admin/design-fields.php:422
+#: includes/admin/design-fields.php:451
 msgid "Use the arrow keys to move this color."
 msgstr ""
 
-#: includes/admin/design-fields.php:433
+#: includes/admin/design-fields.php:437
 msgid "New palette color (hex)"
 msgstr ""
 
-#: includes/admin/design-fields.php:435
+#: includes/admin/design-fields.php:439
 msgid "Pick new palette color"
 msgstr ""
 
-#: includes/admin/design-fields.php:437
+#: includes/admin/design-fields.php:441
 msgid "Add color"
 msgstr ""
 
-#: includes/admin/design-fields.php:477
-#: includes/admin/design-screen.php:265
+#: includes/admin/design-fields.php:481
+#: includes/admin/design-screen.php:290
 #: includes/admin/ui.php:1825
 msgid "Series palette"
 msgstr ""
 
 #. translators: %s is a comma-separated list of field names, e.g. "Accent color, Cell padding".
-#: includes/admin/design-fields.php:509
+#: includes/admin/design-fields.php:513
 #, php-format
 msgid "These values were not accepted, so the previous ones were kept: %s."
 msgstr ""
 
-#: includes/admin/design-fields.php:514
+#: includes/admin/design-fields.php:518
 msgid "Some colors in the series palette were not accepted, so they were left out."
 msgstr ""
 
@@ -427,99 +427,99 @@ msgstr ""
 msgid "This is the design every table and chart on this site starts from. A table or chart that sets its own value keeps that value; one that switches the site design off follows your theme instead."
 msgstr ""
 
-#: includes/admin/design-screen.php:165
+#: includes/admin/design-screen.php:169
 msgid "Table style presets"
 msgstr ""
 
-#: includes/admin/design-screen.php:166
+#: includes/admin/design-screen.php:170
 msgid "One click fills the table controls below; keep tweaking from there."
 msgstr ""
 
-#: includes/admin/design-screen.php:176
+#: includes/admin/design-screen.php:180
 #: includes/admin/ui.php:1399
 #: includes/admin/ui.php:1831
 #: includes/services.php:3576
 msgid "Style output"
 msgstr ""
 
-#: includes/admin/design-screen.php:178
+#: includes/admin/design-screen.php:182
 #: includes/admin/ui.php:1419
 #: includes/admin/ui.php:1833
 msgid "Copy CSS"
 msgstr ""
 
-#: includes/admin/design-screen.php:181
+#: includes/admin/design-screen.php:185
 msgid "Generated site CSS"
 msgstr ""
 
-#: includes/admin/design-screen.php:182
+#: includes/admin/design-screen.php:186
 msgid "Copies the whole site design as CSS custom properties, for the tables and for the chart containers. Paste it into your theme to keep the look even if the plugin settings change."
 msgstr ""
 
-#: includes/admin/design-screen.php:186
+#: includes/admin/design-screen.php:190
 msgid "Save site design"
 msgstr ""
 
-#: includes/admin/design-screen.php:215
+#: includes/admin/design-screen.php:220
 #: includes/admin/ui.php:1337
 #: includes/admin/ui.php:1836
 msgid "Copied to your clipboard."
 msgstr ""
 
-#: includes/admin/design-screen.php:217
+#: includes/admin/design-screen.php:222
 #: includes/admin/ui.php:1339
 #: includes/admin/ui.php:1836
 msgid "Clipboard unavailable — the CSS is selected below; copy it manually."
 msgstr ""
 
-#: includes/admin/design-screen.php:221
+#: includes/admin/design-screen.php:226
 msgid "Paste it into Appearance > Customize > Additional CSS (or a child theme stylesheet) to keep the look even if the plugin settings change."
 msgstr ""
 
-#: includes/admin/design-screen.php:232
+#: includes/admin/design-screen.php:257
 #: includes/repositories.php:561
 msgid "Tables"
 msgstr ""
 
-#: includes/admin/design-screen.php:233
+#: includes/admin/design-screen.php:258
 msgid "The design every table starts from. A table that sets its own value keeps that value."
 msgstr ""
 
-#: includes/admin/design-screen.php:234
+#: includes/admin/design-screen.php:259
 msgid "These are the colors and the spacing. Whether the stripes and highlights are on at all stays a per-table setting, in each table's own Design tab."
 msgstr ""
 
-#: includes/admin/design-screen.php:254
+#: includes/admin/design-screen.php:279
 #: includes/repositories.php:679
 msgid "Charts"
 msgstr ""
 
-#: includes/admin/design-screen.php:255
+#: includes/admin/design-screen.php:280
 msgid "The design every chart starts from. A chart that sets its own value keeps that value."
 msgstr ""
 
-#: includes/admin/design-screen.php:258
+#: includes/admin/design-screen.php:283
 msgid "Chart style presets"
 msgstr ""
 
-#: includes/admin/design-screen.php:259
+#: includes/admin/design-screen.php:284
 msgid "One click fills the chart controls below; keep tweaking from there."
 msgstr ""
 
-#: includes/admin/design-screen.php:294
+#: includes/admin/design-screen.php:319
 msgid "A sample chart with the design above. Changes appear here as you type."
 msgstr ""
 
-#: includes/admin/design-screen.php:298
-#: includes/admin/design-screen.php:322
+#: includes/admin/design-screen.php:323
+#: includes/admin/design-screen.php:347
 msgid "The preview needs the front-end renderer, which is unavailable in this request."
 msgstr ""
 
-#: includes/admin/design-screen.php:317
+#: includes/admin/design-screen.php:342
 msgid "Preview"
 msgstr ""
 
-#: includes/admin/design-screen.php:318
+#: includes/admin/design-screen.php:343
 msgid "A sample table with the design above. Changes appear here as you type."
 msgstr ""
 

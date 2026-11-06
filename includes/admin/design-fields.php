@@ -68,9 +68,12 @@ class BaraTables_Admin_Design_Fields {
 	 * @param string $name_prefix The form field name prefix.
 	 * @param string $id_prefix   The element id prefix.
 	 */
-	public static function render_table_groups(array $values, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design'): void {
+	public static function render_table_groups(array $values, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design', string $blank_accent = ''): void {
 		$schema = BaraTables_Service::get_table_option_schema();
-		$theme_accent = BaraTables_Service::resolve_theme_accent();
+		// The accent that resolves when the accent field is blank. The table editor passes
+		// the accent that actually applies to that table; the site screen edits the site
+		// default itself, so a blank field there resolves to the theme's accent.
+		$blank_accent = $blank_accent !== '' ? $blank_accent : BaraTables_Service::resolve_theme_accent();
 		foreach (self::table_groups() as $group) {
 			?>
 			<div class="btbl-control btbl-design-fields">
@@ -80,7 +83,7 @@ class BaraTables_Admin_Design_Fields {
 				<?php endif; ?>
 				<div class="btbl-flag-grid btbl-table-flags">
 					<?php foreach ($group['fields'] as $field_key) : ?>
-						<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $theme_accent, $name_prefix, $id_prefix); ?>
+						<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $blank_accent, $name_prefix, $id_prefix); ?>
 					<?php endforeach; ?>
 				</div>
 			</div>
@@ -91,7 +94,7 @@ class BaraTables_Admin_Design_Fields {
 			<strong class="btbl-small-heading"><?php esc_html_e('Typography & shape', 'baratables'); ?></strong>
 			<div class="btbl-flag-grid btbl-table-flags">
 				<?php foreach (self::table_size_fields() as $field_key) : ?>
-					<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $theme_accent, $name_prefix, $id_prefix); ?>
+					<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $blank_accent, $name_prefix, $id_prefix); ?>
 				<?php endforeach; ?>
 			</div>
 		</div>
@@ -272,11 +275,12 @@ class BaraTables_Admin_Design_Fields {
 	 * @param string $key        The option key, e.g. 'accentColor'.
 	 * @param array  $config     The schema entry for that key.
 	 * @param array  $values     The current values, keyed by option key.
-	 * @param string $theme_accent The theme's accent color, used as the accent placeholder.
+	 * @param string $blank_accent The accent that resolves when the field is blank, used
+	 *                             as the accent placeholder and to park the swatch.
 	 * @param string $name_prefix The form field name prefix, e.g. 'btbl_table_options'.
 	 * @param string $id_prefix   The element id prefix.
 	 */
-	public static function render_field(string $key, array $config, array $values, string $theme_accent, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design'): void {
+	public static function render_field(string $key, array $config, array $values, string $blank_accent, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design'): void {
 		$label = (string) ($config['label'] ?? $key);
 		$description = (string) ($config['description'] ?? '');
 		// Raw schema key, matching the Options tab's btbl_rowLimit precedent: the id mirrors
@@ -293,18 +297,18 @@ class BaraTables_Admin_Design_Fields {
 				<label class="btbl-field-name" for="<?php echo esc_attr($input_id); ?>"><?php echo esc_html($label); ?></label>
 			</span>
 			<?php if (($config['type'] ?? '') === 'color') : ?>
-				<div class="btbl-color-field" data-btbl-theme-accent="<?php echo esc_attr($key === 'accentColor' ? $theme_accent : ''); ?>">
+				<div class="btbl-color-field" data-btbl-blank-accent="<?php echo esc_attr($key === 'accentColor' ? $blank_accent : ''); ?>">
 					<input
 						type="text"
 						id="<?php echo esc_attr($input_id); ?>"
 						name="<?php echo esc_attr($name_prefix . '[' . $key . ']'); ?>"
 						class="btbl-color-value"
 						value="<?php echo esc_attr($value); ?>"
-						placeholder="<?php esc_attr_e('Inherit', 'baratables'); ?>"
+						placeholder="<?php echo esc_attr($key === 'accentColor' ? $blank_accent : __('Inherit', 'baratables')); ?>"
 						data-btbl-live-style
 						<?php echo $described_by; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from esc_attr() above. ?>
 					/>
-					<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : ($key === 'accentColor' ? $theme_accent : '#ffffff')); ?>" aria-label="<?php echo esc_attr(sprintf(
+					<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : ($key === 'accentColor' ? $blank_accent : '#ffffff')); ?>" aria-label="<?php echo esc_attr(sprintf(
 						/* translators: %s is the control label, e.g. "Background". */
 						__('Pick %s', 'baratables'),
 						$label

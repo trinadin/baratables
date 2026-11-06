@@ -161,6 +161,10 @@ class BaraTables_Admin_Design_Screen {
 				<?php wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD); ?>
 				<input type="hidden" name="btbl_design_action" value="save_design" />
 
+				<?php // The chart editor's own context, so the chart script drives this screen's
+				// chart controls, presets and preview exactly as it drives the chart editor's. ?>
+				<div data-btbl-chart-config="<?php echo esc_attr(wp_json_encode($this->chart_script_config())); ?>"></div>
+
 				<div class="btbl-control" data-btbl-design-config="<?php echo esc_attr(wp_json_encode($this->script_config())); ?>">
 					<strong class="btbl-small-heading"><?php esc_html_e('Table style presets', 'baratables'); ?></strong>
 					<p class="description"><?php esc_html_e('One click fills the table controls below; keep tweaking from there.', 'baratables'); ?></p>
@@ -199,6 +203,7 @@ class BaraTables_Admin_Design_Screen {
 	 * option: the preview shows exactly what the form holds.
 	 */
 	private function script_config(): array {
+		$chart = $this->chart_script_config();
 		return [
 			'scope' => '#btbl-site-design-form',
 			'previewSelector' => '#btbl-site-design-preview .btbl-table-wrapper',
@@ -206,8 +211,8 @@ class BaraTables_Admin_Design_Screen {
 			// The chart's own maps, shipped like the table's varMap: the site screen
 			// edits the chart half of the design too, and its Copy CSS has to hand the
 			// chart's container tokens back as CSS.
-			'chartVarMap' => BaraTables_Design::CHART_VAR_MAP,
-			'chartFieldMap' => BaraTables_Design::CHART_FIELD_MAP,
+			'chartVarMap' => $chart['chartVarMap'],
+			'chartFieldMap' => $chart['chartFieldMap'],
 			'siteDefault' => [],
 			'useSiteDesign' => true,
 			'siteScope' => true,
@@ -219,6 +224,26 @@ class BaraTables_Admin_Design_Screen {
 			// per-table option -- so its copied CSS cannot tell the owner to switch to
 			// it. The chart editor's copy can, and says so.
 			'copiedCssNote' => __('Paste it into Appearance > Customize > Additional CSS (or a child theme stylesheet) to keep the look even if the plugin settings change.', 'baratables'),
+		];
+	}
+
+	/**
+	 * The chart editor's context, for the chart script.
+	 *
+	 * The chart script reads the chart's vocabulary and the site default from this
+	 * element. The site Design screen edits the site default itself, so it inherits
+	 * nothing -- and it still needs the vocabulary, or the chart presets and the chart
+	 * preview would not work here.
+	 */
+	private function chart_script_config(): array {
+		return [
+			'chartVarMap' => BaraTables_Design::CHART_VAR_MAP,
+			'chartFieldMap' => BaraTables_Design::CHART_FIELD_MAP,
+			'siteDefault' => [],
+			'useSiteDesign' => true,
+			// No chart type is gridless HERE: the site default has to cover every chart
+			// type, so the grid color stays available whatever the preview chart is.
+			'gridlessTypes' => [],
 		];
 	}
 

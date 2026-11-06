@@ -78,8 +78,15 @@ class BaraTables_Admin_Design_Screen {
 			'styleRadius'    => $this->posted('btbl_chart_style_radius'),
 		];
 
-		BaraTables_Design::update_site_default($raw);
-		wp_safe_redirect(add_query_arg('btbl-design-saved', '1', admin_url('edit.php?post_type=' . BaraTables_Repository::CPT . '&page=' . self::PAGE_SLUG)));
+		$rejected = BaraTables_Design::update_site_default($raw);
+		$args = ['btbl-design-saved' => '1'];
+		if ($rejected !== []) {
+			// The keys travel in the URL so the screen can name them after the redirect.
+			// They are read back through a whitelist of the known design keys, so nothing
+			// reaches the page that this plugin did not put there.
+			$args['btbl-design-rejected'] = implode(',', array_keys($rejected));
+		}
+		wp_safe_redirect(add_query_arg($args, admin_url('edit.php?post_type=' . BaraTables_Repository::CPT . '&page=' . self::PAGE_SLUG)));
 		exit;
 	}
 
@@ -91,6 +98,30 @@ class BaraTables_Admin_Design_Screen {
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by the caller; sanitized in BaraTables_Design.
 		return (string) wp_unslash($_POST[$key]);
+	}
+
+	/**
+	 * The design keys the last save rejected, read back from the redirect.
+	 *
+	 * The keys are matched against the plugin's own list of design values, so the query
+	 * string can only ever name a field this plugin knows about.
+	 *
+	 * @return array<string,string> The option key => the option key.
+	 */
+	private function rejected_design_keys(): array {
+		if (!isset($_GET['btbl-design-rejected'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only display flag.
+			return [];
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only display flag; every key is matched against the plugin's own list of design values below, so nothing else is read.
+		$raw = (string) wp_unslash($_GET['btbl-design-rejected']);
+		$known = array_keys(BaraTables_Admin_Design_Fields::value_labels());
+		$keys = [];
+		foreach (explode(',', $raw) as $key) {
+			if (in_array($key, $known, true)) {
+				$keys[$key] = $key;
+			}
+		}
+		return $keys;
 	}
 
 	/** The palette chip editor serializes its colors as JSON; malformed input is just "no palette". */
@@ -107,6 +138,7 @@ class BaraTables_Admin_Design_Screen {
 		$table_values = $default['table'];
 		$chart_values = $default['chart'];
 		$saved = isset($_GET['btbl-design-saved']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only display flag.
+		$rejected = $this->rejected_design_keys();
 
 		?>
 		<div class="wrap btbl-admin">
@@ -119,6 +151,9 @@ class BaraTables_Admin_Design_Screen {
 			?>
 			<?php if ($saved) : ?>
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e('Site design saved.', 'baratables'); ?></p></div>
+			<?php endif; ?>
+			<?php if ($rejected !== []) : ?>
+				<div class="notice notice-warning"><p><?php echo esc_html(BaraTables_Admin_Design_Fields::rejected_values_notice($rejected)); ?></p></div>
 			<?php endif; ?>
 			<p class="description"><?php esc_html_e('This is the design every table and chart on this site starts from. A table or chart that sets its own value keeps that value; one that switches the site design off follows your theme instead.', 'baratables'); ?></p>
 
@@ -144,7 +179,7 @@ class BaraTables_Admin_Design_Screen {
 						<span class="description" aria-live="polite" data-btbl-copy-status></span>
 					</div>
 					<pre class="btbl-copy-css-output" hidden tabindex="0" aria-label="<?php esc_attr_e('Generated site CSS', 'baratables'); ?>"></pre>
-					<p class="description btbl-field-hint"><?php esc_html_e('Copies the site design as CSS custom properties. Paste it into your theme to keep the look even if the plugin settings change.', 'baratables'); ?></p>
+					<p class="description btbl-field-hint"><?php esc_html_e('Copies the whole site design as CSS custom properties, for the tables and for the chart containers. Paste it into your theme to keep the look even if the plugin settings change.', 'baratables'); ?></p>
 				</div>
 
 				<p class="submit">
@@ -168,6 +203,11 @@ class BaraTables_Admin_Design_Screen {
 			'scope' => '#btbl-site-design-form',
 			'previewSelector' => '#btbl-site-design-preview .btbl-table-wrapper',
 			'varMap' => BaraTables_Service::STYLE_VAR_MAP,
+			// The chart's own maps, shipped like the table's varMap: the site screen
+			// edits the chart half of the design too, and its Copy CSS has to hand the
+			// chart's container tokens back as CSS.
+			'chartVarMap' => BaraTables_Design::CHART_VAR_MAP,
+			'chartFieldMap' => BaraTables_Design::CHART_FIELD_MAP,
 			'siteDefault' => [],
 			'useSiteDesign' => true,
 			'siteScope' => true,
@@ -175,6 +215,10 @@ class BaraTables_Admin_Design_Screen {
 			'copiedLabel' => __('Copied to your clipboard.', 'baratables'),
 			// The em dash is written as a Unicode escape so this file stays ASCII.
 			'clipboardUnavailableLabel' => __("Clipboard unavailable \u{2014} the CSS is selected below; copy it manually.", 'baratables'),
+			// The site screen has no "Theme CSS" output mode of its own -- that is a
+			// per-table option -- so its copied CSS cannot tell the owner to switch to
+			// it. The chart editor's copy can, and says so.
+			'copiedCssNote' => __('Paste it into Appearance > Customize > Additional CSS (or a child theme stylesheet) to keep the look even if the plugin settings change.', 'baratables'),
 		];
 	}
 
@@ -187,6 +231,7 @@ class BaraTables_Admin_Design_Screen {
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Tables', 'baratables'); ?></strong>
 			<p class="description"><?php esc_html_e('The design every table starts from. A table that sets its own value keeps that value.', 'baratables'); ?></p>
+			<p class="description"><?php esc_html_e('These are the colors and the spacing. Whether the stripes and highlights are on at all stays a per-table setting, in each table\'s own Design tab.', 'baratables'); ?></p>
 		</div>
 		<?php
 		BaraTables_Admin_Design_Fields::render_table_groups($values, 'btbl_table_options', 'btbl_site_design');
@@ -218,7 +263,7 @@ class BaraTables_Admin_Design_Screen {
 		</div>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Series palette', 'baratables'); ?></strong>
-			<p class="description"><?php esc_html_e('Colors are used in order across series and slices. Drag to reorder. An empty palette keeps the table accent leading the default colors.', 'baratables'); ?></p>
+			<p class="description"><?php echo esc_html(BaraTables_Admin_Design_Fields::palette_hint(true)); ?></p>
 			<?php BaraTables_Admin_Design_Fields::render_palette_editor($palette); ?>
 		</div>
 		<?php BaraTables_Admin_Design_Fields::render_chart_style_groups($values, false); ?>

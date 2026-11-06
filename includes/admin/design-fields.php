@@ -43,7 +43,10 @@ class BaraTables_Admin_Design_Fields {
 			],
 			[
 				'heading' => __('Conditional cell colors', 'baratables'),
-				'description' => __('Used by the per-column conditional formatting rules on the Columns &amp; filters tab.', 'baratables'),
+				// The raw ampersand is deliberate: it is the msgid 2.0.1 shipped, and
+				// WordPress.org translates by msgid, so escaping it here would drop the
+				// existing translation of this line.
+				'description' => __('Used by the per-column conditional formatting rules on the Columns & filters tab.', 'baratables'),
 				'fields' => ['successBgColor', 'successColor', 'warningBgColor', 'warningColor', 'dangerBgColor', 'dangerColor'],
 			],
 		];
@@ -96,6 +99,71 @@ class BaraTables_Admin_Design_Fields {
 	}
 
 	/**
+	 * The chart's style fields, in the order the surfaces render them.
+	 *
+	 * One list, so the chart editor's Design tab, the site Design screen and the copy
+	 * that names a rejected value cannot drift apart. The form field name comes from the
+	 * server's chart field map -- the one place that says which key lives in which field.
+	 *
+	 * @return array<int,array<string,string>> Each field has a key, a name, a label, a
+	 *                                                group, a type and a placeholder.
+	 */
+	public static function chart_style_fields(): array {
+		$fields = [
+			[
+				'key'         => 'styleBackground',
+				'label'       => __('Background', 'baratables'),
+				'group'       => 'colors',
+				'type'        => 'color',
+				'placeholder' => __('Canvas default', 'baratables'),
+			],
+			[
+				'key'         => 'styleTextColor',
+				'label'       => __('Text color', 'baratables'),
+				'group'       => 'colors',
+				'type'        => 'color',
+				'placeholder' => __('ECharts default', 'baratables'),
+			],
+			[
+				'key'         => 'styleGridColor',
+				'label'       => __('Grid color', 'baratables'),
+				'group'       => 'colors',
+				'type'        => 'color',
+				'placeholder' => __('ECharts default', 'baratables'),
+				// The marker the chart editor uses to hide the grid colour for the chart
+				// types that have no axes.
+				'marker'      => 'data-btbl-chart-grid-field',
+			],
+			[
+				'key'         => 'styleFontSize',
+				'label'       => __('Font size', 'baratables'),
+				'group'       => 'colors',
+				'type'        => 'chart-font',
+				'placeholder' => '14px',
+			],
+			[
+				'key'         => 'stylePadding',
+				'label'       => __('Padding', 'baratables'),
+				'group'       => 'container',
+				'type'        => 'css',
+				'placeholder' => __('None', 'baratables'),
+			],
+			[
+				'key'         => 'styleRadius',
+				'label'       => __('Corner radius', 'baratables'),
+				'group'       => 'container',
+				'type'        => 'css',
+				'placeholder' => __('None', 'baratables'),
+			],
+		];
+		$map = BaraTables_Design::CHART_FIELD_MAP;
+		foreach ($fields as $index => $field) {
+			$fields[$index]['name'] = (string) ($map[$field['key']] ?? '');
+		}
+		return $fields;
+	}
+
+	/**
 	 * The chart's colour, type and container groups, rendered for one surface.
 	 *
 	 * The chart editor's Design tab and the site Design screen offer the same chart
@@ -109,15 +177,23 @@ class BaraTables_Admin_Design_Fields {
 	 *                                 chart editor uses to hide it for gridless types.
 	 */
 	public static function render_chart_style_groups(array $values, bool $grid_field_marker): void {
+		$fields = self::chart_style_fields();
 		?>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Colors & type', 'baratables'); ?></strong>
 			<div class="btbl-flag-grid btbl-table-flags btbl-design-fields">
 				<?php
-				self::render_color_card('btbl_chart_style_background', __('Background', 'baratables'), (string) ($values['styleBackground'] ?? ''), __('Canvas default', 'baratables'));
-				self::render_color_card('btbl_chart_style_text_color', __('Text color', 'baratables'), (string) ($values['styleTextColor'] ?? ''), __('ECharts default', 'baratables'));
-				self::render_color_card('btbl_chart_style_grid_color', __('Grid color', 'baratables'), (string) ($values['styleGridColor'] ?? ''), __('ECharts default', 'baratables'), $grid_field_marker ? 'data-btbl-chart-grid-field' : '');
-				self::render_size_card('btbl_chart_style_font_size', __('Font size', 'baratables'), (string) ($values['styleFontSize'] ?? ''), '14px', 'chart-font');
+				foreach ($fields as $field) {
+					if ($field['group'] !== 'colors') {
+						continue;
+					}
+					$marker = ($grid_field_marker && $field['key'] === 'styleGridColor') ? $field['marker'] : '';
+					if ($field['type'] === 'color') {
+						self::render_color_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $marker);
+						continue;
+					}
+					self::render_size_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['type']);
+				}
 				?>
 			</div>
 			<p class="description btbl-field-hint"><?php esc_html_e('Text and grid colors apply to axis labels, legends, and grid lines. The palette colors the series, the slices, and a Gantt\'s task groups.', 'baratables'); ?></p>
@@ -127,8 +203,12 @@ class BaraTables_Admin_Design_Fields {
 			<p class="description"><?php esc_html_e('The space and rounding around the chart itself, rather than inside it.', 'baratables'); ?></p>
 			<div class="btbl-flag-grid btbl-table-flags btbl-design-fields">
 				<?php
-				self::render_size_card('btbl_chart_style_padding', __('Padding', 'baratables'), (string) ($values['stylePadding'] ?? ''), __('None', 'baratables'));
-				self::render_size_card('btbl_chart_style_radius', __('Corner radius', 'baratables'), (string) ($values['styleRadius'] ?? ''), __('None', 'baratables'));
+				foreach ($fields as $field) {
+					if ($field['group'] !== 'container') {
+						continue;
+					}
+					self::render_size_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['type']);
+				}
 				?>
 			</div>
 		</div>
@@ -203,6 +283,10 @@ class BaraTables_Admin_Design_Fields {
 		// the stored camelCase option key (sanitize_key would lowercase it).
 		$input_id = $id_prefix . '_' . $key;
 		$value = (string) ($values[$key] ?? '');
+		// The hint is linked to the control, so a screen reader reads the field's guidance
+		// with the field instead of leaving it as a free-floating paragraph.
+		$hint_id = $input_id . '_hint';
+		$described_by = $description !== '' ? ' aria-describedby="' . esc_attr($hint_id) . '"' : '';
 		?>
 		<div class="btbl-checkbox btbl-design-field" data-btbl-design-field="<?php echo esc_attr($key); ?>">
 			<span class="btbl-checkbox-top">
@@ -216,8 +300,9 @@ class BaraTables_Admin_Design_Fields {
 						name="<?php echo esc_attr($name_prefix . '[' . $key . ']'); ?>"
 						class="btbl-color-value"
 						value="<?php echo esc_attr($value); ?>"
-						placeholder="<?php echo esc_attr($key === 'accentColor' ? $theme_accent : __('Inherit', 'baratables')); ?>"
+						placeholder="<?php esc_attr_e('Inherit', 'baratables'); ?>"
 						data-btbl-live-style
+						<?php echo $described_by; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from esc_attr() above. ?>
 					/>
 					<input type="color" class="btbl-color-picker" value="<?php echo esc_attr($value !== '' ? $value : ($key === 'accentColor' ? $theme_accent : '#ffffff')); ?>" aria-label="<?php echo esc_attr(sprintf(
 						/* translators: %s is the control label, e.g. "Background". */
@@ -226,7 +311,7 @@ class BaraTables_Admin_Design_Fields {
 					)); ?>" />
 				</div>
 			<?php elseif (!empty($config['choices']) && is_array($config['choices'])) : ?>
-				<select id="<?php echo esc_attr($input_id); ?>" name="<?php echo esc_attr($name_prefix . '[' . $key . ']'); ?>" data-btbl-live-style>
+				<select id="<?php echo esc_attr($input_id); ?>" name="<?php echo esc_attr($name_prefix . '[' . $key . ']'); ?>" data-btbl-live-style<?php echo $described_by; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from esc_attr() above. ?>>
 					<option value=""><?php echo esc_html(($config['type'] ?? '') === 'css_weight' ? __('Inherit', 'baratables') : ''); ?></option>
 					<?php foreach ($config['choices'] as $choice_value => $choice_label) : ?>
 						<option value="<?php echo esc_attr((string) $choice_value); ?>" <?php selected($value, (string) $choice_value); ?>><?php echo esc_html((string) $choice_label); ?></option>
@@ -243,10 +328,11 @@ class BaraTables_Admin_Design_Fields {
 					data-btbl-live-style
 					data-btbl-size-field
 					data-btbl-size-kind="<?php echo esc_attr($key === 'fontSize' ? 'font' : 'css'); ?>"
+					<?php echo $described_by; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from esc_attr() above. ?>
 				/>
 			<?php endif; ?>
 			<?php if ($description !== '') : ?>
-				<p class="description btbl-field-hint"><?php echo esc_html($description); ?></p>
+				<p class="description btbl-field-hint" id="<?php echo esc_attr($hint_id); ?>"><?php echo esc_html($description); ?></p>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -300,6 +386,22 @@ class BaraTables_Admin_Design_Fields {
 	}
 
 	/**
+	 * The hint that explains what the series palette does on this surface.
+	 *
+	 * The two surfaces differ, and the difference is the whole point of the sentence: on
+	 * the site screen the palette IS the default, while in the chart editor an empty
+	 * palette inherits the site default's.
+	 *
+	 * @param bool $is_site_default Whether this is the site Design screen.
+	 */
+	public static function palette_hint(bool $is_site_default = false): string {
+		if ($is_site_default) {
+			return __('Colors are used in order across series and slices. Drag to reorder. An empty palette leaves the series to the default colors, led by the accent.', 'baratables');
+		}
+		return __('Colors are used in order across series and slices. Drag to reorder. An empty palette inherits the site default\'s palette, or the default colors led by the accent.', 'baratables');
+	}
+
+	/**
 	 * The series palette editor.
 	 *
 	 * One markup, used by the chart editor's Design tab and by the site Design screen,
@@ -308,9 +410,15 @@ class BaraTables_Admin_Design_Fields {
 	 * @param string[] $palette The palette's colors, in order.
 	 */
 	public static function render_palette_editor(array $palette): void {
+		// The remove button's accessible name is a template: the client fills in the
+		// colour when it builds a chip, so the rendered name and the client-built one
+		// come from one translatable string.
+		/* translators: %s is a hex color, e.g. "#2271b1". */
+		$remove_label = esc_attr__("Remove color %s", 'baratables');
+		$move_label = esc_attr__('Use the arrow keys to move this color.', 'baratables');
 		?>
-		<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php esc_attr_e('Remove color', 'baratables'); ?>">
-			<div class="btbl-palette-chips">
+		<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php echo esc_attr($remove_label); ?>" data-label-move="<?php echo esc_attr($move_label); ?>">
+			<div class="btbl-palette-chips" role="list">
 				<?php foreach ($palette as $color) : ?>
 					<?php self::render_chip($color); ?>
 				<?php endforeach; ?>
@@ -336,12 +444,76 @@ class BaraTables_Admin_Design_Fields {
 	/** One chip of the series palette editor. */
 	public static function render_chip(string $color): void {
 		?>
-		<span class="btbl-palette-chip" draggable="true" data-color="<?php echo esc_attr($color); ?>">
+		<span class="btbl-palette-chip" draggable="true" tabindex="0" role="listitem" data-color="<?php echo esc_attr($color); ?>" title="<?php esc_attr_e('Use the arrow keys to move this color.', 'baratables'); ?>">
 			<span class="btbl-palette-swatch" style="background-color: <?php echo esc_attr($color); ?>"></span>
 			<code><?php echo esc_html($color); ?></code>
-			<button type="button" class="btbl-palette-chip-remove" aria-label="<?php esc_attr_e('Remove color', 'baratables'); ?>">&times;</button>
+			<button type="button" class="btbl-palette-chip-remove" aria-label="<?php echo esc_attr(sprintf(
+				/* translators: %s is a hex color, e.g. "#2271b1". */
+				__('Remove color %s', 'baratables'),
+				$color
+			)); ?>">&times;</button>
 		</span>
 		<?php
+	}
+
+	/**
+	 * The label of every design value, keyed by its option key.
+	 *
+	 * The copy that names a rejected value uses this, so the notice says "Accent color"
+	 * rather than "accentColor", and says the same thing on every surface.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function value_labels(): array {
+		$labels = [];
+		foreach (BaraTables_Service::get_table_option_schema() as $key => $config) {
+			if (($config['editor_group'] ?? '') === 'design') {
+				$labels[$key] = (string) ($config['label'] ?? $key);
+			}
+		}
+		foreach (self::chart_style_fields() as $field) {
+			$labels[$field['key']] = $field['label'];
+		}
+		$labels['stylePalette'] = __('Series palette', 'baratables');
+		return $labels;
+	}
+
+	/**
+	 * The notice for design values the server would not accept.
+	 *
+	 * A rejected value keeps the one already stored, so the user needs to be told: without
+	 * this, their change would simply not take effect and they would have no way to know
+	 * why.
+	 *
+	 * @param array<string,string> $rejected The option key => the value that was submitted.
+	 * @return string The notice text, or '' when there is nothing to report.
+	 */
+	public static function rejected_values_notice(array $rejected): string {
+		if ($rejected === []) {
+			return '';
+		}
+		$labels = self::value_labels();
+		$names = [];
+		$palette_rejected = false;
+		foreach (array_keys($rejected) as $key) {
+			if ($key === 'stylePalette') {
+				$palette_rejected = true;
+				continue;
+			}
+			$names[] = $labels[$key] ?? $key;
+		}
+		$parts = [];
+		if ($names !== []) {
+			$parts[] = sprintf(
+				/* translators: %s is a comma-separated list of field names, e.g. "Accent color, Cell padding". */
+				__('These values were not accepted, so the previous ones were kept: %s.', 'baratables'),
+				implode(', ', $names)
+			);
+		}
+		if ($palette_rejected) {
+			$parts[] = __('Some colors in the series palette were not accepted, so they were left out.', 'baratables');
+		}
+		return implode(' ', $parts);
 	}
 
 	/** The example size shown in an empty size field. */

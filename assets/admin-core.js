@@ -156,6 +156,38 @@
 		return /^\d{1,4}(?:\.\d{1,2})?(?:px|em|rem|%)$/.test(value) ? value : '';
 	}
 
+	// One chart design value, sanitized the way the server sanitizes it. A chart's
+	// font size is pixels, its container's padding and radius are CSS lengths, and
+	// its colours are hex: three contracts, one entry point.
+	function sanitizeChartValue(key, raw) {
+		if (key === 'styleFontSize') {
+			return normalizeChartFontSize(raw);
+		}
+		if (key === 'stylePadding' || key === 'styleRadius') {
+			return normalizeCssSize(raw);
+		}
+		return normalizeHex(raw);
+	}
+
+	// The chart container's CSS custom properties, from resolved values.
+	//
+	// The PROPERTY NAMES come from the server's chart var map, so the client cannot
+	// drift from the server: a token added there reaches the preview and the copied
+	// CSS without a second edit here.
+	function chartCssVars(varMap, values) {
+		var pairs = [];
+		var map = varMap || {};
+		Object.keys(map).forEach(function(key) {
+			var raw = values && values[key] !== undefined && values[key] !== null ? values[key] : '';
+			var value = sanitizeChartValue(key, raw);
+			if (!value) { return; }
+			map[key].forEach(function(property) {
+				pairs.push({ property: property, value: value });
+			});
+		});
+		return pairs;
+	}
+
 	// The effective value of one design key: the entity's own value when it has one,
 	// otherwise the inherited site default. An entity that switched the site design off
 	// inherits nothing, so only its own value counts.
@@ -341,6 +373,8 @@
 		normalizeCssSize: normalizeCssSize,
 		normalizeCssFontSize: normalizeCssFontSize,
 		normalizeChartFontSize: normalizeChartFontSize,
+		sanitizeChartValue: sanitizeChartValue,
+		chartCssVars: chartCssVars,
 		effectiveValue: effectiveValue,
 		copyText: copyText,
 		sanitizeCustomCss: sanitizeCustomCss,

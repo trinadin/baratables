@@ -181,6 +181,14 @@
 	box-shadow: 0 0 0 1px var(--btbl-color-danger);
 }
 
+/* A size the server would discard -- "12 pixels", a two-value font size, a negative
+   length -- gets the same danger treatment, so the field looks wrong instead of
+   quietly reverting to the inherited value on save. */
+.btbl-design-field input[data-btbl-size-field].is-invalid {
+	border-color: var(--btbl-color-danger);
+	box-shadow: 0 0 0 1px var(--btbl-color-danger);
+}
+
 .btbl-taxonomy-filter .btbl-tax-terms-group:not(:first-child) {
 	margin-top: 8px;
 }

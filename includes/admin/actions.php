@@ -147,7 +147,15 @@ class BaraTables_Admin_Action_Handler {
 		return $records;
 	}
 
-	public function collect_table_request_data(): array {
+	/**
+	 * The table's submitted data, sanitized.
+	 *
+	 * @param array $existing The table's already-stored definition, when there is one.
+	 *                        A design token whose submitted value the server would reject
+	 *                        keeps the stored value instead of being deleted, and the
+	 *                        rejection is reported by the caller.
+	 */
+	public function collect_table_request_data(array $existing = []): array {
 		$input = $this->collect_table_input();
 		$name = $input['name'] !== '' ? $input['name'] : $input['post_title'];
 		$source_type = BaraTables_Source_Type::normalize($input['source_type'], BaraTables_Source_Type::WP_QUERY);
@@ -183,7 +191,10 @@ class BaraTables_Admin_Action_Handler {
 			'custom_query_raw' => $input['custom_query_raw'],
 			'value_overrides' => $this->service->sanitize_value_overrides($input['value_overrides_raw']),
 			'value_overrides_raw_input' => $input['value_overrides_raw'],
-			'table_options' => $this->service->sanitize_table_options($input['table_options']),
+			'table_options' => $this->service->sanitize_table_options(
+				$input['table_options'],
+				is_array($existing['table_options'] ?? null) ? $existing['table_options'] : null
+			),
 			'filter_order' => $this->service->sanitize_order_list($input['filter_order']),
 			'access_control' => $this->service->sanitize_access_control([
 				'user_meta_key' => $input['access_user_meta'],

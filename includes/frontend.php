@@ -641,8 +641,12 @@ class BaraTables_Frontend {
 			// tokens are part of that: they are CSS the plugin would be printing with the
 			// table, and the admin's copy is in charge instead. The chart's canvas-drawn
 			// colours are not CSS and cannot be handed to a theme, so they still apply.
-			// A chart-only render has no table and therefore no output mode.
-			$theme_css_mode = $render_table && ($table_options['styleMode'] ?? 'inline') === 'external';
+			//
+			// The source table's output mode governs them, even on a chart-only render: a
+			// chart belongs to its table, and the admin who moved that table's CSS into
+			// their theme expects the chart's container to follow. The wrapper's own
+			// tokens are gated the same way, so the two halves of the render agree.
+			$theme_css_mode = ($table_options['styleMode'] ?? 'inline') === 'external';
 			if ($chart_enabled && !$theme_css_mode) {
 				foreach (BaraTables_Design::chart_vars_from_options($chart_options) as $property => $value) {
 					$chart_style_parts[] = $property . ':' . $value;

@@ -211,7 +211,7 @@ class BaraTables_Admin {
 		// including the existing definition (loaded the same way save does), so deselecting every
 		// column on an existing table previews as empty instead of injecting a default Title column.
 		$existing = $this->get_ajax_table_definition();
-		$request = $this->actions->collect_table_request_data();
+		$request = $this->actions->collect_table_request_data($existing);
 		$definition = $this->actions->apply_request_to_definition($request, $existing, !empty($existing));
 		$definition['id'] = isset($_POST['btbl_table_id']) ? sanitize_text_field(wp_unslash($_POST['btbl_table_id'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- AJAX nonce and capability verified above.
 
@@ -277,8 +277,10 @@ class BaraTables_Admin {
 		}
 
 		$snapshot = $this->persistence->snapshot($post_id, BaraTables_Post_Input::raw('original_post_status'));
-		$request = $this->actions->collect_table_request_data();
+		// The stored definition is read FIRST: a design token whose submitted value the
+		// server would reject keeps the stored value instead of being deleted.
 		$existing = $this->get_existing_table_definition_for_post($post);
+		$request = $this->actions->collect_table_request_data($existing);
 		$definition = $this->actions->apply_request_to_definition($request, $existing, $update);
 		$identity = $this->persistence->save_editor_slug(
 			$post_id,
@@ -311,6 +313,14 @@ class BaraTables_Admin {
 				'error'
 			);
 			return;
+		}
+
+		// A design value the server would not accept keeps the one already stored, so the
+		// change does not take effect. Say so: without this the user sees their table look
+		// unchanged and has no way to know why.
+		$rejected_notice = BaraTables_Admin_Design_Fields::rejected_values_notice($this->service->rejected_design_values());
+		if ($rejected_notice !== '') {
+			BaraTables_Admin_Notice::queue($rejected_notice, 'warning');
 		}
 
 		if ($identity['changed'] && $old_slug !== '') {
@@ -778,6 +788,13 @@ class BaraTables_Chart_Admin {
 				'error'
 			);
 			return;
+		}
+		// A design value the server would not accept keeps the one already stored, so the
+		// change does not take effect. Say so: without this the user sees their chart look
+		// unchanged and has no way to know why.
+		$rejected_notice = BaraTables_Admin_Design_Fields::rejected_values_notice($this->chart_service->rejected_design_values());
+		if ($rejected_notice !== '') {
+			BaraTables_Admin_Notice::queue($rejected_notice, 'warning');
 		}
 		if ($identity['changed'] && $old_slug !== '') {
 			// Nothing references a chart by id (charts reference tables, not vice versa), so

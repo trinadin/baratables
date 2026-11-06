@@ -82,7 +82,7 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set them globally to re-skin every table, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
+Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent` and `--btbl-border` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
 
 A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's background, padding and radius are CSS, and ride the token layer with the tables.
 

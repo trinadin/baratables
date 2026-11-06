@@ -27,6 +27,12 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 		delete_option('btbl_label_i18n_migrated');
 		delete_option('btbl_data_schema_version');
 		delete_option('btbl_chart_link_recovery');
+		// The site-wide default design (2.1.0). It is a site-level design, not a table's
+		// own, so it survives the table posts this function deletes. Left behind, a
+		// reinstalled plugin would silently re-apply a design from an installation that
+		// no longer exists -- on every subsite of a network, too, since $cleanup_site()
+		// runs once per blog.
+		delete_option('btbl_default_design');
 		$rate_value_like = $GLOBALS['wpdb']->esc_like('_transient_btbl_ss_rate_') . '%';
 		$rate_timeout_like = $GLOBALS['wpdb']->esc_like('_transient_timeout_btbl_ss_rate_') . '%';
 		$rate_legacy_like = $GLOBALS['wpdb']->esc_like('btbl_ss_rate_') . '%';
@@ -76,6 +82,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 	//                                          BaraTables_Service::LABEL_I18N_MIGRATION_OPTION)
 	//   - 'btbl_data_schema_version' option  (current consolidated data-schema gate)
 	//   - 'btbl_chart_link_recovery' option (retry journal for an interrupted linked-chart rollback)
+	//   - 'btbl_default_design' option     (the site-wide default design, BaraTables_Design::OPTION_KEY)
 	//   - '_transient_[timeout_]btbl_ss_rate_*' options (bounded public table-read buckets)
 	//   - '_transient_[timeout_]btbl_ss_schema_*' options (cached stable-key and order-shape probes)
 	//   - 'btbl_hide_help' user meta         (support.php BaraTables_Help::META_KEY, all users)

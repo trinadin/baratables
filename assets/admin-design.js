@@ -289,6 +289,25 @@
 		$style.text(css);
 	}
 
+	// The chart container's own tokens, from the form. The site Design screen's chart
+	// fields ARE the site default, so a blank one is "no default for this token" and
+	// nothing is inherited into it.
+	//
+	// The property names come from the server's chart var map, so this cannot drift from
+	// what the front end prints.
+	function chartVars() {
+		var map = (config && config.chartVarMap) || {};
+		var fieldMap = (config && config.chartFieldMap) || {};
+		var values = {};
+		Object.keys(map).forEach(function(key) {
+			var name = fieldMap[key];
+			if (!name) { return; }
+			var $f = $('[name="' + name + '"]');
+			values[key] = $f.length ? String($f.val() || '') : '';
+		});
+		return adminCore.chartCssVars(map, values);
+	}
+
 	function buildCssText() {
 		var vars = buildVars();
 		var tableId = previewBaseId();
@@ -297,15 +316,28 @@
 		var scope = (config && config.siteScope)
 			? '.btbl-table-wrapper'
 			: '.btbl-table-wrapper[data-btbl-table-id="' + (tableId || 'your-table-id') + '"]';
-		var lines = [
-			'/* BaraTables table styles. Paste into Appearance > Customize > Additional CSS (or a',
-			'   child theme stylesheet), then switch the Design tab to "Theme CSS" so this plugin',
-			'   stops printing its own inline copy. */'
-		];
+		var lines = [];
+		// The note is shipped by the server, because it differs per surface: the site
+		// screen has no "Theme CSS" output mode of its own to point at.
+		var note = (config && config.copiedCssNote) ? String(config.copiedCssNote) : '';
+		if (note) {
+			lines.push('/* BaraTables design.');
+			lines.push('   ' + note + ' */');
+		}
 		if (vars.length) {
 			lines.push(scope + ' {');
 			vars.forEach(function(pair) {
 				lines.push('\t' + pair + ';');
+			});
+			lines.push('}');
+		}
+		// The chart container's own tokens. The site design covers the charts too, so a
+		// copy that carried only the tables would leave the charts behind.
+		var chart = chartVars();
+		if (chart.length) {
+			lines.push('', '.btbl-chart {');
+			chart.forEach(function(pair) {
+				lines.push('\t' + pair.property + ':' + pair.value + ';');
 			});
 			lines.push('}');
 		}

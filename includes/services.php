@@ -13,6 +13,19 @@ class BaraTables_Service {
 	use BaraTables_Column_State_Trait;
 	use BaraTables_Server_Side_Trait;
 
+	/**
+	 * Design token keys whose submitted value the server rejected on the last merge,
+	 * mapped to the value that was submitted.
+	 *
+	 * A rejected value is not a value. Dropping it would delete a design the user can
+	 * see and cannot explain -- the accent they set last week simply stops being there,
+	 * and the save reports success. So the merge keeps the value already stored and
+	 * records the rejection here, for the caller to report.
+	 *
+	 * @var array<string,string>
+	 */
+	private array $rejected_design_values = [];
+
 	/** Compact declarations expanded by build_table_option_schema(). Tuple shapes:
 	 *  checkbox [type, default], text [type, default], number [type, default, min, max],
 	 *  checkbox_multi [type, default, choices]. The order is the editor's canonical option order.
@@ -582,14 +595,72 @@ class BaraTables_Service {
 		return $clean;
 	}
 
-	public function sanitize_table_options($options_raw): array {
-		$options_raw = is_array($options_raw) ? $options_raw : [];
-		return $this->merge_table_options($options_raw);
+	/**
+	 * The design token values the last merge rejected, keyed by option key.
+	 *
+	 * @return array<string,string> The option key => the value that was submitted.
+	 */
+	public function rejected_design_values(): array {
+		return $this->rejected_design_values;
 	}
 
-	public function sanitize_chart_options($options_raw, array $columns): array {
+	/**
+	 * One design token from a submission.
+	 *
+	 * The value the server would keep is stored as it is. A value it would reject is
+	 * not stored at all: the value already stored is kept instead, so a typo cannot
+	 * silently delete a design, and the rejection is recorded so the caller can say so.
+	 *
+	 * @param string     $key      The option key, e.g. 'accentColor'.
+	 * @param string     $type     The schema type: color, css_size, css_font_size,
+	 *                               css_weight or chart_font_size.
+	 * @param mixed      $raw      The submitted value.
+	 * @param array|null $previous The options already stored, or null when there are none.
+	 * @return string The value to store.
+	 */
+	private function sanitize_design_token(string $key, string $type, $raw, ?array $previous): string {
+		switch ($type) {
+			case 'color':
+				// The colour contract is exact -- "#" plus three or six hex digits -- so the
+				// value is NOT trimmed here. Trimming it would accept a value the admin
+				// script's mirror rejects, and the two would no longer agree.
+				$clean = self::normalize_hex_color((string) $raw);
+				break;
+			case 'css_size':
+				$clean = self::sanitize_css_size($raw);
+				break;
+			case 'css_font_size':
+				$clean = self::sanitize_css_font_size($raw);
+				break;
+			case 'chart_font_size':
+				$clean = self::sanitize_chart_font_size($raw);
+				break;
+			case 'css_weight':
+				$clean = self::sanitize_css_weight($raw);
+				break;
+			default:
+				return '';
+		}
+		// A blank value means "inherit", which is a legitimate thing to submit.
+		if ($clean !== '' || trim((string) $raw) === '') {
+			return $clean;
+		}
+		// Rejected. Record it, and keep whatever was already stored.
+		$this->rejected_design_values[$key] = trim((string) $raw);
+		if ($previous === null) {
+			return '';
+		}
+		return (string) ($previous[$key] ?? '');
+	}
+
+	public function sanitize_table_options($options_raw, ?array $previous = null): array {
 		$options_raw = is_array($options_raw) ? $options_raw : [];
-		return $this->merge_chart_options($options_raw, $columns);
+		return $this->merge_table_options($options_raw, $previous);
+	}
+
+	public function sanitize_chart_options($options_raw, array $columns, ?array $previous = null): array {
+		$options_raw = is_array($options_raw) ? $options_raw : [];
+		return $this->merge_chart_options($options_raw, $columns, $previous);
 	}
 
 	public function get_table_options(array $definition): array {
@@ -838,7 +909,7 @@ class BaraTables_Service {
 		return self::CHART_OPTION_DEFAULTS;
 	}
 
-	private function merge_table_options(array $options_raw): array {
+	private function merge_table_options(array $options_raw, ?array $previous = null): array {
 		$schema = self::get_table_option_schema();
 		$options = $this->get_table_option_defaults();
 
@@ -860,16 +931,11 @@ class BaraTables_Service {
 				}
 			} elseif ($type === 'text_html') {
 				$options[$key] = self::sanitize_inline_html($options_raw[$key]);
-			} elseif ($type === 'color') {
-				// Empty string means "inherit the theme's primary color"; anything that is not
-				// a valid 3- or 6-digit hex collapses back to that inherited state.
-				$options[$key] = self::normalize_hex_color((string) $options_raw[$key]);
-			} elseif ($type === 'css_size') {
-				$options[$key] = self::sanitize_css_size($options_raw[$key]);
-			} elseif ($type === 'css_font_size') {
-				$options[$key] = self::sanitize_css_font_size($options_raw[$key]);
-			} elseif ($type === 'css_weight') {
-				$options[$key] = self::sanitize_css_weight($options_raw[$key]);
+			} elseif (in_array($type, ['color', 'css_size', 'css_font_size', 'css_weight'], true)) {
+				// A design token. Empty means "inherit"; a value the server would reject is
+				// not a value, so the stored one is kept and the rejection is reported
+				// rather than the token being silently deleted.
+				$options[$key] = $this->sanitize_design_token($key, $type, $options_raw[$key], $previous);
 			} elseif ($type === 'style_mode') {
 				$options[$key] = self::sanitize_style_mode($options_raw[$key]);
 			} elseif ($type === 'css') {
@@ -878,6 +944,16 @@ class BaraTables_Service {
 				$choices = isset($config['choices']) && is_array($config['choices']) ? array_keys($config['choices']) : [];
 				$options[$key] = $this->sanitize_checkbox_multi($options_raw[$key], $choices);
 			}
+		}
+
+		// The site-design opt-out. The editor always posts it, so an ABSENT key means the
+		// request did not carry the Design tab at all -- a partial save. Keeping the
+		// stored value there stops a partial save from quietly opting a table back in.
+		if (!array_key_exists('useSiteDesign', $options_raw)
+			&& $previous !== null
+			&& array_key_exists('useSiteDesign', $previous)
+		) {
+			$options['useSiteDesign'] = !empty($previous['useSiteDesign']);
 		}
 
 		// Tables saved before 1.2.3 stored the vertical-scroll on/off state in the height itself
@@ -1252,6 +1328,26 @@ class BaraTables_Service {
 	}
 
 	/**
+	 * Whether a submitted palette holds a colour the server would not accept.
+	 *
+	 * A duplicate is not a rejection -- the same colour twice is one colour, and the
+	 * first-seen spelling is the one that is kept. A colour that is not a hex is.
+	 *
+	 * @param mixed $raw
+	 */
+	public static function palette_has_invalid_color($raw): bool {
+		if (!is_array($raw)) {
+			return false;
+		}
+		foreach ($raw as $color) {
+			if (self::normalize_hex_color((string) $color) === '') {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * The sanitizer for one design token, by its own key.
 	 *
 	 * One dispatch, used both when a definition is stored and when it is revalidated
@@ -1274,7 +1370,7 @@ class BaraTables_Service {
 		return self::sanitize_css_size($value);
 	}
 
-	private function merge_chart_options(array $options_raw, array $columns): array {
+	private function merge_chart_options(array $options_raw, array $columns, ?array $previous = null): array {
 		$options = self::CHART_OPTION_DEFAULTS;
 		$slug_map = [];
 		foreach ($columns as $col) {
@@ -1367,22 +1463,34 @@ class BaraTables_Service {
 				break;
 			}
 		}
+		if (self::palette_has_invalid_color($palette_raw)) {
+			// A malformed colour is left out and the rest are kept -- the behaviour 2.0
+			// shipped for the chart editor's palette. What 2.0 did NOT do is say so, so
+			// a colour the user typed could vanish without a word. Record it instead.
+			$this->rejected_design_values['stylePalette'] = 'palette';
+		}
 		$options['stylePalette'] = $palette;
 		foreach (['styleBackground', 'styleTextColor', 'styleGridColor'] as $key) {
 			$options[$key] = isset($options_raw[$key])
-				? self::normalize_hex_color((string) $options_raw[$key])
+				? $this->sanitize_design_token($key, 'color', $options_raw[$key], $previous)
 				: '';
 		}
-		$options['styleFontSize'] = self::sanitize_chart_font_size($options_raw['styleFontSize'] ?? '');
+		$options['styleFontSize'] = isset($options_raw['styleFontSize'])
+			? $this->sanitize_design_token('styleFontSize', 'chart_font_size', $options_raw['styleFontSize'], $previous)
+			: '';
 		foreach (['stylePadding', 'styleRadius'] as $key) {
 			$options[$key] = isset($options_raw[$key])
-				? self::sanitize_css_size((string) $options_raw[$key])
+				? $this->sanitize_design_token($key, 'css_size', $options_raw[$key], $previous)
 				: '';
 		}
 		// The site-design opt-out. Absent means "use the site default", so a chart saved
-		// before 2.1.0 keeps inheriting it.
+		// before 2.1.0 keeps inheriting it. Absent in a PARTIAL save -- a request that did
+		// not carry the toggle at all -- keeps the stored value instead, so a partial save
+		// cannot quietly opt a chart back in.
 		if (array_key_exists('useSiteDesign', $options_raw)) {
 			$options['useSiteDesign'] = !empty($options_raw['useSiteDesign']);
+		} elseif ($previous !== null && array_key_exists('useSiteDesign', $previous)) {
+			$options['useSiteDesign'] = !empty($previous['useSiteDesign']);
 		}
 
 		return $options;
@@ -3436,12 +3544,12 @@ class BaraTables_Service {
 		$schema['orderColumn']['label'] = __('Highlight sorted column', 'baratables');
 		$schema['compact']['label'] = __('Compact density', 'baratables');
 		$schema['accentColor']['label'] = __('Accent color', 'baratables');
-		$schema['accentColor']['description'] = __('Color for focus rings, sorted columns, and paging highlights. Off follows your theme\'s primary color automatically.', 'baratables');
+		$schema['accentColor']['description'] = __('Color for focus rings, sorted columns, and paging highlights. Blank inherits the site default, then your theme\'s primary color.', 'baratables');
 
 		// Design tokens (2.0): the Design tab renders every editor_group === 'design' key from
 		// these labels, grouped exactly as below. Empty means "inherit the theme".
 		$schema['textColor']['label'] = __('Text color', 'baratables');
-		$schema['textColor']['description'] = __('Body text in the table. Empty follows your theme.', 'baratables');
+		$schema['textColor']['description'] = __('Body text in the table. Blank inherits the site default, then your theme.', 'baratables');
 		$schema['fontSize']['label'] = __('Font size', 'baratables');
 		$schema['fontSize']['description'] = __('Base size for the table and its controls, e.g. 14px.', 'baratables');
 		$schema['headerBgColor']['label'] = __('Header background', 'baratables');

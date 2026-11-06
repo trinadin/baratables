@@ -1337,6 +1337,10 @@ class BaraTables_Admin_Tab_Design {
 			'copiedLabel' => __('Copied to your clipboard.', 'baratables'),
 			// The em dash is written as a Unicode escape so this file stays ASCII.
 			'clipboardUnavailableLabel' => __("Clipboard unavailable \u{2014} the CSS is selected below; copy it manually.", 'baratables'),
+			// The instruction the copied CSS carries. It is shipped rather than written
+			// into the script, because it differs per surface: only a table has the
+			// "Theme CSS" output mode to point at.
+			'copiedCssNote' => __('Paste into Appearance > Customize > Additional CSS (or a child theme stylesheet), then switch the Design tab to "Theme CSS" so this plugin stops printing its own inline copy.', 'baratables'),
 		];
 		?>
 		<div id="btbl-tab-design" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-design-label">
@@ -1407,7 +1411,7 @@ class BaraTables_Admin_Tab_Design {
 							<input type="radio" id="btbl_style_mode_external" name="btbl_table_options[styleMode]" value="external" data-btbl-live-style <?php checked($style_mode, 'external'); ?> />
 							<span class="btbl-field-name"><?php esc_html_e('Theme CSS - copied out', 'baratables'); ?></span>
 						</label>
-						<p class="description btbl-style-mode-hint"><?php esc_html_e('Nothing prints with the table. Copy the generated CSS into Additional CSS or your child theme; your copy stays in charge.', 'baratables'); ?></p>
+						<p class="description btbl-style-mode-hint"><?php esc_html_e('The plugin prints no design CSS with the table. Copy the generated CSS into Additional CSS or your child theme; your copy stays in charge.', 'baratables'); ?></p>
 					</div>
 				</div>
 				<p class="description btbl-external-note" hidden data-btbl-external-note><?php esc_html_e('Inline output is off. This preview still shows your styles; visitors get whatever your theme CSS applies.', 'baratables'); ?></p>
@@ -1777,6 +1781,11 @@ class BaraTables_Admin_Tab_Chart_Design {
 			// value, else the site default's -- exactly as the published chart will.
 			'siteDefault' => BaraTables_Design::site_default()['chart'],
 			'useSiteDesign' => !BaraTables_Design::opts_out((array) $chart_options),
+			// The chart's own maps, shipped like the table's varMap: the preview, Copy
+			// CSS and the preset buttons read them instead of restating the chart's
+			// vocabulary, which is how they drifted apart in the first place.
+			'chartVarMap' => BaraTables_Design::CHART_VAR_MAP,
+			'chartFieldMap' => BaraTables_Design::CHART_FIELD_MAP,
 			// The chart types with no grid, from the chart-type registry, so the editor
 			// cannot offer a grid color for a chart that has no axes.
 			'gridlessTypes' => BaraTables_Chart_Types::gridless_types(),
@@ -1814,7 +1823,7 @@ class BaraTables_Admin_Tab_Chart_Design {
 			</div>
 			<div class="btbl-control">
 				<strong class="btbl-small-heading"><?php esc_html_e('Series palette', 'baratables'); ?></strong>
-				<p class="description"><?php esc_html_e('Colors are used in order across series and slices. Drag to reorder. An empty palette keeps the table accent leading the default colors.', 'baratables'); ?></p>
+				<p class="description"><?php echo esc_html(BaraTables_Admin_Design_Fields::palette_hint()); ?></p>
 				<?php BaraTables_Admin_Design_Fields::render_palette_editor($palette); ?>
 			</div>
 			<?php BaraTables_Admin_Design_Fields::render_chart_style_groups($chart_options, true); ?>
@@ -1824,7 +1833,7 @@ class BaraTables_Admin_Tab_Chart_Design {
 					<button type="button" class="button" data-btbl-chart-copy-css><?php esc_html_e('Copy CSS', 'baratables'); ?></button>
 					<span class="description" aria-live="polite" data-btbl-chart-copy-status></span>
 				</div>
-				<pre class="btbl-copy-css-output" hidden tabindex="0" aria-label="<?php esc_attr_e('Generated chart CSS', 'baratables'); ?>" data-btbl-chart-copy-css-output data-copied-label="<?php esc_attr_e('Copied to your clipboard.', 'baratables'); ?>" data-unavailable-label="<?php esc_attr_e('Clipboard unavailable - the CSS is selected below; copy it manually.', 'baratables'); ?>"></pre>
+				<pre class="btbl-copy-css-output" hidden tabindex="0" aria-label="<?php esc_attr_e('Generated chart CSS', 'baratables'); ?>" data-btbl-chart-copy-css-output data-copied-label="<?php esc_attr_e('Copied to your clipboard.', 'baratables'); ?>" data-unavailable-label="<?php echo esc_attr__("Clipboard unavailable \u{2014} the CSS is selected below; copy it manually.", 'baratables'); ?>"></pre>
 				<p class="description btbl-field-hint"><?php esc_html_e('Copies the chart container\'s background, padding and radius as CSS. The chart\'s text, grid and series colors are drawn on the canvas, so they stay in the chart options.', 'baratables'); ?></p>
 			</div>
 		</div>

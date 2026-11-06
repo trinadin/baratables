@@ -58,6 +58,27 @@ class BaraTables_Design {
 	];
 
 	/**
+	 * The form field each chart design key is edited in.
+	 *
+	 * The chart's options are a flat set of form fields rather than the table's
+	 * "prefix[key]" shape, so the key and the field name are two vocabularies that
+	 * have to be kept in step. Stating the mapping once here and shipping it to the
+	 * client means the preview, Copy CSS and the preset buttons all read it, instead
+	 * of each restating it -- which is how they drifted apart in the first place.
+	 *
+	 * @var array<string,string>
+	 */
+	public const CHART_FIELD_MAP = [
+		'stylePalette'    => 'btbl_chart_style_palette',
+		'styleBackground' => 'btbl_chart_style_background',
+		'styleTextColor'  => 'btbl_chart_style_text_color',
+		'styleGridColor'  => 'btbl_chart_style_grid_color',
+		'styleFontSize'   => 'btbl_chart_style_font_size',
+		'stylePadding'    => 'btbl_chart_style_padding',
+		'styleRadius'     => 'btbl_chart_style_radius',
+	];
+
+	/**
 	 * The table design token keys: every option that maps to a --btbl-* custom property.
 	 * These are the keys the site default owns on the table side.
 	 *
@@ -87,20 +108,26 @@ class BaraTables_Design {
 	}
 
 	/**
-	 * Store the site default. Returns false when nothing changed.
+	 * Store the site default.
 	 *
 	 * @param array $raw The submitted design, keyed 'table' and 'chart'.
+	 * @return array<string,string> The design values the server rejected, keyed by option key.
 	 */
-	public static function update_site_default(array $raw): bool {
-		$clean = [
-			'table' => self::sanitize_table_scope(is_array($raw['table'] ?? null) ? $raw['table'] : []),
-			'chart' => self::sanitize_chart_scope(is_array($raw['chart'] ?? null) ? $raw['chart'] : []),
-		];
-		if ($clean === self::site_default()) {
-			return false;
+	public static function update_site_default(array $raw): array {
+		$previous = self::site_default();
+		$table = self::sanitize_table_scope_result(
+			is_array($raw['table'] ?? null) ? $raw['table'] : [],
+			$previous['table']
+		);
+		$chart = self::sanitize_chart_scope_result(
+			is_array($raw['chart'] ?? null) ? $raw['chart'] : [],
+			$previous['chart']
+		);
+		$clean = ['table' => $table['clean'], 'chart' => $chart['clean']];
+		if ($clean !== $previous) {
+			update_option(self::OPTION_KEY, $clean);
 		}
-		update_option(self::OPTION_KEY, $clean);
-		return true;
+		return array_merge($table['rejected'], $chart['rejected']);
 	}
 
 	/**
@@ -110,32 +137,74 @@ class BaraTables_Design {
 	 * and a table's own design speak the same language.
 	 *
 	 * @param array $raw
+	 * @param array $previous The scope already stored, kept for a value the server rejects.
 	 * @return array<string,string>
 	 */
-	public static function sanitize_table_scope(array $raw): array {
+	public static function sanitize_table_scope(array $raw, array $previous = []): array {
+		return self::sanitize_table_scope_result($raw, $previous)['clean'];
+	}
+
+	/**
+	 * The site default's table scope, with the values the server rejected.
+	 *
+	 * A rejected value is not a value: dropping it would delete a default the owner can
+	 * see and cannot explain. So the stored one is kept and the rejection is reported.
+	 *
+	 * @return array{clean:array<string,string>,rejected:array<string,string>}
+	 */
+	private static function sanitize_table_scope_result(array $raw, array $previous = []): array {
 		$clean = [];
+		$rejected = [];
 		foreach (self::table_token_keys() as $key) {
 			if (!array_key_exists($key, $raw)) {
 				continue;
 			}
-			$value = self::sanitize_token_value($key, (string) $raw[$key]);
+			$submitted = (string) $raw[$key];
+			$value = self::sanitize_token_value($key, $submitted);
 			if ($value !== '') {
 				$clean[$key] = $value;
+				continue;
+			}
+			// Blank means "not set here", which is a legitimate choice: the default is
+			// cleared. A non-blank value the server rejects is not.
+			if (trim($submitted) === '') {
+				continue;
+			}
+			$rejected[$key] = trim($submitted);
+			if (isset($previous[$key]) && (string) $previous[$key] !== '') {
+				$clean[$key] = (string) $previous[$key];
 			}
 		}
-		return $clean;
+		return ['clean' => $clean, 'rejected' => $rejected];
 	}
 
 	/**
 	 * The site default's chart scope, sanitized.
 	 *
 	 * @param array $raw
+	 * @param array $previous The scope already stored, kept for a value the server rejects.
 	 * @return array<string,mixed>
 	 */
-	public static function sanitize_chart_scope(array $raw): array {
+	public static function sanitize_chart_scope(array $raw, array $previous = []): array {
+		return self::sanitize_chart_scope_result($raw, $previous)['clean'];
+	}
+
+	/**
+	 * The site default's chart scope, with the values the server rejected.
+	 *
+	 * @return array{clean:array<string,mixed>,rejected:array<string,string>}
+	 */
+	private static function sanitize_chart_scope_result(array $raw, array $previous = []): array {
 		$clean = [];
+		$rejected = [];
 		if (array_key_exists('stylePalette', $raw)) {
 			$palette = self::sanitize_palette($raw['stylePalette']);
+			if (self::palette_has_invalid_color($raw['stylePalette'])) {
+				// A malformed colour is left out and the rest are kept -- the behaviour
+				// the chart editor has always had. What it did not do is say so, so a
+				// colour the owner typed could vanish without a word.
+				$rejected['stylePalette'] = 'palette';
+			}
 			if ($palette !== []) {
 				$clean['stylePalette'] = $palette;
 			}
@@ -144,27 +213,51 @@ class BaraTables_Design {
 			if (!array_key_exists($key, $raw)) {
 				continue;
 			}
-			$value = BaraTables_Service::normalize_hex_color((string) $raw[$key]);
+			$submitted = (string) $raw[$key];
+			$value = BaraTables_Service::normalize_hex_color($submitted);
 			if ($value !== '') {
 				$clean[$key] = $value;
+				continue;
+			}
+			if (trim($submitted) === '') {
+				continue;
+			}
+			$rejected[$key] = trim($submitted);
+			if (isset($previous[$key]) && (string) $previous[$key] !== '') {
+				$clean[$key] = (string) $previous[$key];
 			}
 		}
 		if (array_key_exists('styleFontSize', $raw)) {
-			$value = BaraTables_Service::sanitize_chart_font_size($raw['styleFontSize']);
+			$submitted = (string) $raw['styleFontSize'];
+			$value = BaraTables_Service::sanitize_chart_font_size($submitted);
 			if ($value !== '') {
 				$clean['styleFontSize'] = $value;
+			} elseif (trim($submitted) !== '') {
+				$rejected['styleFontSize'] = trim($submitted);
+				if (isset($previous['styleFontSize']) && (string) $previous['styleFontSize'] !== '') {
+					$clean['styleFontSize'] = (string) $previous['styleFontSize'];
+				}
 			}
 		}
 		foreach (['stylePadding', 'styleRadius'] as $key) {
 			if (!array_key_exists($key, $raw)) {
 				continue;
 			}
-			$value = BaraTables_Service::sanitize_css_size((string) $raw[$key]);
+			$submitted = (string) $raw[$key];
+			$value = BaraTables_Service::sanitize_css_size($submitted);
 			if ($value !== '') {
 				$clean[$key] = $value;
+				continue;
+			}
+			if (trim($submitted) === '') {
+				continue;
+			}
+			$rejected[$key] = trim($submitted);
+			if (isset($previous[$key]) && (string) $previous[$key] !== '') {
+				$clean[$key] = (string) $previous[$key];
 			}
 		}
-		return $clean;
+		return ['clean' => $clean, 'rejected' => $rejected];
 	}
 
 	/**
@@ -198,6 +291,18 @@ class BaraTables_Design {
 			}
 		}
 		return $palette;
+	}
+
+	/**
+	 * Whether a submitted palette holds a colour the server would not accept.
+	 *
+	 * A duplicate is not a rejection -- the same colour twice is one colour, and the
+	 * first-seen spelling is the one that is kept. A colour that is not a hex is.
+	 *
+	 * @param mixed $raw
+	 */
+	public static function palette_has_invalid_color($raw): bool {
+		return BaraTables_Service::palette_has_invalid_color($raw);
 	}
 
 	/**

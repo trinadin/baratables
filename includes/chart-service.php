@@ -23,6 +23,17 @@ class BaraTables_Chart_Service {
 		return $this->chart_repo->find_chart($id, $include_trash);
 	}
 
+	/**
+	 * The design values the last chart save rejected, keyed by option key.
+	 *
+	 * A rejected value keeps the one already stored, so the caller has to report it.
+	 *
+	 * @return array<string,string>
+	 */
+	public function rejected_design_values(): array {
+		return $this->table_service->rejected_design_values();
+	}
+
 	public function build_form_context(?array $chart_definition, ?string $selected_table_id = null): array {
 		$chart_definition = $chart_definition ?? [];
 		$table_definition = null;
@@ -92,7 +103,13 @@ class BaraTables_Chart_Service {
 			$errors[] = __('Selected table not found.', 'baratables');
 		}
 		$columns = $table_definition['columns'] ?? [];
-		$chart_options = $this->table_service->sanitize_chart_options($chart_raw, $columns);
+		// A design value the server would reject keeps the one already stored, so the chart
+		// does not silently lose a colour the user can see.
+		$chart_options = $this->table_service->sanitize_chart_options(
+			$chart_raw,
+			$columns,
+			is_array($existing_chart['chart'] ?? null) ? $existing_chart['chart'] : null
+		);
 
 		$chart = $existing_chart ?? [];
 		$chart['name'] = $name !== '' ? $name : __('Untitled chart', 'baratables');

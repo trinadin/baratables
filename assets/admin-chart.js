@@ -69,10 +69,10 @@ jQuery(function($) {
 				},
 				render: {
 					no_results: function(data, escape) {
-						return '<div class="no-results">' + escape($chartTableSelect.data('no-results-label') || 'No tables found.') + '</div>';
+						return '<div class="no-results">' + escape($chartTableSelect.data('no-results-label') || '') + '</div>';
 					},
 					loading: function(data, escape) {
-						return '<div class="loading">' + escape($chartTableSelect.data('searching-label') || 'Searching...') + '</div>';
+						return '<div class="loading">' + escape($chartTableSelect.data('searching-label') || '') + '</div>';
 					}
 				}
 			});
@@ -354,12 +354,25 @@ jQuery(function($) {
 	// palette and the chart style colours.
 	var normalizeHex = adminCore.normalizeHex;
 
-	function paletteChipHtml(color, removeLabel) {
-		return '<span class="btbl-palette-chip" draggable="true" data-color="' + color + '">' +
+	// The remove button's accessible name. It names the colour it removes, so a screen
+	// reader user can tell the buttons apart: six buttons all called "Remove color" are
+	// six identical controls.
+	function paletteRemoveLabel(color) {
+		var template = String($paletteEditor.data('label-remove') || '');
+		return template.replace('%s', color);
+	}
+
+	function paletteChipHtml(color) {
+		return '<span class="btbl-palette-chip" draggable="true" tabindex="0" role="listitem" data-color="' + color + '" title="' + paletteMoveLabel() + '">' +
 			'<span class="btbl-palette-swatch" style="background-color:' + color + '"></span>' +
 			'<code>' + color + '</code>' +
-			'<button type="button" class="btbl-palette-chip-remove" aria-label="' + removeLabel + '">&times;</button>' +
+			'<button type="button" class="btbl-palette-chip-remove" aria-label="' + paletteRemoveLabel(color) + '">&times;</button>' +
 			'</span>';
+	}
+
+	// The hint that tells a keyboard user the chip can be moved.
+	function paletteMoveLabel() {
+		return String($paletteEditor.data('label-move') || '');
 	}
 
 	function syncPalette() {
@@ -378,14 +391,32 @@ jQuery(function($) {
 	// Chart presets and Copy CSS (2.1.0): the chart Design tab's parity
 	// with the table Design tab.
 	// ------------------------------------------------------------------
-	var CHART_STYLE_FIELDS = {
-		styleBackground: 'btbl_chart_style_background',
-		styleTextColor: 'btbl_chart_style_text_color',
-		styleGridColor: 'btbl_chart_style_grid_color',
-		styleFontSize: 'btbl_chart_style_font_size',
-		stylePadding: 'btbl_chart_style_padding',
-		styleRadius: 'btbl_chart_style_radius'
-	};
+	// The chart's form field names, from the server's chart field map. The map ships
+	// with the editor's configuration (BaraTables_Design::CHART_FIELD_MAP), so the
+	// preview, Copy CSS and the preset buttons all read one source instead of each
+	// restating the chart's vocabulary.
+	function chartFieldMap() {
+		var context = chartDesignContext();
+		var map = context && context.chartFieldMap;
+		if (map && typeof map === 'object' && Object.keys(map).length) {
+			return map;
+		}
+		return {};
+	}
+
+	function chartFieldName(key) {
+		return chartFieldMap()[key] || '';
+	}
+
+	// The chart's CSS custom properties, from the server's chart var map.
+	function chartVarMap() {
+		var context = chartDesignContext();
+		var map = context && context.chartVarMap;
+		if (map && typeof map === 'object' && Object.keys(map).length) {
+			return map;
+		}
+		return {};
+	}
 
 	// The chart editor's design context (2.1.0): the site default this chart inherits
 	// and whether it inherits at all. The site Design screen carries no such element --
@@ -407,13 +438,19 @@ jQuery(function($) {
 
 	// One chart design value, sanitized the way the server sanitizes it.
 	function sanitizedChartValue(key, raw) {
-		if (key === 'styleFontSize') {
-			return adminCore.normalizeChartFontSize(raw);
+		return adminCore.sanitizeChartValue(key, raw);
+	}
+
+	// Whether the chart currently inherits the site design. The checkbox in the form is
+	// authoritative, so switching it off drops the inherited values from the preview
+	// straight away; the server-sent flag is the fallback for a form without the toggle
+	// (the site Design screen, which edits the site design itself).
+	function chartUsesSiteDesign(context) {
+		var $toggle = $('#btbl_chart_use_site_design');
+		if ($toggle.length) {
+			return $toggle.is(':checked');
 		}
-		if (key === 'stylePadding' || key === 'styleRadius') {
-			return adminCore.normalizeCssSize(raw);
-		}
-		return normalizeHex(raw);
+		return !(context && context.useSiteDesign === false);
 	}
 
 	// The effective value of one chart design key: the chart's own value when it has
@@ -421,14 +458,14 @@ jQuery(function($) {
 	// off. Mirrors BaraTables_Design::resolve_chart_options(), so the editor's preview
 	// shows the design the published chart will use, not the raw form state.
 	function effectiveChartValue(key, context) {
-		var own = String($('[name="' + CHART_STYLE_FIELDS[key] + '"]').val() || '');
+		var own = String($('[name="' + chartFieldName(key) + '"]').val() || '');
 		if (!context) {
 			return sanitizedChartValue(key, own);
 		}
 		var defaults = {};
 		var source = context.siteDefault || {};
 		defaults[key] = (source[key] === null || source[key] === undefined) ? '' : source[key];
-		return sanitizedChartValue(key, adminCore.effectiveValue(key, own, defaults, context.useSiteDesign !== false));
+		return sanitizedChartValue(key, adminCore.effectiveValue(key, own, defaults, chartUsesSiteDesign(context)));
 	}
 
 	// The effective series palette: the chart's own when it has one, otherwise the site
@@ -440,7 +477,7 @@ jQuery(function($) {
 		}
 		if (!Array.isArray(own)) { own = []; }
 		if (own.length) { return own; }
-		if (!context || context.useSiteDesign === false) { return []; }
+		if (!context || !chartUsesSiteDesign(context)) { return []; }
 		var inherited = (context.siteDefault && context.siteDefault.stylePalette) || [];
 		return Array.isArray(inherited) ? inherited : [];
 	}
@@ -452,7 +489,10 @@ jQuery(function($) {
 		var isDefault = name === 'default';
 		var values = presets[name];
 		if (!values && !isDefault) { return; }
-		Object.keys(CHART_STYLE_FIELDS).forEach(function(key) {
+		Object.keys(chartFieldMap()).forEach(function(key) {
+			// The palette has its own chip editor and is applied below. Its field holds
+			// JSON, so writing an array into it would put nonsense in the form.
+			if (key === 'stylePalette') { return; }
 			var value;
 			if (values && Object.prototype.hasOwnProperty.call(values, key)) {
 				value = values[key];
@@ -461,7 +501,7 @@ jQuery(function($) {
 			} else {
 				return;
 			}
-			var $f = $('[name="' + CHART_STYLE_FIELDS[key] + '"]');
+			var $f = $('[name="' + chartFieldName(key) + '"]');
 			if (!$f.length) { return; }
 			$f.val(value).trigger('input').trigger('change');
 		});
@@ -471,18 +511,17 @@ jQuery(function($) {
 		colors.forEach(function(color) {
 			var hex = normalizeHex(String(color || ''));
 			if (!hex) { return; }
-			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(hex, paletteRemoveLabel()));
+			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(hex));
 		});
 		syncPalette();
-	}
-
-	function paletteRemoveLabel() {
-		return String($paletteEditor.data('label-remove') || 'Remove color');
 	}
 
 	// The chart's CSS-visible design: the container's background, padding and radius.
 	// The canvas-drawn colours (text, grid, palette) are not CSS and stay in the chart
 	// options, so the block says so rather than pretending to carry the whole design.
+	//
+	// The property names come from the server's chart var map, so this block cannot
+	// drift from the one the front end prints.
 	function buildChartCssText() {
 		var lines = [
 			'/* BaraTables chart container styles. The chart\'s background, padding and radius',
@@ -490,24 +529,17 @@ jQuery(function($) {
 			'   canvas and stay in the chart options. Paste this into Appearance > Customize >',
 			'   Additional CSS (or a child theme stylesheet). */'
 		];
-		var vars = [];
 		var context = chartDesignContext();
-		var background = effectiveChartValue('styleBackground', context);
-		var padding = effectiveChartValue('stylePadding', context);
-		var radius = effectiveChartValue('styleRadius', context);
-		if (background) {
-			vars.push('--btbl-chart-bg:' + background);
-		}
-		if (padding) {
-			vars.push('--btbl-chart-padding:' + padding);
-		}
-		if (radius) {
-			vars.push('--btbl-chart-radius:' + radius);
-		}
+		var values = {
+			styleBackground: effectiveChartValue('styleBackground', context),
+			stylePadding: effectiveChartValue('stylePadding', context),
+			styleRadius: effectiveChartValue('styleRadius', context)
+		};
+		var vars = adminCore.chartCssVars(chartVarMap(), values);
 		if (vars.length) {
 			lines.push('.btbl-chart {');
 			vars.forEach(function(pair) {
-				lines.push('\t' + pair + ';');
+				lines.push('\t' + pair.property + ':' + pair.value + ';');
 			});
 			lines.push('}');
 		}
@@ -561,8 +593,6 @@ jQuery(function($) {
 	}
 
 	if ($paletteEditor.length) {
-		var removeLabel = String($paletteEditor.data('label-remove') || 'Remove color');
-
 		$(document).on('click', '.btbl-palette-chip-remove', function(e) {
 			e.preventDefault();
 			$(this).closest('.btbl-palette-chip').remove();
@@ -578,9 +608,40 @@ jQuery(function($) {
 			}).length) {
 				return;
 			}
-			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(color, removeLabel));
+			$paletteEditor.find('.btbl-palette-chips').append(paletteChipHtml(color));
 			$value.val('').trigger('change');
 			syncPalette();
+		});
+
+		// Keyboard reordering, alongside the drag. The same contract as the layout
+		// builder's chip list: the focused chip moves one place and keeps the focus.
+		// Only the chip itself handles the arrows -- a key pressed on its remove button
+		// is the button's business.
+		$paletteEditor.on('keydown', '.btbl-palette-chip', function(e) {
+			if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+				return;
+			}
+			if (e.target !== this) {
+				return;
+			}
+			e.preventDefault();
+			var $chip = $(this);
+			var $chips = $paletteEditor.find('.btbl-palette-chips .btbl-palette-chip');
+			var index = $chips.index($chip);
+			if (index === -1) {
+				return;
+			}
+			var target = e.key === 'ArrowUp' ? index - 1 : index + 1;
+			if (target < 0 || target >= $chips.length) {
+				return;
+			}
+			if (target > index) {
+				$chip.insertAfter($chips.eq(target));
+			} else {
+				$chip.insertBefore($chips.eq(target));
+			}
+			syncPalette();
+			$chip.trigger('focus');
 		});
 
 		// Native HTML5 drag to reorder, same contract as the layout builder's chips.
@@ -616,7 +677,7 @@ jQuery(function($) {
 			});
 	}
 
-	$(document).on('input change', '[name="btbl_chart_style_background"], [name="btbl_chart_style_text_color"], [name="btbl_chart_style_grid_color"], [name="btbl_chart_style_font_size"], [name="btbl_chart_style_padding"], [name="btbl_chart_style_radius"], [data-btbl-palette-input]', queueChartRestyle);
+	$(document).on('input change', '[name="btbl_chart_style_background"], [name="btbl_chart_style_text_color"], [name="btbl_chart_style_grid_color"], [name="btbl_chart_style_font_size"], [name="btbl_chart_style_padding"], [name="btbl_chart_style_radius"], [data-btbl-palette-input], #btbl_chart_use_site_design', queueChartRestyle);
 
 	// The chart presets, with the same names the table Design tab offers.
 	$(document).on('click', '[data-btbl-chart-preset]', function(e) {
@@ -634,11 +695,11 @@ jQuery(function($) {
 		var $status = $('[data-btbl-chart-copy-status]');
 		adminCore.copyText(text).then(function() {
 			if ($status.length) {
-				$status.text(String($output.data('copied-label') || 'Copied to your clipboard.'));
+				$status.text(String($output.data('copied-label') || ''));
 			}
 		}, function() {
 			if ($status.length) {
-				$status.text(String($output.data('unavailable-label') || 'Clipboard unavailable.'));
+				$status.text(String($output.data('unavailable-label') || ''));
 			}
 			$output.trigger('select');
 		});

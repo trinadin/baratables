@@ -108,10 +108,12 @@ New:
 
 Fixes:
 
+* A colour or size the plugin cannot use no longer erases the value you already had. The previous value is kept and the field is named, so a change cannot disappear while the save reports success.
 * The chart Design tab's controls now reach every chart type: the palette colors a heatmap's cells and a Gantt's task groups, and the text and grid colors reach radar labels, treemap labels and tooltips.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
 * Charts with no palette of their own now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
 * The Grid color control is no longer offered on charts that have no grid.
+* The series palette can now be reordered from the keyboard, and each color's remove button names the color it removes.
 * The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius with the table, so the CSS you copied into your theme stays in charge.
 * The "Theme default" preset is now "Clear overrides". A blank value inherits the site default first, so the old name no longer said what the button did.
 

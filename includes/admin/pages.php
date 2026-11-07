@@ -59,12 +59,12 @@ class BaraTables_Admin_Pages {
 				</div>
 			<?php endif; ?>
 			<div class="btbl-tab-wrapper">
-				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist">
-					<a href="#btbl-tab-general" id="btbl-tab-general-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-general' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-general')); ?>" data-target="btbl-tab-general"><?php esc_html_e('Source', 'baratables'); ?></a>
-					<a href="#btbl-tab-columns" id="btbl-tab-columns-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-columns' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & filters', 'baratables'); ?></a>
-					<a href="#btbl-tab-table" id="btbl-tab-table-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-table' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-table')); ?>" data-target="btbl-tab-table"><?php esc_html_e('Options', 'baratables'); ?></a>
-					<a href="#btbl-tab-design" id="btbl-tab-design-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-design' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-design')); ?>" data-target="btbl-tab-design"><?php esc_html_e('Design', 'baratables'); ?></a>
-					<a href="#btbl-tab-advanced" id="btbl-tab-advanced-label" role="tab" aria-selected="<?php echo $active_tab === 'btbl-tab-advanced' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-advanced')); ?>" data-target="btbl-tab-advanced"><?php esc_html_e('Advanced', 'baratables'); ?></a>
+				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist" aria-label="<?php esc_attr_e('Table settings', 'baratables'); ?>">
+					<a href="#btbl-tab-general" id="btbl-tab-general-label" role="tab" aria-controls="btbl-tab-general" aria-selected="<?php echo $active_tab === 'btbl-tab-general' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-general')); ?>" data-target="btbl-tab-general"><?php esc_html_e('Source', 'baratables'); ?></a>
+					<a href="#btbl-tab-columns" id="btbl-tab-columns-label" role="tab" aria-controls="btbl-tab-columns" aria-selected="<?php echo $active_tab === 'btbl-tab-columns' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-columns')); ?>" data-target="btbl-tab-columns"><?php esc_html_e('Columns & filters', 'baratables'); ?></a>
+					<a href="#btbl-tab-table" id="btbl-tab-table-label" role="tab" aria-controls="btbl-tab-table" aria-selected="<?php echo $active_tab === 'btbl-tab-table' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-table')); ?>" data-target="btbl-tab-table"><?php esc_html_e('Options', 'baratables'); ?></a>
+					<a href="#btbl-tab-design" id="btbl-tab-design-label" role="tab" aria-controls="btbl-tab-design" aria-selected="<?php echo $active_tab === 'btbl-tab-design' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-design')); ?>" data-target="btbl-tab-design"><?php esc_html_e('Design', 'baratables'); ?></a>
+					<a href="#btbl-tab-advanced" id="btbl-tab-advanced-label" role="tab" aria-controls="btbl-tab-advanced" aria-selected="<?php echo $active_tab === 'btbl-tab-advanced' ? 'true' : 'false'; ?>" class="<?php echo esc_attr($nav_class('btbl-tab-advanced')); ?>" data-target="btbl-tab-advanced"><?php esc_html_e('Advanced', 'baratables'); ?></a>
 				</h2>
 
 				<?php

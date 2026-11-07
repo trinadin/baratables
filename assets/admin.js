@@ -674,8 +674,11 @@ jQuery(function($) {
 		if (!$targetPanel.length) {
 			return;
 		}
-		$('.btbl-tab-link').removeClass('nav-tab-active').attr('aria-selected', 'false');
-		$('.btbl-tab-link[data-target="' + targetId + '"]').addClass('nav-tab-active').attr('aria-selected', 'true');
+		// The roving tabindex: only the selected tab is in the tab order, so Tab moves
+		// out of the tab bar instead of through it. The arrow keys move between the
+		// tabs (see the keydown handler below).
+		$('.btbl-tab-link').removeClass('nav-tab-active').attr('aria-selected', 'false').attr('tabindex', '-1');
+		$('.btbl-tab-link[data-target="' + targetId + '"]').addClass('nav-tab-active').attr('aria-selected', 'true').attr('tabindex', '0');
 		$('.btbl-tab-panel').removeClass('is-active');
 		$targetPanel.addClass('is-active');
 		$('#btbl_active_tab').val(targetId);
@@ -693,6 +696,34 @@ jQuery(function($) {
 		e.preventDefault();
 		var target = $(this).data('target');
 		activateTab(target);
+	});
+
+	// The ARIA tabs pattern: the arrow keys move between the tabs, Home and End jump
+	// to the first and last, and the tab you land on is the one that opens. Without
+	// this a screen-reader user cannot reach the other tabs at all, because the
+	// roving tabindex deliberately keeps the unselected ones out of the tab order.
+	$('.btbl-nav-tab-wrapper').on('keydown', '[role="tab"]', function(e) {
+		var $tabs = $(this).closest('[role="tablist"]').find('[role="tab"]');
+		var index = $tabs.index(this);
+		if (index === -1) {
+			return;
+		}
+		var next = null;
+		if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+			next = (index + 1) % $tabs.length;
+		} else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+			next = (index - 1 + $tabs.length) % $tabs.length;
+		} else if (e.key === 'Home') {
+			next = 0;
+		} else if (e.key === 'End') {
+			next = $tabs.length - 1;
+		} else {
+			return;
+		}
+		e.preventDefault();
+		var $next = $tabs.eq(next);
+		activateTab($next.data('target'));
+		$next.trigger('focus');
 	});
 
 	var initialHash = window.location.hash.replace('#', '');
@@ -861,6 +892,16 @@ jQuery(function($) {
 			renderList();
 			updateInput();
 			$list.find('li[data-slug="' + slug + '"]').trigger('focus');
+			// The list moved but the page did not, so nothing on it changed for a
+			// screen reader to notice. Say where the item ended up.
+			var $moved = $list.find('li').filter(function() {
+				return $(this).attr('data-slug') === slug;
+			});
+			window.BaraTablesAdminCore.announceMoved(
+				$list.attr('data-label-moved'),
+				$moved.text().trim(),
+				newIdx + 1
+			);
 		});
 
 		$list.on('dragstart', 'li', function(e) {

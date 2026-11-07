@@ -96,8 +96,12 @@ class BaraTables_Admin_Design_Screen {
 		if (!isset($_POST[$key])) {
 			return '';
 		}
+		// A posted value is not always a string: a form can post an array under the same
+		// name. Casting an array to a string raises a PHP warning and yields "Array",
+		// so a value that is not a scalar is read as absent.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by the caller; sanitized in BaraTables_Design.
-		return (string) wp_unslash($_POST[$key]);
+		$value = wp_unslash($_POST[$key]);
+		return is_scalar($value) ? (string) $value : '';
 	}
 
 	/**
@@ -208,6 +212,9 @@ class BaraTables_Admin_Design_Screen {
 			'scope' => '#btbl-site-design-form',
 			'previewSelector' => '#btbl-site-design-preview .btbl-table-wrapper',
 			'varMap' => BaraTables_Service::STYLE_VAR_MAP,
+			// The type of every token, so the preview sanitizes each value the way the
+			// server does instead of guessing the type from the key's name.
+			'tokenTypes' => BaraTables_Service::design_token_types(),
 			// The chart's own maps, shipped like the table's varMap: the site screen
 			// edits the chart half of the design too, and its Copy CSS has to hand the
 			// chart's container tokens back as CSS.

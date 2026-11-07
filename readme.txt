@@ -52,13 +52,13 @@ Remote snapshots are manual and administrator-only: save the public HTTPS URL an
 
 Use a TablePress single-table JSON export; Ninja Tables classic and drag-and-drop JSON also work (export an externally connected Ninja table as CSV). WP Table Builder, Visualizer, Supsystic, League Table, wpDataTables, TableKit, and Tablesome exports import too, as do HTML tables; a ZIP imports the first supported table.
 
-Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts, or connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each.
+Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts, or connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each and 20 MB in total, and an XLSX or ODS archive may hold 200 entries.
 
 = How many rows can a table load? =
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key; access rules, transforms, filters, footers, exports, print, and charts load as usual. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine. TLS needs the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
+External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine. TLS needs the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -82,7 +82,7 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent` and `--btbl-border` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's background, padding and radius.
+Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's background, padding and radius.
 
 A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's background, padding and radius are CSS, and ride the token layer with the tables.
 

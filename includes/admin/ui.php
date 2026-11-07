@@ -195,6 +195,8 @@ class BaraTables_Admin_Tab_General {
 						data-row-label="<?php echo esc_attr(__('Row %d', 'baratables')); ?>"
 						<?php // translators: %d is the column number. ?>
 						data-column-label="<?php echo esc_attr(__('Column %d', 'baratables')); ?>"
+						<?php // translators: 1: the row number, 2: the column heading. ?>
+						data-cell-label="<?php echo esc_attr(__('Row %1$d, %2$s', 'baratables')); ?>"
 						data-heading-label="#"
 						data-label-move-up="<?php echo esc_attr__('Move row up', 'baratables'); ?>"
 						data-label-move-down="<?php echo esc_attr__('Move row down', 'baratables'); ?>"
@@ -210,23 +212,32 @@ class BaraTables_Admin_Tab_General {
 						<?php // translators: 1: the row limit the pasted data was cut to, 2: the column limit. ?>
 						data-paste-capped="<?php echo esc_attr__('The pasted data was cut to the grid limits (%1$d rows, %2$d columns).', 'baratables'); ?>"
 					>
+						<?php
+						// The column headings, resolved once: the header row prints them, and
+						// every cell input names itself with one, so a screen-reader user knows
+						// which row and column a cell belongs to.
+						$grid_col_labels = [];
+						for ($c = 0; $c < $custom_cols_count; $c++) {
+							// Slug format is fixed by build_custom_dataset(): 'custom:col_' . (index + 1).
+							$grid_col_label = (string) ($custom_columns[$c] ?? '');
+							if ($grid_col_label === '') {
+								$grid_col_label = (string) ($grid_header_labels['custom:col_' . ($c + 1)] ?? '');
+							}
+							if ($grid_col_label === '') {
+								/* translators: %d is the column number. */
+								$grid_col_label = sprintf(__('Column %d', 'baratables'), $c + 1);
+							}
+							$grid_col_labels[$c] = $grid_col_label;
+						}
+						/* translators: 1: the row number, 2: the column heading. */
+						$grid_cell_label = __('Row %1$d, %2$s', 'baratables');
+						?>
 						<table class="widefat fixed striped">
 							<thead>
 								<tr>
 									<th scope="col" class="btbl-grid-corner">#</th>
 									<?php for ($c = 0; $c < $custom_cols_count; $c++) : ?>
-										<?php
-										// Slug format is fixed by build_custom_dataset(): 'custom:col_' . (index + 1).
-										$col_label = (string) ($custom_columns[$c] ?? '');
-										if ($col_label === '') {
-											$col_label = (string) ($grid_header_labels['custom:col_' . ($c + 1)] ?? '');
-										}
-										if ($col_label === '') {
-											/* translators: %d is the column number. */
-											$col_label = sprintf(__('Column %d', 'baratables'), $c + 1);
-										}
-										?>
-										<th scope="col"><?php echo wp_kses($col_label, $allowed_inline); ?></th>
+										<th scope="col"><?php echo wp_kses($grid_col_labels[$c], $allowed_inline); ?></th>
 									<?php endfor; ?>
 								</tr>
 							</thead>
@@ -238,7 +249,7 @@ class BaraTables_Admin_Tab_General {
 										<th scope="row" class="btbl-grid-rownum" aria-label="<?php echo esc_attr(sprintf(__('Row %d', 'baratables'), $r + 1)); ?>"><?php echo esc_html((string) ($r + 1)); ?></th>
 										<?php for ($c = 0; $c < $custom_cols_count; $c++) : ?>
 											<td>
-												<input type="text" name="btbl_custom_data[<?php echo esc_attr($r); ?>][<?php echo esc_attr($c); ?>]" value="<?php echo esc_attr($row_values[$c] ?? ''); ?>" title="<?php echo esc_attr($row_values[$c] ?? ''); ?>" />
+												<input type="text" name="btbl_custom_data[<?php echo esc_attr($r); ?>][<?php echo esc_attr($c); ?>]" value="<?php echo esc_attr($row_values[$c] ?? ''); ?>" title="<?php echo esc_attr($row_values[$c] ?? ''); ?>" aria-label="<?php echo esc_attr(sprintf($grid_cell_label, $r + 1, wp_strip_all_tags($grid_col_labels[$c]))); ?>" />
 											</td>
 										<?php endfor; ?>
 									</tr>
@@ -558,12 +569,12 @@ class BaraTables_Admin_Tab_Columns {
 			<div class="btbl-selected-order">
 				<strong class="btbl-small-heading"><?php esc_html_e('Selected column order', 'baratables'); ?></strong>
 				<p class="description"><?php esc_html_e('Drag to reorder.', 'baratables'); ?></p>
-				<ul id="btbl-column-order-list" class="btbl-sortable-list" data-keyboard-hint="<?php esc_attr_e('Use the up and down arrow keys to reorder.', 'baratables'); ?>" aria-label="<?php esc_attr_e('Selected column order', 'baratables'); ?>"></ul>
+				<ul id="btbl-column-order-list" class="btbl-sortable-list" data-keyboard-hint="<?php esc_attr_e('Use the up and down arrow keys to reorder.', 'baratables'); ?>" data-label-moved="<?php esc_attr(/* translators: 1: the name of the item that moved, 2: its new position. */ __('Moved %1$s to position %2$d.', 'baratables')); ?>" aria-label="<?php esc_attr_e('Selected column order', 'baratables'); ?>"></ul>
 				<input type="hidden" name="btbl_column_order" id="btbl_column_order" value="<?php echo esc_attr(implode("\n", $selected_columns)); ?>" />
 				<hr class="btbl-order-separator" />
 				<strong class="btbl-small-heading"><?php esc_html_e('Selected filter order', 'baratables'); ?></strong>
 				<p class="description"><?php esc_html_e('Drag to reorder.', 'baratables'); ?></p>
-				<ul id="btbl-filter-order-list" class="btbl-sortable-list" data-keyboard-hint="<?php esc_attr_e('Use the up and down arrow keys to reorder.', 'baratables'); ?>" aria-label="<?php esc_attr_e('Selected filter order', 'baratables'); ?>"></ul>
+				<ul id="btbl-filter-order-list" class="btbl-sortable-list" data-keyboard-hint="<?php esc_attr_e('Use the up and down arrow keys to reorder.', 'baratables'); ?>" data-label-moved="<?php esc_attr(/* translators: 1: the name of the item that moved, 2: its new position. */ __('Moved %1$s to position %2$d.', 'baratables')); ?>" aria-label="<?php esc_attr_e('Selected filter order', 'baratables'); ?>"></ul>
 				<input type="hidden" name="btbl_filter_order" id="btbl_filter_order" value="<?php echo esc_attr(implode("\n", $filter_order)); ?>" />
 			</div>
 			</div>
@@ -742,6 +753,13 @@ class BaraTables_Admin_Tab_Columns {
 		$sort_direction_is_desc = $sort_direction_val === 'desc';
 		$filter_sort_is_custom = $filter_sort_val === 'custom';
 		$column_checkbox_id = 'btbl_col_' . md5($slug_attr);
+		$column_options_id = $column_checkbox_id . '_options';
+		// The gear button names the column it opens. Five buttons all called "Options"
+		// are five identical controls to a screen-reader user.
+		$column_options_name = wp_strip_all_tags($display_label);
+		if ($column_options_name === '') {
+			$column_options_name = $slug_attr;
+		}
 		?>
 			<div class="btbl-checkbox">
 				<span class="btbl-checkbox-top">
@@ -749,13 +767,12 @@ class BaraTables_Admin_Tab_Columns {
 						<input type="checkbox" id="<?php echo esc_attr($column_checkbox_id); ?>" name="btbl_columns[]" value="<?php echo esc_attr($slug_attr); ?>" data-label="<?php echo esc_attr($display_label_html); ?>" <?php checked($is_checked); ?> />
 						<span class="btbl-field-name"><?php echo wp_kses($display_label_html, $allowed_inline); ?></span>
 					</label>
-					<button type="button" class="btbl-options-toggle <?php echo $is_checked ? '' : 'is-hidden'; ?>" aria-expanded="false">
+					<button type="button" class="btbl-options-toggle <?php echo $is_checked ? '' : 'is-hidden'; ?>" aria-expanded="false" aria-controls="<?php echo esc_attr($column_options_id); ?>" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $column_options_name)); ?>">
 						<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-						<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 					</button>
 				</span>
 			<span class="btbl-field-controls">
-				<div class="btbl-field-options-body">
+				<div class="btbl-field-options-body" id="<?php echo esc_attr($column_options_id); ?>">
 						<p class="btbl-gear-section-heading"><?php esc_html_e('Column', 'baratables'); ?></p>
 					<div class="btbl-options-row btbl-options-inline">
 						<div class="btbl-inline">
@@ -1038,9 +1055,8 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_caption" data-btbl-override-toggle <?php checked($caption_value !== ''); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($option_schema['caption']['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled($caption_value === ''); ?>>
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $option_schema['caption']['label'])); ?>" <?php disabled($caption_value === ''); ?>>
 									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 								</button>
 							</span>
 							<div class="btbl-field-options-body<?php echo $caption_value !== '' ? '' : ' is-hidden'; ?>">
@@ -1058,9 +1074,8 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_rowlimit" data-btbl-override-toggle <?php checked($row_limit_overridden); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($row_limit_config['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled(!$row_limit_overridden); ?>>
+								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $row_limit_config['label'])); ?>" <?php disabled(!$row_limit_overridden); ?>>
 									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-									<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 								</button>
 							</span>
 							<div class="btbl-field-options-body<?php echo $row_limit_overridden ? '' : ' is-hidden'; ?>">
@@ -1103,9 +1118,8 @@ class BaraTables_Admin_Tab_Table {
 										<span class="btbl-field-name"><?php echo esc_html($config['label']); ?></span>
 									</label>
 									<?php if ($has_inline) : ?>
-										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled(empty($table_options[$flag_key])); ?>>
+										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $config['label'])); ?>" <?php disabled(empty($table_options[$flag_key])); ?>>
 											<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-											<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 										</button>
 									<?php endif; ?>
 								</span>
@@ -1191,7 +1205,7 @@ class BaraTables_Admin_Tab_Table {
 			<?php endforeach; ?>
 		</div>
 	</div>
-				<div class="btbl-control btbl-layout-builder" data-defaults="<?php echo esc_attr(wp_json_encode($layout_defaults)); ?>">
+				<div class="btbl-control btbl-layout-builder" data-defaults="<?php echo esc_attr(wp_json_encode($layout_defaults)); ?>" data-label-moved="<?php echo esc_attr(/* translators: 1: the name of the element that moved, 2: the zone it moved to. */ __('Moved %1$s to %2$s.', 'baratables')); ?>">
 					<div class="btbl-layout-header">
 						<div class="btbl-header-stack">
 							<strong class="btbl-small-heading"><?php esc_html_e('Table layout', 'baratables'); ?></strong>
@@ -1259,14 +1273,13 @@ class BaraTables_Admin_Tab_Table {
 										<span class="btbl-field-name"><?php echo esc_html($choice_label); ?></span>
 									</label>
 									<?php if ($text_key !== '') : ?>
-										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" <?php disabled(!$button_checked); ?>>
+										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $choice_label)); ?>" aria-controls="<?php echo esc_attr($choice_id . '_options'); ?>" <?php disabled(!$button_checked); ?>>
 											<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-											<span class="screen-reader-text"><?php esc_html_e('Options', 'baratables'); ?></span>
 										</button>
 									<?php endif; ?>
 								</div>
 								<?php if ($text_key !== '') : ?>
-									<div class="btbl-field-options-body <?php echo $button_checked ? '' : 'is-hidden'; ?>">
+									<div class="btbl-field-options-body <?php echo $button_checked ? '' : 'is-hidden'; ?>" id="<?php echo esc_attr($choice_id . '_options'); ?>">
 										<div class="btbl-options-row btbl-options-inline">
 										<label class="btbl-inline" for="<?php echo esc_attr($button_text_id); ?>">
 											<span class="btbl-small-label"><?php esc_html_e('Text', 'baratables'); ?></span>
@@ -1322,6 +1335,9 @@ class BaraTables_Admin_Tab_Design {
 		$config = [
 			'previewSelector' => '#btbl-preview-target .btbl-table-wrapper',
 			'varMap' => BaraTables_Service::STYLE_VAR_MAP,
+			// The type of every token, so the preview sanitizes each value the way the
+			// server does instead of guessing the type from the key's name.
+			'tokenTypes' => BaraTables_Service::design_token_types(),
 			// The site default design (2.1.0), so the preview and Copy CSS show the
 			// EFFECTIVE design: the table's own token, else the site default, else the
 			// theme. Without this the preview would show a blank where the published

@@ -708,9 +708,9 @@ class BaraTables_Chart_Admin {
 			?>
 			<?php BaraTables_Help::render_toggle(); ?>
 			<div class="btbl-tab-wrapper">
-				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist">
-					<a href="#btbl-tab-chart" id="btbl-tab-chart-label" role="tab" aria-selected="true" class="nav-tab nav-tab-active btbl-tab-link" data-target="btbl-tab-chart"><?php esc_html_e('Chart', 'baratables'); ?></a>
-					<a href="#btbl-tab-chart-design" id="btbl-tab-chart-design-label" role="tab" aria-selected="false" class="nav-tab btbl-tab-link" data-target="btbl-tab-chart-design"><?php esc_html_e('Design', 'baratables'); ?></a>
+				<h2 class="nav-tab-wrapper btbl-nav-tab-wrapper" role="tablist" aria-label="<?php esc_attr_e('Chart settings', 'baratables'); ?>">
+					<a href="#btbl-tab-chart" id="btbl-tab-chart-label" role="tab" aria-controls="btbl-tab-chart" aria-selected="true" class="nav-tab nav-tab-active btbl-tab-link" data-target="btbl-tab-chart"><?php esc_html_e('Chart', 'baratables'); ?></a>
+					<a href="#btbl-tab-chart-design" id="btbl-tab-chart-design-label" role="tab" aria-controls="btbl-tab-chart-design" aria-selected="false" class="nav-tab btbl-tab-link" data-target="btbl-tab-chart-design"><?php esc_html_e('Design', 'baratables'); ?></a>
 				</h2>
 				<?php
 				$this->tab_chart->render($panel, $panel['column_choices']);

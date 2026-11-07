@@ -115,19 +115,51 @@ class BaraTables_Design {
 	 */
 	public static function update_site_default(array $raw): array {
 		$previous = self::site_default();
-		$table = self::sanitize_table_scope_result(
-			is_array($raw['table'] ?? null) ? $raw['table'] : [],
-			$previous['table']
-		);
-		$chart = self::sanitize_chart_scope_result(
-			is_array($raw['chart'] ?? null) ? $raw['chart'] : [],
-			$previous['chart']
-		);
-		$clean = ['table' => $table['clean'], 'chart' => $chart['clean']];
+		$table_raw = is_array($raw['table'] ?? null) ? $raw['table'] : [];
+		$chart_raw = is_array($raw['chart'] ?? null) ? $raw['chart'] : [];
+		$table = self::sanitize_table_scope_result($table_raw, $previous['table']);
+		$chart = self::sanitize_chart_scope_result($chart_raw, $previous['chart']);
+		$clean = [
+			'table' => self::carry_omitted($table_raw, $table['clean'], $previous['table'], self::table_token_keys()),
+			'chart' => self::carry_omitted($chart_raw, $chart['clean'], $previous['chart'], self::CHART_KEYS),
+		];
 		if ($clean !== $previous) {
 			update_option(self::OPTION_KEY, $clean);
 		}
 		return array_merge($table['rejected'], $chart['rejected']);
+	}
+
+	/**
+	 * The stored values for the keys a request did not carry.
+	 *
+	 * A key the request never carried is not a cleared key: it is a key the request never
+	 * spoke about. The Design screen's form posts every field, so a field that is missing
+	 * means the request was hand-made or was cut short -- and neither is an instruction to
+	 * delete the site-wide design. The value already stored is carried forward instead.
+	 * A field that WAS carried and left blank is a deliberate clear, and stays one.
+	 *
+	 * @param array    $raw      The submitted values, keyed by option key.
+	 * @param array    $clean    The sanitized values, keyed by option key.
+	 * @param array    $previous The values already stored, keyed by option key.
+	 * @param string[] $keys     The known keys, in their canonical order.
+	 * @return array
+	 */
+	private static function carry_omitted(array $raw, array $clean, array $previous, array $keys): array {
+		$merged = [];
+		foreach ($keys as $key) {
+			if (array_key_exists($key, $clean)) {
+				$merged[$key] = $clean[$key];
+				continue;
+			}
+			if (array_key_exists($key, $raw)) {
+				// It was carried and left blank: a deliberate clear. Nothing to carry forward.
+				continue;
+			}
+			if (array_key_exists($key, $previous)) {
+				$merged[$key] = $previous[$key];
+			}
+		}
+		return $merged;
 	}
 
 	/**
@@ -159,7 +191,18 @@ class BaraTables_Design {
 			if (!array_key_exists($key, $raw)) {
 				continue;
 			}
-			$submitted = (string) $raw[$key];
+			$submitted = $raw[$key];
+			if (!is_scalar($submitted)) {
+				// A value that is not a string at all cannot be read as one. It is
+				// rejected rather than dropped, so the owner is told which field the
+				// server could not use and the value already stored is kept.
+				$rejected[$key] = '';
+				if (isset($previous[$key]) && (string) $previous[$key] !== '') {
+					$clean[$key] = (string) $previous[$key];
+				}
+				continue;
+			}
+			$submitted = (string) $submitted;
 			$value = self::sanitize_token_value($key, $submitted);
 			if ($value !== '') {
 				$clean[$key] = $value;
@@ -219,7 +262,18 @@ class BaraTables_Design {
 			if (!array_key_exists($key, $raw)) {
 				continue;
 			}
-			$submitted = (string) $raw[$key];
+			$submitted = $raw[$key];
+			if (!is_scalar($submitted)) {
+				// A value that is not a string at all cannot be read as one. It is
+				// rejected rather than dropped, so the owner is told which field the
+				// server could not use and the value already stored is kept.
+				$rejected[$key] = '';
+				if (isset($previous[$key]) && (string) $previous[$key] !== '') {
+					$clean[$key] = (string) $previous[$key];
+				}
+				continue;
+			}
+			$submitted = (string) $submitted;
 			$value = BaraTables_Service::normalize_hex_color($submitted);
 			if ($value !== '') {
 				$clean[$key] = $value;
@@ -234,14 +288,25 @@ class BaraTables_Design {
 			}
 		}
 		if (array_key_exists('styleFontSize', $raw)) {
-			$submitted = (string) $raw['styleFontSize'];
-			$value = BaraTables_Service::sanitize_chart_font_size($submitted);
-			if ($value !== '') {
-				$clean['styleFontSize'] = $value;
-			} elseif (trim($submitted) !== '') {
-				$rejected['styleFontSize'] = trim($submitted);
+			$submitted = $raw['styleFontSize'];
+			if (!is_scalar($submitted)) {
+				// A value that is not a string at all cannot be read as one. It is
+				// rejected rather than dropped, so the owner is told which field the
+				// server could not use and the value already stored is kept.
+				$rejected['styleFontSize'] = '';
 				if (isset($previous['styleFontSize']) && (string) $previous['styleFontSize'] !== '') {
 					$clean['styleFontSize'] = (string) $previous['styleFontSize'];
+				}
+			} else {
+				$submitted = (string) $submitted;
+				$value = BaraTables_Service::sanitize_chart_font_size($submitted);
+				if ($value !== '') {
+					$clean['styleFontSize'] = $value;
+				} elseif (trim($submitted) !== '') {
+					$rejected['styleFontSize'] = trim($submitted);
+					if (isset($previous['styleFontSize']) && (string) $previous['styleFontSize'] !== '') {
+						$clean['styleFontSize'] = (string) $previous['styleFontSize'];
+					}
 				}
 			}
 		}
@@ -249,7 +314,15 @@ class BaraTables_Design {
 			if (!array_key_exists($key, $raw)) {
 				continue;
 			}
-			$submitted = (string) $raw[$key];
+			$submitted = $raw[$key];
+			if (!is_scalar($submitted)) {
+				$rejected[$key] = '';
+				if (isset($previous[$key]) && (string) $previous[$key] !== '') {
+					$clean[$key] = (string) $previous[$key];
+				}
+				continue;
+			}
+			$submitted = (string) $submitted;
 			$value = BaraTables_Service::sanitize_css_size($submitted);
 			if ($value !== '') {
 				$clean[$key] = $value;
@@ -279,6 +352,12 @@ class BaraTables_Design {
 		$palette = [];
 		$seen = [];
 		foreach ($raw as $color) {
+			// A colour that is not a scalar cannot be read as a colour. Skipping it
+			// keeps the rest of the palette, and the invalid-colour check reports the
+			// shape as a rejection.
+			if (!is_scalar($color)) {
+				continue;
+			}
 			$hex = BaraTables_Service::normalize_hex_color((string) $color);
 			if ($hex === '') {
 				continue;

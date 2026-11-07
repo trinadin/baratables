@@ -160,6 +160,22 @@ jQuery(function($) {
 			});
 		}
 
+		// Whether a chip is switched off. A chip whose control is off says so with
+		// aria-disabled, and it means it: the chip stays where it is and stays in the
+		// tab order, but it does not move.
+		function isDisabled($chip) {
+			return $chip.attr('aria-disabled') === 'true';
+		}
+
+		// Say where a chip ended up. The list moved but the page did not, so nothing
+		// on it changed for a screen reader to notice.
+		function announceChipMove($chip) {
+			var template = $builder.attr('data-label-moved');
+			if (!template) { return; }
+			var zoneName = $chip.closest('.btbl-layout-zone').find('.btbl-layout-zone-label').first().text().trim();
+			window.BaraTablesAdminCore.announceMoved(template, $chip.text().trim(), zoneName);
+		}
+
 		function getCurrentLayout() {
 			var map = {};
 			$builder.find('.btbl-layout-drop[data-zone]').each(function() {
@@ -214,6 +230,9 @@ jQuery(function($) {
 			if (!horizontal && !vertical) { return; }
 			event.preventDefault();
 			var $chip = $(this);
+			// A chip that says it is disabled does not move. It stays where it is and
+			// keeps its place in the tab order, so the reader can still find it.
+			if (isDisabled($chip)) { return; }
 			var $zones = $builder.find('.btbl-layout-drop');
 			var $currentZone = $chip.closest('.btbl-layout-drop');
 			if (vertical) {
@@ -231,9 +250,15 @@ jQuery(function($) {
 			}
 			syncLayoutState(true);
 			$chip.trigger('focus');
+			announceChipMove($chip);
 		});
 
 		$builder.on('dragstart', '.btbl-layout-chip', function(event) {
+			// A chip that says it is disabled does not drag either.
+			if (isDisabled($(this))) {
+				event.preventDefault();
+				return;
+			}
 			dragItem = this;
 			event.originalEvent.dataTransfer.effectAllowed = 'move';
 			event.originalEvent.dataTransfer.setData('text/plain', $(this).data('feature'));
@@ -258,11 +283,18 @@ jQuery(function($) {
 			event.preventDefault();
 			$(this).removeClass('is-dragover');
 			if (!dragItem) { return; }
+			var $dragged = $(dragItem);
+			// A chip that says it is disabled does not move.
+			if (isDisabled($dragged)) { return; }
 			if ($(event.target).closest('.btbl-layout-chip').length === 0) { $(this).append(dragItem); }
 			syncLayoutState(true);
+			announceChipMove($dragged);
 		});
 		$builder.on('dragover', '.btbl-layout-chip', function(event) {
 			if (!dragItem || dragItem === this) { return; }
+			// A chip that says it is disabled does not move, and a disabled chip
+			// dropped on another one does not push it aside.
+			if (isDisabled($(dragItem)) || isDisabled($(this))) { return; }
 			event.preventDefault();
 			var rectangle = this.getBoundingClientRect();
 			if ((event.originalEvent.clientX - rectangle.left) < rectangle.width / 2) { $(this).before(dragItem); }

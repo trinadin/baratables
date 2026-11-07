@@ -152,6 +152,12 @@ jQuery(function($) {
 	// Build the grid as one HTML string and parse it once. Constructing jQuery objects per row and
 	// cell scales poorly and also resets the scroll position during row actions.
 	var escGridHtml = window.BaraTablesUtils.escapeHtml;
+	// The plain text of a heading, for an accessible name. The heading may carry
+	// markup, and an accessible name is text, so the tags are stripped -- not parsed,
+	// so nothing in the string is ever executed.
+	function gridPlainText(value) {
+		return String(value === null || value === undefined ? '' : value).replace(/<[^>]*>/g, '');
+	}
 	function rowActionHtml(cls, dashicon, label, disabled) {
 		return '<button type="button" class="button-link ' + cls + '"'
 			+ ' title="' + escGridHtml(label) + '" aria-label="' + escGridHtml(label) + '"'
@@ -174,6 +180,7 @@ jQuery(function($) {
 		var headingLabel = $customGrid.data('heading-label') || 'Column';
 		var colTemplate = $customGrid.data('column-label') || 'Column %d';
 		var rowTemplate = $customGrid.data('row-label') || 'Row %d';
+		var cellTemplate = $customGrid.data('cell-label') || 'Row %1$d, %2$s';
 		var html = ['<table class="widefat fixed striped"><thead><tr>'];
 		html.push('<th scope="col" class="btbl-grid-corner">' + escGridHtml(headingLabel) + '</th>');
 		for (var c = 0; c < counts.cols; c++) {
@@ -191,9 +198,15 @@ jQuery(function($) {
 			var rowValues = rows[r] || [];
 			for (var c2 = 0; c2 < counts.cols; c2++) {
 				var cellVal = rowValues[c2] || '';
+				// Name the cell by where it is, not by what it holds: a screen-reader
+				// user needs to know the row and column, and the value is announced
+				// separately when the field takes focus.
+				var cellHeader = (headers && headers[c2]) ? headers[c2] : colTemplate.replace('%d', (c2 + 1));
+				var cellLabel = cellTemplate.replace('%1$d', String(r + 1)).replace('%2$s', gridPlainText(cellHeader));
 				// Mirror the value in the title so truncated cells reveal on hover.
 				html.push('<td><input type="text" name="btbl_custom_data[' + r + '][' + c2 + ']"'
-					+ ' title="' + escGridHtml(cellVal) + '" value="' + escGridHtml(cellVal) + '" /></td>');
+					+ ' title="' + escGridHtml(cellVal) + '" value="' + escGridHtml(cellVal) + '"'
+					+ ' aria-label="' + escGridHtml(cellLabel) + '" /></td>');
 			}
 			html.push(buildRowActionsHtml(r, counts.rows));
 			html.push('</tr>');

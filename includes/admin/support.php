@@ -10,7 +10,16 @@ class BaraTables_Post_Input {
 	}
 
 	public static function raw(string $key, string $default = ''): string {
-		return isset($_POST[$key]) ? (string) wp_unslash($_POST[$key]) : $default; // phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller. Intentionally returns raw value; caller handles context-specific sanitization.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
+		if (!isset($_POST[$key])) {
+			return $default;
+		}
+		// A posted value is not always a string: a form can post an array under the same
+		// name. Casting an array to a string raises a PHP warning and yields "Array",
+		// so a value that is not a scalar is read as absent.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by caller. Intentionally returns the raw value; the caller handles context-specific sanitization.
+		$value = wp_unslash($_POST[$key]);
+		return is_scalar($value) ? (string) $value : $default;
 	}
 
 	public static function int(string $key, int $default = 0): int {
@@ -329,7 +338,7 @@ class BaraTables_Admin_Page_Utils {
 				<span class="dashicons dashicons-edit" aria-hidden="true"></span><?php esc_html_e('Edit ID', 'baratables'); ?>
 			</button>
 			<div class="btbl-id-edit-panel" hidden>
-				<span class="btbl-id-edit-label"><?php echo esc_html($label); ?></span>
+				<label class="btbl-id-edit-label" for="<?php echo esc_attr($field_name); ?>"><?php echo esc_html($label); ?></label>
 				<input type="text" name="<?php echo esc_attr($field_name); ?>" id="<?php echo esc_attr($field_name); ?>" class="btbl-id-input" value="<?php echo esc_attr($id_value); ?>" autocomplete="off" autocapitalize="off" spellcheck="false" />
 				<button type="button" class="button button-small btbl-id-edit-ok"><?php esc_html_e('OK', 'baratables'); ?></button>
 				<button type="button" class="button-link btbl-id-edit-cancel"><?php esc_html_e('Cancel', 'baratables'); ?></button>

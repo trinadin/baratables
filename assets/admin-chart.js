@@ -644,6 +644,14 @@ jQuery(function($) {
 			}
 			syncPalette();
 			$chip.trigger('focus');
+			// The chips moved but the page did not, so nothing on it changed for a
+			// screen reader to notice. Say where the colour ended up.
+			var position = $paletteEditor.find('.btbl-palette-chips .btbl-palette-chip').index($chip) + 1;
+			adminCore.announceMoved(
+				$paletteEditor.attr('data-label-moved'),
+				$chip.attr('data-color') || '',
+				position
+			);
 		});
 
 		// Native HTML5 drag to reorder, same contract as the layout builder's chips.

@@ -60,18 +60,29 @@
 
 	// Same contract as the PHP sanitizers: a value that would be dropped on save never
 	// reaches the preview, so the preview can never diverge from what will persist.
+	//
+	// The TYPE comes from the server, not from the key's name. The server keeps the type
+	// of every design token in one place -- the option definitions -- and ships it to
+	// this script, so the two sides cannot answer "what kind of value is this?" differently.
 	function sanitizedValue(key, raw) {
 		if (!raw) { return ''; }
-		if (/Color$/.test(key)) {
-			return normalizeHex(raw);
+		var types = (config && config.tokenTypes) || {};
+		switch (types[key]) {
+			case 'color':
+				return normalizeHex(raw);
+			case 'css_weight':
+				var weight = String(raw).trim();
+				return CSS_WEIGHTS.indexOf(weight) !== -1 ? weight : '';
+			case 'css_font_size':
+				return normalizeCssFontSize(raw);
+			case 'css_size':
+				return normalizeCssSize(raw);
+			default:
+				// A key with no type is not a design token, so it has no value. The server
+				// says the same thing, so the preview cannot paint something the page
+				// will not publish.
+				return '';
 		}
-		if (key === 'headerWeight') {
-			return CSS_WEIGHTS.indexOf(raw) !== -1 ? raw : '';
-		}
-		if (key === 'fontSize') {
-			return normalizeCssFontSize(raw);
-		}
-		return normalizeCssSize(raw);
 	}
 
 	// Whether this entity currently inherits the site design. The checkbox in the form is

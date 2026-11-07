@@ -270,11 +270,16 @@ final class BaraTables_Remote_Snapshot {
 		if (is_wp_error($parsed)) {
 			return self::kept_error($parsed->get_error_code(), $parsed->get_error_message());
 		}
+		// The remote feed's content is data, not markup the owner wrote: the server at
+		// the other end chooses it, and it can change after the owner approved the
+		// snapshot. So it gets the narrower contract -- the same tags, minus the style
+		// attribute, which is the one that can lay a panel over the page.
 		$dataset = $service->sanitize_custom_data(
 			$parsed['columns'],
 			$parsed['rows'],
 			count($parsed['rows']),
-			count($parsed['columns'])
+			count($parsed['columns']),
+			true
 		);
 		$dataset_error = self::validate_sanitized_dataset($dataset);
 		if ($dataset_error) {

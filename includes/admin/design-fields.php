@@ -453,7 +453,7 @@ class BaraTables_Admin_Design_Fields {
 		$remove_label = esc_attr__("Remove color %s", 'baratables');
 		$move_label = esc_attr__('Use the arrow keys to move this color.', 'baratables');
 		?>
-		<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php echo esc_attr($remove_label); ?>" data-label-move="<?php echo esc_attr($move_label); ?>">
+		<div class="btbl-palette-editor" data-btbl-palette-editor data-label-remove="<?php echo esc_attr($remove_label); ?>" data-label-move="<?php echo esc_attr($move_label); ?>" data-label-moved="<?php echo esc_attr(/* translators: 1: the name of the item that moved, 2: its new position. */ __('Moved %1$s to position %2$d.', 'baratables')); ?>">
 			<div class="btbl-palette-chips" role="list">
 				<?php foreach ($palette as $color) : ?>
 					<?php self::render_chip($color); ?>

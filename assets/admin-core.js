@@ -367,6 +367,52 @@
 		return deferred.promise();
 	}
 
+	// A live region for saying something the screen cannot show.
+	//
+	// A reorder moves an item without changing anything else on the page, so there is
+	// nothing for a screen reader to notice. One region for the page, reused by every
+	// script that has something to report. It is created when the page loads, because
+	// a region that appears at the same moment as its first message is not reliably
+	// announced.
+	var liveRegion = null;
+	function liveRegionElement() {
+		if (liveRegion && liveRegion.length) {
+			return liveRegion;
+		}
+		liveRegion = $('#btbl-live-region');
+		if (!liveRegion.length) {
+			liveRegion = $('<div id="btbl-live-region" class="screen-reader-text" aria-live="polite" aria-atomic="true"></div>');
+			$('body').append(liveRegion);
+		}
+		return liveRegion;
+	}
+	function announce(message) {
+		var $region = liveRegionElement();
+		// Clearing first means the same message twice is announced twice.
+		$region.text('');
+		window.setTimeout(function() {
+			$region.text(message);
+		}, 50);
+	}
+	// A move announcement, from a template the server shipped.
+	//
+	// The template is a translatable string with two placeholders: %1$s is the thing
+	// that moved and %2$s (or %2$d) is where it went. Shipping it from PHP keeps the
+	// wording in the translation file, where a translator can find it.
+	function announceMoved(template, name, where) {
+		if (!template) {
+			return;
+		}
+		var message = String(template)
+			.replace('%1$s', String(name))
+			.replace('%2$s', String(where))
+			.replace('%2$d', String(where));
+		announce(message);
+	}
+	$(function() {
+		liveRegionElement();
+	});
+
 	$(initDesignFieldValidation);
 
 	window.BaraTablesAdminCore = {
@@ -385,6 +431,8 @@
 		requestFragment: requestFragment,
 		isActivationEvent: isActivationEvent,
 		applyDefaultIfUntouched: applyDefaultIfUntouched,
+		announce: announce,
+		announceMoved: announceMoved,
 		redirectWithQuery: redirectWithQuery
 	};
 })(window, jQuery);

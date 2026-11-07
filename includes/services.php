@@ -395,6 +395,54 @@ class BaraTables_Service {
 		return self::ALLOWED_INLINE_HTML;
 	}
 
+	/**
+	 * The HTML allowed in a label that came from outside the plugin.
+	 *
+	 * A remote feed's header row is data, not markup the owner wrote: it is whatever the
+	 * server at the other end chose to send. So it gets a narrower contract than a label
+	 * typed into the editor -- the same tags, minus the style attribute. That attribute
+	 * is the one that can lay a panel over the page: a fixed, full-size, high-z-index
+	 * span is still "safe" CSS as far as WordPress's own filter is concerned.
+	 *
+	 * @return array<string,array<string,array>>
+	 */
+	public static function allowed_external_inline_html(): array {
+		$allowed = self::ALLOWED_INLINE_HTML;
+		foreach ($allowed as $tag => $attributes) {
+			unset($allowed[$tag]['style']);
+		}
+		return $allowed;
+	}
+
+	/** A label that came from outside the plugin, sanitized. */
+	public static function sanitize_external_inline_html($value): string {
+		return wp_kses((string) $value, self::allowed_external_inline_html());
+	}
+
+	/**
+	 * A cell value that came from outside the plugin, sanitized.
+	 *
+	 * The post-context allowlist, minus the style attribute, for the same reason the
+	 * label allowlist loses it.
+	 */
+	public static function sanitize_external_cell_html($value): string {
+		$value = (string) $value;
+		// A cell with no markup in it has nothing to sanitize, and parsing every cell
+		// of every row would cost more than the check that decides whether there is
+		// anything to parse.
+		if (strpbrk($value, '<&') === false) {
+			return $value;
+		}
+		static $allowed = null;
+		if ($allowed === null) {
+			$allowed = wp_kses_allowed_html('post');
+			foreach ($allowed as $tag => $attributes) {
+				unset($allowed[$tag]['style']);
+			}
+		}
+		return wp_kses($value, $allowed);
+	}
+
 	private static function sanitize_inline_html($value): string {
 		if (!is_scalar($value)) {
 			return '';
@@ -1319,7 +1367,9 @@ class BaraTables_Service {
 			return false;
 		}
 		foreach ($raw as $color) {
-			if (self::normalize_hex_color((string) $color) === '') {
+			// A colour that is not a scalar cannot be read as a colour at all, so it is
+			// rejected on the same grounds as a colour that is not a hex.
+			if (!is_scalar($color) || self::normalize_hex_color((string) $color) === '') {
 				return true;
 			}
 		}
@@ -1354,6 +1404,27 @@ class BaraTables_Service {
 			return '';
 		}
 		return (string) ($definition[0] ?? '');
+	}
+
+	/**
+	 * The type of every design token, keyed by option key.
+	 *
+	 * Shipped to the admin script so the live preview dispatches on the SAME types the
+	 * server sanitizes with. The client used to work the type out from the key's name --
+	 * a second, separate answer to the same question, free to drift from the first. The
+	 * type is written down once, here, and both sides read it.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function design_token_types(): array {
+		$types = [];
+		foreach (array_keys(self::STYLE_VAR_MAP) as $key) {
+			$type = self::design_token_type($key);
+			if ($type !== '') {
+				$types[$key] = $type;
+			}
+		}
+		return $types;
 	}
 
 	/**
@@ -1820,8 +1891,8 @@ class BaraTables_Service {
 		return $out;
 	}
 
-	public function sanitize_custom_data(array $column_labels_raw, $rows_raw, int $rows_count = 0, int $cols_count = 0): array {
-		$dataset = $this->build_custom_dataset($column_labels_raw, $rows_raw, $rows_count, $cols_count);
+	public function sanitize_custom_data(array $column_labels_raw, $rows_raw, int $rows_count = 0, int $cols_count = 0, bool $external = false): array {
+		$dataset = $this->build_custom_dataset($column_labels_raw, $rows_raw, $rows_count, $cols_count, $external);
 
 		return [
 			'columns' => $dataset['columns'],
@@ -1830,7 +1901,7 @@ class BaraTables_Service {
 		];
 	}
 
-	public function build_custom_dataset(array $column_labels_raw, $rows_raw, int $rows_count = 0, int $cols_count = 0): array {
+	public function build_custom_dataset(array $column_labels_raw, $rows_raw, int $rows_count = 0, int $cols_count = 0, bool $external = false): array {
 		$rows_raw = is_array($rows_raw) ? $rows_raw : [];
 
 		$column_count = $cols_count > 0 ? $cols_count : count($column_labels_raw);
@@ -1846,7 +1917,12 @@ class BaraTables_Service {
 			// Store an empty string for unnamed columns rather than baking "Column N":
 			// the positional default is supplied at render. Keeping it empty preserves the
 			// "the user gave no name" signal so the column is flagged auto_label at save.
-			$columns[] = self::sanitize_inline_html((string) $label_raw);
+			// A label that is not a scalar cannot be read as a label. Casting one would
+			// raise a PHP warning and store the literal "Array".
+			$label_text = is_scalar($label_raw) ? (string) $label_raw : '';
+			$columns[] = $external
+				? self::sanitize_external_inline_html($label_text)
+				: self::sanitize_inline_html($label_text);
 			$slugs[] = 'custom:col_' . ($i + 1);
 		}
 
@@ -1863,8 +1939,11 @@ class BaraTables_Service {
 			$row = [];
 			for ($c = 0; $c < $column_count; $c++) {
 				$cell_raw = $row_source[$c] ?? '';
-				$cell = is_scalar($cell_raw) ? wp_kses_post((string) $cell_raw) : '';
-				$row[] = $cell;
+				$cell = is_scalar($cell_raw) ? (string) $cell_raw : '';
+				// A cell that came from outside the plugin does not get the style
+				// attribute: it is the one that can lay a panel over the page, and the
+				// other system is the one choosing the value.
+				$row[] = $external ? self::sanitize_external_cell_html($cell) : wp_kses_post($cell);
 			}
 			$rows[] = $row;
 		}
@@ -3237,8 +3316,34 @@ class BaraTables_Service {
 		}
 
 		$ordered = $this->reorder_external_rows_by_slug_map($eligible_rows, $columns_for_mapping, $map);
+		// The external database chooses these values, so they do not get the style
+		// attribute: it is the one that can lay a panel over the page. The admin's own
+		// overrides are applied after this, so the styling an owner writes is theirs.
+		$ordered = $this->strip_external_row_styles($ordered);
 		$ordered = $this->finalize_ordered_rows($ordered, $columns_for_mapping, $definition['value_overrides'] ?? []);
 		return new BaraTables_Row_Result($ordered, $inferred);
+	}
+
+	/**
+	 * Remove the style attribute from the values an external database supplied.
+	 *
+	 * @param array $rows The rows, each an array of cell values.
+	 * @return array
+	 */
+	private function strip_external_row_styles(array $rows): array {
+		foreach ($rows as $row_index => $row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			foreach ($row as $cell_index => $cell) {
+				if (!is_string($cell)) {
+					continue;
+				}
+				$row[$cell_index] = BaraTables_Service::sanitize_external_cell_html($cell);
+			}
+			$rows[$row_index] = $row;
+		}
+		return $rows;
 	}
 
 	/** Validate and connect an external source before row-fetch policy is applied. */

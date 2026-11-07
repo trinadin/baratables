@@ -410,7 +410,10 @@ trait BaraTables_Server_Side_Trait {
 				if ($cell !== '' && preg_match('//u', $cell) !== 1) {
 					return new WP_Error('server_side_invalid_encoding');
 				}
-				$clean = (strpbrk($cell, '<&') === false) ? $cell : wp_kses_post($cell);
+				// Server paging reads an external database, so every cell here is external
+				// content: the same narrower contract the other external paths get, so a
+				// cell cannot carry the style attribute that lays a panel over the page.
+				$clean = BaraTables_Service::sanitize_external_cell_html($cell);
 				$semantic = BaraTables_Cell_Semantics::present_cell($clean, $model);
 				if (strlen($semantic['html']) > self::SERVER_SIDE_MAX_CELL_BYTES) {
 					return new WP_Error('server_side_response_too_large');

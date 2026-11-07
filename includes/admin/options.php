@@ -482,12 +482,16 @@ class BaraTables_Admin_Options {
 			return false;
 		}
 		$file_type = wp_check_filetype($file_name, self::IMPORT_FILE_TYPES);
-		if (!isset(self::IMPORT_FILE_TYPES[$file_type['ext'] ?? ''])) {
+		// wp_check_filetype() matches the extension case-insensitively but reports it back
+		// in the case the file name used, so "DATA.CSV" came back as "CSV" and was
+		// rejected as an unknown type. The extension is matched against the allowlist
+		// in lower case, so lower case it before the comparison.
+		$extension = strtolower((string) ($file_type['ext'] ?? ''));
+		if ($extension === '' || !isset(self::IMPORT_FILE_TYPES[$extension])) {
 			return false;
 		}
 
 		$mime_type = self::detect_import_mime_type($tmp_file);
-		$extension = (string) ($file_type['ext'] ?? '');
 		if ($extension === 'zip') {
 			return in_array($mime_type, ['application/zip', 'application/x-zip-compressed'], true);
 		}

@@ -44,12 +44,40 @@ final class BaraTables_Persistence_Guard {
 abstract class BaraTables_Base_Repository {
 	private const STATUSES_LIVE = ['publish', 'draft', 'pending', 'future', 'private'];
 	private const STATUSES_WITH_TRASH = ['publish', 'draft', 'pending', 'future', 'private', 'trash'];
+	/**
+	 * Definition fields whose value is not HTML, so the meta-level markup filter
+	 * has to leave them byte-exact.
+	 *
+	 * wp_kses() does two separate things: it strips markup it does not allow, and
+	 * it rewrites the text it keeps, turning "&", "<" and ">" into entities. For a
+	 * value that is not HTML, that second half is damage rather than protection: a
+	 * media query loses its "<", and the stylesheet the owner wrote is published
+	 * as something the browser cannot read.
+	 *
+	 * Each of these fields has its own sanitiser at the field level, and that is
+	 * the one that decides what the value may contain: sanitize_custom_css() for
+	 * the stylesheet.
+	 */
 	private const RAW_META_STRING_KEYS = [
+		'customCss' => true,
 		'custom_query_raw' => true,
 		'pass' => true,
 		'replace' => true,
 		'search' => true,
 		'value_overrides_raw' => true,
+	];
+
+	/**
+	 * Definition fields whose value is text rather than markup.
+	 *
+	 * The markup filter still runs -- it is what keeps a script tag out of the
+	 * definition -- but the entities it introduces are decoded again, so the stored
+	 * value is the characters the owner wrote. Without that, a table called
+	 * "Fish & Chips" is stored as "Fish &amp; Chips" and then printed through
+	 * esc_html() a second time, which shows the owner "Fish &amp; Chips".
+	 */
+	private const DECODED_META_STRING_KEYS = [
+		'name' => true,
 	];
 
 	protected function get_statuses(bool $include_trash): array {
@@ -81,11 +109,15 @@ abstract class BaraTables_Base_Repository {
 	/** Write only a definition, verify it, and restore the previous value on failure. */
 	public static function persist_definition(int $post_id, string $meta_key, array $definition): ?WP_Error {
 		$before = self::snapshot_meta($post_id, $meta_key);
+		// The stored value is the sanitized one, so that is what the verification
+		// compares against. Comparing against the caller's array instead would read
+		// a sanitizer's rewrite as a failed write.
+		$expected = self::sanitize_definition($definition);
 		BaraTables_Persistence_Guard::begin();
 		try {
 			self::write_definition($post_id, $meta_key, $definition);
 			$stored = get_post_meta($post_id, $meta_key, true);
-			if (is_array($stored) && $stored === $definition) {
+			if (is_array($stored) && $stored === $expected) {
 				return null;
 			}
 			$error = new WP_Error('baratables_definition_not_saved', __('WordPress did not save the plugin definition.', 'baratables'));
@@ -98,11 +130,13 @@ abstract class BaraTables_Base_Repository {
 
 	/** Compare-and-swap a definition; never roll back across a concurrent writer. */
 	public static function persist_definition_if_unchanged(int $post_id, string $meta_key, array $expected, array $definition): ?WP_Error {
+		// The stored value is the sanitized one; see persist_definition().
+		$expected_stored = self::sanitize_definition($definition);
 		BaraTables_Persistence_Guard::begin();
 		try {
 			update_post_meta($post_id, $meta_key, wp_slash($definition), $expected);
 			$stored = get_post_meta($post_id, $meta_key, true);
-			if (is_array($stored) && $stored === $definition) {
+			if (is_array($stored) && $stored === $expected_stored) {
 				return null;
 			}
 			if (!is_array($stored) || $stored !== $expected) {
@@ -119,12 +153,14 @@ abstract class BaraTables_Base_Repository {
 		$before_definition = self::snapshot_meta($post_id, $meta_key);
 		$before_slug = self::snapshot_meta($post_id, $meta_slug);
 		$error = null;
+		// The stored value is the sanitized one; see persist_definition().
+		$expected_definition = self::sanitize_definition($definition);
 
 		BaraTables_Persistence_Guard::begin();
 		try {
 			self::write_definition($post_id, $meta_key, $definition);
 			$stored_definition = get_post_meta($post_id, $meta_key, true);
-			if (!is_array($stored_definition) || $stored_definition !== $definition) {
+			if (!is_array($stored_definition) || $stored_definition !== $expected_definition) {
 				$error = new WP_Error('baratables_definition_not_saved', __('WordPress did not save the plugin definition.', 'baratables'));
 			} else {
 				update_post_meta($post_id, $meta_slug, $slug);
@@ -333,34 +369,48 @@ abstract class BaraTables_Base_Repository {
 		return current_user_can('manage_options');
 	}
 
-	protected function sanitize_array_meta_value($value): array {
+	protected static function sanitize_array_meta_value($value): array {
 		if (is_array($value)) {
-			return $this->sanitize_meta_array($value);
+			return self::sanitize_definition($value);
 		}
 		if (is_string($value)) {
 			$decoded = json_decode($value, true);
 			if (is_array($decoded)) {
-				return $this->sanitize_meta_array($decoded);
+				return self::sanitize_definition($decoded);
 			}
 		}
 		return [];
 	}
 
-	private function sanitize_meta_array(array $value): array {
+	/**
+	 * The definition as WordPress will actually store it.
+	 *
+	 * update_post_meta() runs the registered sanitize callback over the value it
+	 * is handed, so the definition that comes back out of the database is not the
+	 * array the caller passed in: the callback rewrites every string it does not
+	 * accept. A write verification that compares the stored value with the
+	 * caller's array therefore reads a sanitizer's rewrite as a failed write and
+	 * rolls the whole save back. That is how a table whose name contains "&",
+	 * or whose stylesheet contains a "<", could not be saved at all.
+	 *
+	 * @param array $definition The definition as the caller built it.
+	 * @return array The definition as WordPress will store it.
+	 */
+	public static function sanitize_definition(array $definition): array {
 		$clean = [];
-		foreach ($value as $key => $item) {
+		foreach ($definition as $key => $item) {
 			$clean_key = is_int($key) ? $key : sanitize_text_field((string) $key);
 			if ($clean_key === '') {
 				continue;
 			}
-			$clean[$clean_key] = $this->sanitize_meta_value($item, (string) $clean_key);
+			$clean[$clean_key] = self::sanitize_meta_value($item, (string) $clean_key);
 		}
 		return $clean;
 	}
 
-	private function sanitize_meta_value($value, string $key) {
+	private static function sanitize_meta_value($value, string $key) {
 		if (is_array($value)) {
-			return $this->sanitize_meta_array($value);
+			return self::sanitize_definition($value);
 		}
 		if (is_bool($value) || is_int($value) || is_float($value)) {
 			return $value;
@@ -375,10 +425,18 @@ abstract class BaraTables_Base_Repository {
 			return $clean;
 		}
 
-		return wp_kses($clean, $this->get_meta_allowed_html());
+		$clean = wp_kses($clean, self::get_meta_allowed_html());
+		if (isset(self::DECODED_META_STRING_KEYS[$key])) {
+			// The markup filter has already removed what it does not allow, so
+			// restoring the text it rewrote cannot put a dangerous tag back: the
+			// filter encodes every "&" before it looks at anything else, so decoding
+			// gives back exactly the characters that were submitted.
+			$clean = html_entity_decode($clean, ENT_QUOTES, 'UTF-8');
+		}
+		return $clean;
 	}
 
-	private function get_meta_allowed_html(): array {
+	private static function get_meta_allowed_html(): array {
 		// Called once per string value while sanitizing a definition. wp_kses_allowed_html('post')
 		// runs filters and rebuilds the same table every call, so memoize it per request. The result
 		// is deterministic within a request (kses filters are registered once), so caching is safe.
@@ -469,7 +527,7 @@ abstract class BaraTables_Abstract_CPT_Repository extends BaraTables_Base_Reposi
 	}
 
 	public function sanitize_meta($value): array {
-		return $this->sanitize_array_meta_value($value);
+		return self::sanitize_array_meta_value($value);
 	}
 
 	/**

@@ -398,6 +398,32 @@ while IFS= read -r published_tag_name; do
 	fi
 done <"$SVN_TAG_LIST"
 
+# An entry may only exist for a version that actually shipped. A build that was
+# withdrawn before release (1.2.0) must never grow one: no user ever ran it, so an
+# entry would tell users about a release they never had. The published list -- the
+# canonical tag list and the published readmes -- is the only authority on what
+# shipped, and this is the check that keeps a fabricated entry out of the history.
+for changelog_section in '== Changelog ==' '== Upgrade Notice =='; do
+	while IFS= read -r changelog_version; do
+		[[ -n "$changelog_version" ]] || continue
+		if [[ "$changelog_version" == "$VERSION" ]]; then
+			continue
+		fi
+		changelog_version_published=0
+		for known_version in "${published_versions[@]}"; do
+			if [[ "$known_version" == "$changelog_version" ]]; then
+				changelog_version_published=1
+				break
+			fi
+		done
+		if [[ "$changelog_version_published" != "1" ]]; then
+			echo "readme.txt has an entry for $changelog_version in $changelog_section, but $changelog_version never shipped." >&2
+			echo "Only a version that reached users may have one." >&2
+			exit 1
+		fi
+	done < <(baratables_readme_section_versions "$changelog_section" "$SOURCE_DIR/readme.txt")
+done
+
 while IFS= read -r published_version; do
 	[[ -n "$published_version" ]] || continue
 	entry_count="$(baratables_readme_section_entry_count '== Changelog ==' "$published_version" "$SOURCE_DIR/readme.txt")"
@@ -639,6 +665,19 @@ if [[ "$COMMIT" -eq 1 ]]; then
 	publish_github_release
 	assert_svn_identity
 	assert_allowed_svn_status "publication"
+	# Re-prove the byte identity at the moment of the commit, not only at staging. The
+	# Git publication in between takes seconds of network I/O, and a concurrent edit to
+	# the working copy in that window would otherwise be committed live to WordPress.org.
+	if ! package_drift="$(diff -r --brief "$PACKAGE_DIR" "$SVN_DIR/trunk")"; then
+		echo "SVN trunk no longer matches the committed Git package:" >&2
+		printf '%s\n' "${package_drift:-diff command failed without details}" >&2
+		exit 1
+	fi
+	if ! tag_drift="$(diff -r --brief "$SVN_DIR/trunk" "$TAG_DIR")"; then
+		echo "SVN tag no longer matches trunk:" >&2
+		printf '%s\n' "${tag_drift:-diff command failed without details}" >&2
+		exit 1
+	fi
 	commit_paths=("$SVN_DIR/trunk" "$TAG_DIR")
 	if [[ "$INCLUDE_ASSETS" -eq 1 ]]; then
 		commit_paths+=("$SVN_DIR/assets")

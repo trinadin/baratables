@@ -12,11 +12,9 @@ Create searchable, sortable WordPress tables and charts from files, public snaps
 
 == Description ==
 
-BaraTables builds interactive tables and charts from manual rows, CSV uploads, snapshots, WordPress content, or an external database, published by shortcode or block.
+BaraTables builds interactive tables and charts from manual rows, CSV uploads, snapshots, WordPress content, or an external database.
 
 Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another plugin.
-
-Tables can include search, sorting, pagination, filters, export buttons, responsive stacking, and column visibility. Charts draw from any table.
 
 **Features:**
 
@@ -46,7 +44,7 @@ Tables can include search, sorting, pagination, filters, export buttons, respons
 
 CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected. JSON endpoints may also be served as `text/plain`. Authentication, private Sheets, scheduled refresh and schema changes are not supported; re-create the table when remote columns change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are not supported; re-create the table when remote columns change.
 
 = Which plugin exports can I import? =
 
@@ -58,7 +56,7 @@ Imports rebuild table data and compatible display settings, not styling, formula
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine. TLS needs the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
+External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, because PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -74,7 +72,7 @@ Yes. The Design tab (charts get one too) styles tables without code: presets, co
 
 = Can I set one design for the whole site? =
 
-Yes. BaraTables > Design sets the design every table and chart starts from. A table or chart that sets its own value keeps it, value by value; one that switches the site design off follows your theme instead. The screen previews the result as you type, and Copy CSS hands the whole design back as CSS.
+Yes. BaraTables > Design sets the design every table and chart starts from. A table or chart that sets its own value keeps it, value by value; one that switches the site design off follows your theme. The screen previews the result as you type, and Copy CSS hands the whole design back as CSS.
 
 = How do numeric rules and footer calculations work? =
 
@@ -82,13 +80,13 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's background, padding and radius.
+Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's shape.
 
-A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's background, padding and radius are CSS, and ride the token layer with the tables.
+A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's shape is CSS, and rides the token layer with the tables.
 
 = Where can I see examples? =
 
-See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or the WordPress.org demo.
+See https://ktisisweb.com/baratables/ for screenshots and styling guidance.
 
 == Screenshots ==
 
@@ -103,19 +101,24 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or t
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors and typography every table starts from, and the series palette every chart starts from. A table or chart that sets its own value keeps it, and one that switches the site design off follows your theme instead.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table starts from, and the series palette every chart starts from. A table or chart with its own value keeps it; one that switches the site design off follows your theme.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:
 
-* A colour or size the plugin cannot use no longer erases the value you already had. The previous value is kept and the field is named, so a change cannot disappear while the save reports success.
-* The chart Design tab's controls now reach every chart type: the palette colors a heatmap's cells and a Gantt's task groups, and the text and grid colors reach radar labels, treemap labels and tooltips.
+* A colour or size the plugin cannot use no longer erases the value you had. The previous value is kept and the field is named, so a change cannot vanish while the save reports success.
+* The chart Design tab's controls now reach every chart type: the palette colors a heatmap's cells and a Gantt's task groups, and the text and grid colors reach radar, treemap and tooltip labels.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
-* Charts with no palette of their own now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
+* Charts with no palette now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
 * The Grid color control is no longer offered on charts that have no grid.
 * The series palette can now be reordered from the keyboard, and each color's remove button names the color it removes.
 * The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius with the table, so the CSS you copied into your theme stays in charge.
 * The "Theme default" preset is now "Clear overrides". A blank value inherits the site default first, so the old name no longer said what the button did.
+* A table or chart whose name contains "&" or ">" saves again, and Additional CSS keeps the characters you typed.
+* A ZIP holding a readme next to your table imports the table, not the readme.
+* An uploaded file named DATA.CSV is accepted.
+* An imported column of numbers sorts as numbers, so 10 no longer comes before 9.
+* On a right-to-left site the data grid's row buttons stay in place.
 
 = 2.0.1 =
 New:

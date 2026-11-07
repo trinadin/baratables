@@ -182,6 +182,37 @@ class BaraTables_Import_Builder {
 	}
 
 	/**
+	 * Whether a column's values are mostly numbers, so it should be typed as one.
+	 *
+	 * The strict grammar is the one the server marks typed values with, so a
+	 * column it accepts is a column whose cells the front end can order
+	 * numerically. A column that is mostly numbers but carries a stray word is
+	 * still a number column: the front end puts the values it cannot read after
+	 * the ones it can, and never turns one into a zero.
+	 *
+	 * @param array $rows  The imported rows.
+	 * @param int   $index The column index.
+	 */
+	private static function column_is_numeric(array $rows, int $index): bool {
+		$values = 0;
+		$numbers = 0;
+		foreach ($rows as $row) {
+			if (!is_array($row) || !array_key_exists($index, $row)) {
+				continue;
+			}
+			$cell = trim(wp_strip_all_tags((string) $row[$index]));
+			if ($cell === '') {
+				continue;
+			}
+			$values++;
+			if (BaraTables_Cell_Semantics::parse_number_from_html($cell) !== null) {
+				$numbers++;
+			}
+		}
+		return $values > 0 && $numbers * 2 > $values;
+	}
+
+	/**
 	 * Build a ready-to-persist custom_data definition (id left blank for the controller to fill).
 	 *
 	 * @return array{definition:array,warnings:string[]}
@@ -244,6 +275,18 @@ class BaraTables_Import_Builder {
 			$record['auto_label'] = $auto_label;
 			if (!array_key_exists('filter_label', $record)) {
 				$record['filter_label'] = $label;
+			}
+			// An imported column has no type of its own, and a column left as text sorts
+			// as text: "10" comes before "9". A source that named a type, or a date
+			// format, has already made the choice, so the inference only runs when it
+			// has not.
+			if (
+				!array_key_exists('data_type', $record)
+				&& empty($record['format_date'])
+				&& empty($record['date_format'])
+				&& self::column_is_numeric($clean_rows, $i)
+			) {
+				$record['data_type'] = 'number';
 			}
 			$columns[] = $service->normalize_column_record($record);
 		}
@@ -1707,6 +1750,7 @@ class BaraTables_Importer {
 		}
 
 		$selected_warnings = [];
+		$candidates = [];
 		foreach ($entry_names as $index => $entry_name) {
 			$content = $zip->getFromIndex($index);
 			if (!is_string($content)) {
@@ -1722,14 +1766,35 @@ class BaraTables_Importer {
 			if (empty($entry_result['ok']) || empty($entry_result['definition'])) {
 				continue;
 			}
+			$candidates[] = [
+				'result' => $entry_result,
+				// A plain text file inside an archive is far more often a readme or a
+				// note than a table, so it only counts as one when the archive holds
+				// nothing else that parses as a table.
+				'is_text' => strtolower((string) pathinfo($entry_name, PATHINFO_EXTENSION)) === 'txt',
+			];
+		}
+		$zip->close();
+		wp_delete_file($temp_file);
+
+		$has_table = false;
+		foreach ($candidates as $candidate) {
+			if (!$candidate['is_text']) {
+				$has_table = true;
+				break;
+			}
+		}
+		foreach ($candidates as $candidate) {
+			if ($has_table && $candidate['is_text']) {
+				continue;
+			}
+			$entry_result = $candidate['result'];
 			$result['usable_table_count'] += max(1, (int) ($entry_result['usable_table_count'] ?? 1));
 			if ($result['definition'] === null) {
 				self::select_definition($result, $entry_result['definition']);
 				$selected_warnings = isset($entry_result['warnings']) && is_array($entry_result['warnings']) ? $entry_result['warnings'] : [];
 			}
 		}
-		$zip->close();
-		wp_delete_file($temp_file);
 
 		if ($result['definition'] === null) {
 			$result['message'] = __('The ZIP file did not contain a supported table export.', 'baratables');

@@ -416,6 +416,10 @@ class BaraTables_Service {
 
 	/** A label that came from outside the plugin, sanitized. */
 	public static function sanitize_external_inline_html($value): string {
+		// A value that is not a scalar cannot be read as a label at all.
+		if (!is_scalar($value)) {
+			return '';
+		}
 		return wp_kses((string) $value, self::allowed_external_inline_html());
 	}
 
@@ -426,6 +430,10 @@ class BaraTables_Service {
 	 * label allowlist loses it.
 	 */
 	public static function sanitize_external_cell_html($value): string {
+		// A value that is not a scalar cannot be read as a cell at all.
+		if (!is_scalar($value)) {
+			return '';
+		}
 		$value = (string) $value;
 		// A cell with no markup in it has nothing to sanitize, and parsing every cell
 		// of every row would cost more than the check that decides whether there is
@@ -1973,6 +1981,12 @@ class BaraTables_Service {
 			/* translators: %d is the column number. */
 			return sprintf(__('Column %d', 'baratables'), $index + 1);
 		}
+		// A heading that came from a remote feed is external content, and every heading
+		// the table prints goes through here. So it gets the narrower contract, even
+		// when the snapshot was fetched before 2.1.0 and was stored under the wider one.
+		if (BaraTables_Source_Type::is_remote_snapshot($source_type)) {
+			$label = self::sanitize_external_inline_html($label);
+		}
 		return $label;
 	}
 
@@ -2603,7 +2617,7 @@ class BaraTables_Service {
 				? $definition['remote_snapshot']
 				: [];
 			$definition['custom_data'] = isset($snapshot['data']) && is_array($snapshot['data']) ? $snapshot['data'] : [];
-			return $this->get_row_result_from_custom($definition, $row_limit);
+			return $this->get_row_result_from_custom($this->narrow_remote_snapshot($definition), $row_limit);
 		}
 
 		if (BaraTables_Source_Type::is_external_db($definition['source_type'])) {
@@ -3322,6 +3336,51 @@ class BaraTables_Service {
 		$ordered = $this->strip_external_row_styles($ordered);
 		$ordered = $this->finalize_ordered_rows($ordered, $columns_for_mapping, $definition['value_overrides'] ?? []);
 		return new BaraTables_Row_Result($ordered, $inferred);
+	}
+
+	/**
+	 * A remote snapshot's content, under the external-content contract.
+	 *
+	 * The contract is applied when the snapshot is FETCHED, so a fresh snapshot is
+	 * stored clean. A snapshot fetched before 2.1.0 was stored under the wider rule, and
+	 * it stays stored that way until the next fetch -- so the rule is applied again
+	 * here, on the way out. That way an upgraded site is protected straight away, and
+	 * the published page never carries the style attribute that can lay a panel over it.
+	 *
+	 * @param array $definition The table definition.
+	 * @return array The definition, with the snapshot's content narrowed.
+	 */
+	private function narrow_remote_snapshot(array $definition): array {
+		$data = isset($definition['custom_data']) && is_array($definition['custom_data']) ? $definition['custom_data'] : [];
+		if (isset($data['columns']) && is_array($data['columns'])) {
+			foreach ($data['columns'] as $index => $label) {
+				$data['columns'][$index] = self::sanitize_external_inline_html($label);
+			}
+		}
+		if (isset($data['rows']) && is_array($data['rows'])) {
+			foreach ($data['rows'] as $row_index => $row) {
+				if (!is_array($row)) {
+					continue;
+				}
+				foreach ($row as $cell_index => $cell) {
+					if (!is_scalar($cell)) {
+						continue;
+					}
+					$data['rows'][$row_index][$cell_index] = self::sanitize_external_cell_html($cell);
+				}
+			}
+		}
+		$definition['custom_data'] = $data;
+		// The heading the table prints comes from the display columns, not from the
+		// snapshot, so those carry the same narrowing.
+		if (isset($definition['columns']) && is_array($definition['columns'])) {
+			foreach ($definition['columns'] as $index => $column) {
+				if (is_array($column) && isset($column['label'])) {
+					$definition['columns'][$index]['label'] = self::sanitize_external_inline_html($column['label']);
+				}
+			}
+		}
+		return $definition;
 	}
 
 	/**

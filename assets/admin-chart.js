@@ -681,6 +681,13 @@ jQuery(function($) {
 					$dragged.insertBefore($target);
 				}
 				syncPalette();
+				// The chips moved but the page did not, so nothing on it changed for a
+				// screen reader to notice. Say where the colour ended up.
+				adminCore.announceMoved(
+					$paletteEditor.attr('data-label-moved'),
+					$dragged.attr('data-color') || '',
+					$paletteEditor.find('.btbl-palette-chips .btbl-palette-chip').index($dragged) + 1
+				);
 			})
 			.on('dragend', '.btbl-palette-chip', function() {
 				dragIndex = -1;

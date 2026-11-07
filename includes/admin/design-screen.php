@@ -68,15 +68,20 @@ class BaraTables_Admin_Design_Screen {
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified above; every value is sanitized in BaraTables_Design::sanitize_table_scope().
 			$raw['table'] = wp_unslash($_POST['btbl_table_options']);
 		}
-		$raw['chart'] = [
-			'stylePalette'   => $this->decode_palette_input($this->posted('btbl_chart_style_palette')),
-			'styleBackground' => $this->posted('btbl_chart_style_background'),
-			'styleTextColor' => $this->posted('btbl_chart_style_text_color'),
-			'styleGridColor' => $this->posted('btbl_chart_style_grid_color'),
-			'styleFontSize'  => $this->posted('btbl_chart_style_font_size'),
-			'stylePadding'   => $this->posted('btbl_chart_style_padding'),
-			'styleRadius'    => $this->posted('btbl_chart_style_radius'),
-		];
+		$raw['chart'] = [];
+		// Only the fields the request actually carried. A field that is absent is a
+		// field the request never spoke about, and one that is present and blank is a
+		// deliberate clear -- the two must not be confused, or a partial request
+		// silently empties the chart half of the site design.
+		foreach (BaraTables_Design::CHART_FIELD_MAP as $key => $field_name) {
+			$value = $this->posted_or_null($field_name);
+			if ($value === null) {
+				continue;
+			}
+			$raw['chart'][$key] = $key === 'stylePalette'
+				? $this->decode_palette_input($value)
+				: $value;
+		}
 
 		$rejected = BaraTables_Design::update_site_default($raw);
 		$args = ['btbl-design-saved' => '1'];
@@ -95,6 +100,25 @@ class BaraTables_Admin_Design_Screen {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by the caller.
 		if (!isset($_POST[$key])) {
 			return '';
+		}
+		// A posted value is not always a string: a form can post an array under the same
+		// name. Casting an array to a string raises a PHP warning and yields "Array",
+		// so a value that is not a scalar is read as absent.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified by the caller; sanitized in BaraTables_Design.
+		$value = wp_unslash($_POST[$key]);
+		return is_scalar($value) ? (string) $value : '';
+	}
+
+	/**
+	 * A posted value, unslashed and trimmed -- or null when the request did not carry it.
+	 *
+	 * The difference matters: a field that is absent is a field the request never spoke
+	 * about, and a field that is present and blank is a deliberate clear.
+	 */
+	private function posted_or_null(string $key): ?string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by the caller.
+		if (!isset($_POST[$key])) {
+			return null;
 		}
 		// A posted value is not always a string: a form can post an array under the same
 		// name. Casting an array to a string raises a PHP warning and yields "Array",

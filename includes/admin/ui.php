@@ -249,7 +249,7 @@ class BaraTables_Admin_Tab_General {
 										<th scope="row" class="btbl-grid-rownum" aria-label="<?php echo esc_attr(sprintf(__('Row %d', 'baratables'), $r + 1)); ?>"><?php echo esc_html((string) ($r + 1)); ?></th>
 										<?php for ($c = 0; $c < $custom_cols_count; $c++) : ?>
 											<td>
-												<input type="text" name="btbl_custom_data[<?php echo esc_attr($r); ?>][<?php echo esc_attr($c); ?>]" value="<?php echo esc_attr($row_values[$c] ?? ''); ?>" title="<?php echo esc_attr($row_values[$c] ?? ''); ?>" aria-label="<?php echo esc_attr(sprintf($grid_cell_label, $r + 1, wp_strip_all_tags($grid_col_labels[$c]))); ?>" />
+												<input type="text" name="btbl_custom_data[<?php echo esc_attr($r); ?>][<?php echo esc_attr($c); ?>]" value="<?php echo esc_attr($row_values[$c] ?? ''); ?>" title="<?php echo esc_attr($row_values[$c] ?? ''); ?>" aria-label="<?php echo esc_attr(sprintf($grid_cell_label, $r + 1, html_entity_decode(wp_strip_all_tags($grid_col_labels[$c]), ENT_QUOTES, 'UTF-8'))); ?>" />
 											</td>
 										<?php endfor; ?>
 									</tr>
@@ -756,7 +756,9 @@ class BaraTables_Admin_Tab_Columns {
 		$column_options_id = $column_checkbox_id . '_options';
 		// The gear button names the column it opens. Five buttons all called "Options"
 		// are five identical controls to a screen-reader user.
-		$column_options_name = wp_strip_all_tags($display_label);
+		// The entities are decoded first: strip_tags() leaves them alone, so a heading
+		// like "Revenue &amp; Costs" would be announced as "Revenue and amp semicolon Costs".
+		$column_options_name = html_entity_decode(wp_strip_all_tags($display_label), ENT_QUOTES, 'UTF-8');
 		if ($column_options_name === '') {
 			$column_options_name = $slug_attr;
 		}

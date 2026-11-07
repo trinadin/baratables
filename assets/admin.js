@@ -935,6 +935,16 @@ jQuery(function($) {
 			order.splice(to, 0, dragSlug);
 			renderList();
 			updateInput();
+			// The list moved but the page did not, so nothing on it changed for a
+			// screen reader to notice. Say where the item ended up.
+			var $moved = $list.find('li').filter(function() {
+				return $(this).attr('data-slug') === dragSlug;
+			});
+			window.BaraTablesAdminCore.announceMoved(
+				$list.attr('data-label-moved'),
+				$moved.text().trim(),
+				to + 1
+			);
 		});
 
 		$list.on('dragend', 'li', function() {

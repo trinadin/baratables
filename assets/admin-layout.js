@@ -297,7 +297,13 @@ jQuery(function($) {
 			if (isDisabled($(dragItem)) || isDisabled($(this))) { return; }
 			event.preventDefault();
 			var rectangle = this.getBoundingClientRect();
-			if ((event.originalEvent.clientX - rectangle.left) < rectangle.width / 2) { $(this).before(dragItem); }
+			// Which half of the chip the pointer is over decides which side of it the
+			// dragged chip lands on. The two are not the same thing in a right-to-left
+			// layout: the chips flow the other way, so the half the pointer is over is
+			// the other half of the list, and a drop lands on the mirrored side.
+			var before = (event.originalEvent.clientX - rectangle.left) < rectangle.width / 2;
+			if (window.getComputedStyle(this).direction === 'rtl') { before = !before; }
+			if (before) { $(this).before(dragItem); }
 			else { $(this).after(dragItem); }
 		});
 		$builder.on('click', '.btbl-layout-reset', resetLayout);

@@ -159,14 +159,23 @@
 	// One chart design value, sanitized the way the server sanitizes it. A chart's
 	// font size is pixels, its container's padding and radius are CSS lengths, and
 	// its colours are hex: three contracts, one entry point.
+	//
+	// A key with no known contract has no value. The server says the same, so the
+	// preview cannot show something the page will not publish.
 	function sanitizeChartValue(key, raw) {
-		if (key === 'styleFontSize') {
-			return normalizeChartFontSize(raw);
+		switch (key) {
+			case 'styleFontSize':
+				return normalizeChartFontSize(raw);
+			case 'stylePadding':
+			case 'styleRadius':
+				return normalizeCssSize(raw);
+			case 'styleBackground':
+			case 'styleTextColor':
+			case 'styleGridColor':
+				return normalizeHex(raw);
+			default:
+				return '';
 		}
-		if (key === 'stylePadding' || key === 'styleRadius') {
-			return normalizeCssSize(raw);
-		}
-		return normalizeHex(raw);
 	}
 
 	// The chart container's CSS custom properties, from resolved values.

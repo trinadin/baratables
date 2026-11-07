@@ -1081,12 +1081,15 @@
 	z-index: 2;
 	white-space: nowrap;
 }
-/* Freeze the row-number gutter (left) and the action column (right) so they
-   stay anchored while scrolling horizontally. */
+/* Freeze the row-number gutter (the first column) and the action column (the
+   last one) so they stay anchored while scrolling horizontally. The offsets are
+   logical, not physical: the gutter is the first cell in the row, so in a
+   right-to-left locale it sits at the right edge, and a physical "left" would
+   leave it unpinned and push the action buttons off the screen. */
 .btbl-custom-grid .btbl-grid-corner,
 .btbl-custom-grid .btbl-grid-rownum {
 	position: sticky;
-	left: 0;
+	inset-inline-start: 0;
 	background: #fff;
 	z-index: 3;
 	width: 1%;
@@ -1101,7 +1104,7 @@
 .btbl-custom-grid .btbl-row-actions,
 .btbl-custom-grid .btbl-row-actions-head {
 	position: sticky;
-	right: 0;
+	inset-inline-end: 0;
 	background: #fff;
 	z-index: 3;
 }

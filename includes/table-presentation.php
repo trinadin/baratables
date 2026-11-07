@@ -29,6 +29,7 @@ final class BaraTables_Table_Presentation {
 			? $this->build_sorted_columns($default_sort, $slug_to_index, ['orderColumn' => true, 'ordering' => !empty($options_raw['ordering'])])
 			: [];
 		$column_state = $this->build_column_models($columns, $definition, $arrow_columns);
+		$page_length = isset($options_raw['pageLength']) ? (int) $options_raw['pageLength'] : 10;
 
 		$presentation = [
 			'options' => $options,
@@ -41,6 +42,12 @@ final class BaraTables_Table_Presentation {
 			'non_sortable' => $column_state['non_sortable'],
 			'non_searchable' => $column_state['non_searchable'],
 			'default_sort' => $default_sort,
+			'page_length' => $page_length,
+			// One list for both surfaces. The public table feeds it to the rows-per-page
+			// control; the admin preview renders the same choices. A page length outside
+			// DataTables' own default set (10/25/50/100) has to be in the list, or the
+			// control renders with nothing selected.
+			'length_choices' => $this->length_choices($page_length),
 			'typed_columns' => array_filter($column_state['models'], static function ($model) {
 				return ($model['data_type'] ?? 'auto') === 'number';
 			}),
@@ -49,7 +56,6 @@ final class BaraTables_Table_Presentation {
 			return $presentation;
 		}
 
-		$page_length = isset($options_raw['pageLength']) ? (int) $options_raw['pageLength'] : 10;
 		$preview_rows = !empty($options_raw['paging']) && $page_length > 0
 			? array_slice($rows, 0, $page_length)
 			: $rows;
@@ -74,8 +80,6 @@ final class BaraTables_Table_Presentation {
 			'search_placeholder' => (string) ($options_raw['searchPlaceholder'] ?? ''),
 			'length_prefix' => (string) ($options['lengthMenuPrefix'] ?? ''),
 			'length_suffix' => (string) ($options['lengthMenuSuffix'] ?? ''),
-			'page_length' => $page_length,
-			'length_choices' => $this->length_choices($page_length),
 			'button_labels' => $this->build_button_labels($options),
 			'paginate_labels' => $this->build_paginate_labels($options_raw),
 		]);

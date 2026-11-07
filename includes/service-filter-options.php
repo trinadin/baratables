@@ -34,6 +34,13 @@ trait BaraTables_Filter_Options_Trait {
 			if (!isset($col['filter']) || $col['filter'] === 'none') {
 				continue;
 			}
+			// A hidden column stays hidden everywhere the table renders it: the heading, the
+			// cells and the footer. Its filter control is the one place it would still show,
+			// and a filter the visitor cannot connect to a column narrows the table for no
+			// visible reason -- the same column flag that hides the cells hides the filter.
+			if (!empty($col['hidden'])) {
+				continue;
+			}
 			$custom_values = [];
 			if (!empty($col['filter_values']) && is_array($col['filter_values'])) {
 				foreach ($col['filter_values'] as $item) {

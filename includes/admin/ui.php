@@ -799,6 +799,9 @@ class BaraTables_Admin_Tab_Columns {
 							<input type="checkbox" class="btbl-hide-column" name="btbl_hide_column[<?php echo esc_attr($slug_attr); ?>]" value="1" <?php checked($hidden_checked); ?> />
 							<?php esc_html_e('Hide column', 'baratables'); ?>
 						</label>
+						<?php if ($current_filter !== 'none') : ?>
+							<p class="description btbl-field-hint"><?php esc_html_e('A hidden column is not offered to visitors as a filter.', 'baratables'); ?></p>
+						<?php endif; ?>
 					</div>
 					<div class="btbl-options-row btbl-options-inline">
 						<label class="btbl-inline">

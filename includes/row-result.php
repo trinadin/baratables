@@ -56,6 +56,12 @@ final class BaraTables_Row_Result {
 			'external_tls_missing_ca' => __('The external database source is set to use TLS, but no CA certificate path was given. Add the absolute path of the CA certificate that signed the database certificate: PHP\'s MySQL driver cannot use the system trust store, and an encrypted connection to a server it cannot verify is not a secure one.', 'baratables'),
 			'external_tls_unreadable_ca' => __('The external database source is set to use TLS, but the CA certificate file could not be read. Check the path and the file permissions on the server.', 'baratables'),
 			'external_tls_unsupported' => __('The external database source is set to use TLS, but this PHP installation cannot verify the database certificate. Ask the host for a MySQL driver that supports certificate verification.', 'baratables'),
+			// The server-paged source was fine; the table simply ran out of its per-minute
+			// request budget. Saying the source "could not be read" would send the admin
+			// looking at the database instead of at the traffic.
+			'server_side_rate_limited' => __('Too many requests reached this table at once. Wait a moment and then try again.', 'baratables'),
+			'server_side_ineligible' => __('This table is no longer eligible for server paging.', 'baratables'),
+			'server_side_unavailable' => __('This table could not reach its data source.', 'baratables'),
 		];
 		return $messages[$this->error_code] ?? __('The table source could not be read.', 'baratables');
 	}

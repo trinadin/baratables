@@ -718,7 +718,15 @@ class BaraTables_Frontend {
 							</tr></tfoot>
 						<?php endif; ?>
 					</table>
-					<div class="btbl-empty-state" aria-live="polite"><?php esc_html_e('No results match these filters.', 'baratables'); ?></div>
+					<?php
+					// Two different situations, two different sentences. A filter that excluded
+					// every row and a table that holds no rows at all are not the same thing,
+					// and a table with no filter panel can only ever be the second one.
+					$empty_no_match_text = __('No results match these filters.', 'baratables');
+					$empty_no_rows_text = __('This table has no rows.', 'baratables');
+					$empty_state_text = !empty($filters) ? $empty_no_match_text : $empty_no_rows_text;
+					?>
+					<div class="btbl-empty-state" aria-live="polite" data-empty-no-match="<?php echo esc_attr($empty_no_match_text); ?>" data-empty-no-rows="<?php echo esc_attr($empty_no_rows_text); ?>"><?php echo esc_html($empty_state_text); ?></div>
 					<?php $edit_url = $preview ? null : $this->resolve_admin_edit_url($definition, $table_id); ?>
 					<?php if ($edit_url !== null) : ?>
 						<div class="btbl-admin-tools" role="group" aria-label="<?php echo esc_attr__('Table admin tools', 'baratables'); ?>">
@@ -841,6 +849,10 @@ class BaraTables_Frontend {
 			'typedColumns' => $presentation['typed_columns'],
 			'tableOptions' => $presentation['options'],
 			'tableClasses' => $presentation['style_classes'],
+			// The rows-per-page control lists these values. Without them DataTables falls back
+			// to its own 10/25/50/100 list, and a table configured for any other page length
+			// renders the control with nothing selected.
+			'lengthMenu' => $presentation['length_choices'],
 			'compact' => !empty($presentation['raw_options']['compact']),
 			'nonSearchable' => $presentation['non_searchable'],
 			'defaultOrder' => $presentation['default_sort'],

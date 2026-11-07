@@ -17,6 +17,12 @@
 		if (message) { message.hidden = false; }
 	}
 
+	function hideRuntimeError(wrapper) {
+		if (!wrapper) { return; }
+		var message = wrapper.querySelector('.btbl-runtime-error');
+		if (message) { message.hidden = true; }
+	}
+
 	function revealFailure(wrapper, error) {
 		if (wrapper) {
 			wrapper.classList.remove('is-loading');
@@ -598,6 +604,12 @@
 			search: { search: '', smart: true },
 			searchDelay: config.serverSide && config.serverSide.url ? 500 : 250
 		};
+		// The rows-per-page control offers these values. DataTables' own default list is
+		// 10/25/50/100, so a table configured for any other page length would render the
+		// control with nothing selected -- the server sends a list that includes it.
+		if (Array.isArray(config.lengthMenu) && config.lengthMenu.length) {
+			tableConfig.lengthMenu = config.lengthMenu;
+		}
 		if (config.serverSide && config.serverSide.url) {
 			var indexedSlugs = [];
 			Object.keys(slugToIndex || {}).forEach(function(slug) {
@@ -858,7 +870,14 @@
 		var table = new DataTableLib(tableEl, tableConfig);
 		if (config.serverSide && config.serverSide.url) {
 			table.on('xhr', function(event, settings, json) {
-				if (!json || json.error) { showRuntimeError(wrapper); }
+				if (!json || json.error) {
+					showRuntimeError(wrapper);
+				} else {
+					// The request that follows a failed one can succeed, and the table works
+					// again from that point. Leaving the failure notice up would tell the
+					// visitor to reload a table that has already recovered.
+					hideRuntimeError(wrapper);
+				}
 			});
 		}
 		var refreshTypedFooters = function() {
@@ -933,6 +952,14 @@
 				// The stylesheet defaults this element to display:none, so the visible state
 				// must be explicit rather than clearing the inline value.
 				emptyState.style.display = hasRows ? 'none' : 'block';
+				// Say why the table is empty. A filter that excluded every row and a table
+				// that holds no rows at all are different situations, and one sentence cannot
+				// describe both. The server sends both sentences.
+				var noMatch = emptyState.getAttribute('data-empty-no-match') || '';
+				var noRows = emptyState.getAttribute('data-empty-no-rows') || '';
+				if (noMatch || noRows) {
+					emptyState.textContent = activeNarrowingState().active ? noMatch : noRows;
+				}
 			}
 		}
 
@@ -944,7 +971,7 @@
 			return window.BaraTablesFilters.readActive(wrapper);
 		}
 
-		function updateFilterStateClass(activeFilters, activeSearchState) {
+		function activeNarrowingState(activeFilters, activeSearchState) {
 			var filters = activeFilters || getActiveFilters();
 			var hasFilters = Object.keys(filters).some(function(key) {
 				var val = filters[key];
@@ -964,8 +991,17 @@
 				term = table.search() || '';
 			}
 			var hasSearch = term && term.trim();
+			return {
+				hasFilters: !!hasFilters,
+				hasSearch: !!hasSearch,
+				active: !!(hasFilters || hasSearch)
+			};
+		}
+
+		function updateFilterStateClass(activeFilters, activeSearchState) {
+			var narrowing = activeNarrowingState(activeFilters, activeSearchState);
 			if (wrapper) {
-				wrapper.classList.toggle('is-filtered', !!(hasFilters || hasSearch));
+				wrapper.classList.toggle('is-filtered', narrowing.active);
 			}
 		}
 

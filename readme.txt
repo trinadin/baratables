@@ -30,7 +30,6 @@ Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another plugin
 * Restrict rows by role or user metadata
 * Remember table state between visits; control scrolling, column sizing and row limits
 * Create bar, horizontal bar, line, area, radar, pie, donut, treemap, scatter, bubble, heatmap, funnel and Gantt charts
-* Light frontend styles that are easy to override
 
 == Installation ==
 
@@ -44,13 +43,13 @@ Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another plugin
 
 CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are not supported; re-create the table when remote columns change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are unsupported; re-create the table when remote columns change.
 
 = Which plugin exports can I import? =
 
 Use a TablePress single-table JSON export; Ninja Tables classic and drag-and-drop JSON also work (export an externally connected Ninja table as CSV). WP Table Builder, Visualizer, Supsystic, League Table, wpDataTables, TableKit, and Tablesome exports import too, as do HTML tables; a ZIP imports the first supported table.
 
-Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts, or connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each and 20 MB in total, and an XLSX or ODS archive may hold 200 entries.
+Imports rebuild table data and compatible display settings, not styling, formulas, macros, shortcodes, charts or connections. XLSX and ODS formulas use cached results and are never executed; save legacy XLS or encrypted workbooks in a current format first. Uploads are capped at 5 MB; a ZIP holds 50 entries of 5 MB each and 20 MB in total, and an XLSX or ODS archive may hold 200.
 
 = How many rows can a table load? =
 
@@ -101,24 +100,29 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance.
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors and typography every table starts from, and the series palette every chart starts from. A table or chart with its own value keeps it; one that switches the site design off follows your theme.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from. A table or chart with its own value keeps it; one that switches the site design off follows your theme.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:
 
-* A colour or size the plugin cannot use no longer erases the value you had. The previous value is kept and the field is named, so a change cannot vanish while the save reports success.
+* A colour or size the plugin cannot use no longer erases the value you had: the previous value is kept and the field is named, so a change cannot vanish while the save reports success.
 * The chart Design tab's controls now reach every chart type: the palette colors a heatmap's cells and a Gantt's task groups, and the text and grid colors reach radar, treemap and tooltip labels.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
 * Charts with no palette now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
 * The Grid color control is no longer offered on charts that have no grid.
 * The series palette can now be reordered from the keyboard, and each color's remove button names the color it removes.
-* The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius with the table, so the CSS you copied into your theme stays in charge.
-* The "Theme default" preset is now "Clear overrides". A blank value inherits the site default first, so the old name no longer said what the button did.
+* The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius with the table, so your theme's CSS stays in charge.
+* The "Theme default" preset is now "Clear overrides": a blank value inherits the site default first, so the old name no longer said what the button did.
 * A table or chart whose name contains "&" or ">" saves again, and Additional CSS keeps the characters you typed.
 * A ZIP holding a readme next to your table imports the table, not the readme.
 * An uploaded file named DATA.CSV is accepted.
 * An imported column of numbers sorts as numbers, so 10 no longer comes before 9.
 * On a right-to-left site the data grid's row buttons stay in place.
+* The rows-per-page control now shows the page length you set, not an empty list.
+* A hidden column no longer keeps a filter that narrows by a column the visitor cannot see.
+* An empty table now says it has no rows, not that filters match nothing.
+* A table that recovers from a failed request stops showing the failure.
+* A table that ran out of requests says so, not that its data source failed.
 
 = 2.0.1 =
 New:
@@ -141,7 +145,7 @@ Security:
 = 2.0.0 =
 New:
 
-* A Design tab for tables and charts: presets, colors, typography, spacing and a per-chart series palette, with a live preview updating as you type.
+* A Design tab for tables and charts: presets, colors, typography, spacing and a per-chart series palette, with a live preview as you type.
 * The table preview now renders the real table visitors see, so what you style is what you publish.
 * Copy CSS hands the styles to your theme, and the "Theme CSS" output mode lets that copy take over.
 * Per-table Additional CSS, auto-scoped to the table, plus a documented `--btbl-*` token API for themes.
@@ -202,7 +206,7 @@ Improvements:
 * The table engine is now DataTables 3; pages with export buttons load fewer files.
 * Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column cannot stall the page.
 * The editor's Options tab is reorganized, and every field shows its default until you change it.
-* Tables and charts work better with screen readers: proper column headers, an announced optional caption, labelled charts, and a readable no-JavaScript fallback.
+* Tables and charts work better with screen readers: column headers, an announced caption, labelled charts, and a readable no-JavaScript fallback.
 * Publishing a table for the first time shows its shortcode and block.
 
 Fixes:
@@ -254,7 +258,7 @@ Improvements:
 * Fixed scroll height is now a Table controls option, with its height and collapse settings inside. Existing heights carry over.
 * Table wording follows your site's language: the search label, the "Show ... entries" selector, the filters heading and the result summary. Your own wording is kept.
 * Tables load without a flash of unstyled content.
-* Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space to open the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the layout.
+* Keyboard and screen reader support: labelled filter controls and option groups, Enter or Space for the settings gear, focus outlines on taxonomy chips, and arrow keys to arrange the layout.
 * Pages with a table and its chart, or the same table twice, load faster on large tables.
 * The "Clear filters" and "Edit Table" buttons are styled consistently on any theme.
 
@@ -281,7 +285,7 @@ New:
 Fixes:
 
 * Filtering by category or tag.
-* Pages using Advanced Custom Fields Post Object, Relationship, Taxonomy or Repeater columns load correctly, showing their title, name or contents.
+* Advanced Custom Fields Post Object, Relationship, Taxonomy and Repeater columns load correctly, showing their title, name or contents.
 * Manual data grids hold up to 25,000 cells; the editor warns when your server's form-field limit is too low.
 * Two tables on the same page keep their own filters in the shareable link.
 * An import that fails to save can be retried without uploading the file again.
@@ -320,7 +324,7 @@ Security:
 
 = 1.2.1 =
 * Export a table to Excel with a new table button option.
-* Five new chart types: horizontal bar, donut, scatter, bubble and funnel, each with a preview in the gallery.
+* Five new chart types: horizontal bar, donut, scatter, bubble and funnel, each previewed in the gallery.
 * Remember table state: a table can keep its sorting, search, page, and page length.
 * New table controls for horizontal scrolling, vertical scroll height and column auto-sizing.
 * Configurable row loading limit per table (default 1,000 rows, up to 10,000).
@@ -330,7 +334,7 @@ Fixes:
 
 * "Format as date" shows the formatted date (e.g. "Mar 18, 2026") on manual data columns.
 * Plain numbers such as a year or a count are not read as dates.
-* A [bara_table] or [bara_chart] shortcode without an id shows a "not found" message on WordPress 6.2 through 6.4.
+* A [bara_table] or [bara_chart] shortcode without an id shows a "not found" message on WordPress 6.2 to 6.4.
 * Importing a file with only a header row, or no rows, creates an empty table.
 * Front-end table controls (export buttons, column-visibility menu, "Search in") and the CSV picker follow the site language.
 
@@ -342,7 +346,7 @@ Security:
 New:
 
 * Import a table from another plugin or a spreadsheet: upload a JSON, XML or CSV export and BaraTables creates a matching table.
-* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes in your content.
+* Editable Table ID and Chart ID: rename a table's or chart's shortcode ID after creation. Linked charts update automatically, and a notice reminds you to update shortcodes.
 * Reorder manual-data rows in the editor with up and down controls.
 * Manual-table column headers are translation-ready and follow the site language.
 
@@ -420,7 +424,7 @@ Initial release.
 
 == Third-Party Libraries ==
 
-Bundled libraries and admin thumbnails, all under GPL-compatible licenses; the full notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt.
+Bundled libraries and admin thumbnails, under GPL-compatible licenses; full notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt.
 
 * DataTables v3.1.5 - MIT License - https://github.com/DataTables/DataTablesSrc/tree/3.1.5
 * DataTables Buttons v4.1.3 - MIT License - https://github.com/DataTables/Buttons/tree/4.1.3 (bundles FileSaver.js - MIT License - https://github.com/eligrey/FileSaver.js/tree/1.3.3)

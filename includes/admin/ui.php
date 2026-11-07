@@ -1117,7 +1117,7 @@ class BaraTables_Admin_Tab_Table {
 											$row_classes = array_merge(['btbl-options-row', 'btbl-options-inline'], $inline_config['editor_classes'] ?? []);
 											$visible_when = !empty($inline_config['editor_visible_when']) ? wp_json_encode($inline_config['editor_visible_when']) : '';
 											?>
-											<div class="<?php echo esc_attr(implode(' ', $row_classes)); ?>" data-btbl-option="<?php echo esc_attr($inline_key); ?>"<?php echo $visible_when !== '' ? ' data-btbl-visible-when="' . esc_attr($visible_when) . '"' : ''; ?>>
+											<div class="<?php echo esc_attr(implode(' ', $row_classes)); ?>"<?php echo $visible_when !== '' ? ' data-btbl-visible-when="' . esc_attr($visible_when) . '"' : ''; ?>>
 												<?php if ($inline_config['type'] === 'checkbox') : ?>
 													<?php $inline_default = !empty($inline_config['default']) ? '1' : '0'; ?>
 													<label class="btbl-inline">
@@ -1347,7 +1347,7 @@ class BaraTables_Admin_Tab_Design {
 			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Table preview below the builder as you edit, and publish with the table. Leave anything blank to inherit the site default, and then your theme.', 'baratables'); ?></p>
 			<div class="btbl-control">
 				<strong class="btbl-small-heading"><?php esc_html_e('Site design', 'baratables'); ?></strong>
-				<p class="description"><?php esc_html_e('The site default applies to every table that does not set its own values here.', 'baratables'); ?></p>
+				<p class="description"><?php esc_html_e('The site default applies to every table that leaves a value blank here.', 'baratables'); ?></p>
 				<div class="btbl-checkbox btbl-design-field">
 					<input type="hidden" name="btbl_table_options[useSiteDesign]" value="0" />
 					<span class="btbl-checkbox-top">
@@ -1376,7 +1376,7 @@ class BaraTables_Admin_Tab_Design {
 			<?php if (!empty($style_keys)) : ?>
 				<div class="btbl-control btbl-design-fields">
 					<strong class="btbl-small-heading"><?php esc_html_e('Table features', 'baratables'); ?></strong>
-					<p class="description"><?php esc_html_e('Zebra stripes and highlights render through DataTables\' own styles; the colors above tint them.', 'baratables'); ?></p>
+					<p class="description"><?php esc_html_e('Zebra stripes and row highlights use the colors from the Rows group above.', 'baratables'); ?></p>
 					<div class="btbl-flag-grid btbl-table-flags">
 						<?php foreach ($style_keys as $style_key) : ?>
 							<?php $style_config = $option_schema[$style_key]; ?>
@@ -1789,14 +1789,17 @@ class BaraTables_Admin_Tab_Chart_Design {
 			// The chart types with no grid, from the chart-type registry, so the editor
 			// cannot offer a grid color for a chart that has no axes.
 			'gridlessTypes' => BaraTables_Chart_Types::gridless_types(),
+			// The note the copied CSS carries. It is shipped rather than written into the
+			// script, because the chart's block says something the table's does not.
+			'copiedCssNote' => __('The chart\'s background, padding and radius live on the container; its text, grid and series colors are drawn on the canvas and stay in the chart options. Paste this into Appearance > Customize > Additional CSS (or a child theme stylesheet).', 'baratables'),
 		];
 		?>
 		<div id="btbl-tab-chart-design" class="btbl-tab-panel" role="tabpanel" aria-labelledby="btbl-tab-chart-design-label">
 			<div data-btbl-chart-config="<?php echo esc_attr(wp_json_encode($chart_config)); ?>"></div>
-			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Chart preview as you edit and publish with the chart. Leave anything blank to inherit the site default, and then the current look.', 'baratables'); ?></p>
+			<p class="description btbl-help-text"><?php esc_html_e('Styles apply to the Chart preview as you edit, and publish with the chart. Leave anything blank to inherit the site default, and then the chart\'s own defaults.', 'baratables'); ?></p>
 			<div class="btbl-control">
 				<strong class="btbl-small-heading"><?php esc_html_e('Site design', 'baratables'); ?></strong>
-				<p class="description"><?php esc_html_e('The site default applies to every chart that does not set its own values here.', 'baratables'); ?></p>
+				<p class="description"><?php esc_html_e('The site default applies to every chart that leaves a value blank here.', 'baratables'); ?></p>
 				<div class="btbl-checkbox btbl-design-field">
 					<input type="hidden" name="btbl_chart_use_site_design" value="0" />
 					<span class="btbl-checkbox-top">
@@ -1828,7 +1831,7 @@ class BaraTables_Admin_Tab_Chart_Design {
 			</div>
 			<?php BaraTables_Admin_Design_Fields::render_chart_style_groups($chart_options, true); ?>
 			<div class="btbl-control">
-				<strong class="btbl-small-heading"><?php esc_html_e('Style output', 'baratables'); ?></strong>
+				<strong class="btbl-small-heading"><?php esc_html_e('Chart CSS', 'baratables'); ?></strong>
 				<div class="btbl-options-row btbl-copy-css-row">
 					<button type="button" class="button" data-btbl-chart-copy-css><?php esc_html_e('Copy CSS', 'baratables'); ?></button>
 					<span class="description" aria-live="polite" data-btbl-chart-copy-status></span>

@@ -619,28 +619,7 @@ class BaraTables_Service {
 	 * @return string The value to store.
 	 */
 	private function sanitize_design_token(string $key, string $type, $raw, ?array $previous): string {
-		switch ($type) {
-			case 'color':
-				// The colour contract is exact -- "#" plus three or six hex digits -- so the
-				// value is NOT trimmed here. Trimming it would accept a value the admin
-				// script's mirror rejects, and the two would no longer agree.
-				$clean = self::normalize_hex_color((string) $raw);
-				break;
-			case 'css_size':
-				$clean = self::sanitize_css_size($raw);
-				break;
-			case 'css_font_size':
-				$clean = self::sanitize_css_font_size($raw);
-				break;
-			case 'chart_font_size':
-				$clean = self::sanitize_chart_font_size($raw);
-				break;
-			case 'css_weight':
-				$clean = self::sanitize_css_weight($raw);
-				break;
-			default:
-				return '';
-		}
+		$clean = self::sanitize_design_type($type, $raw);
 		// A blank value means "inherit", which is a legitimate thing to submit.
 		if ($clean !== '' || trim((string) $raw) === '') {
 			return $clean;
@@ -1348,26 +1327,61 @@ class BaraTables_Service {
 	}
 
 	/**
-	 * The sanitizer for one design token, by its own key.
+	 * The sanitizer for one design token, by its own type.
 	 *
 	 * One dispatch, used both when a definition is stored and when it is revalidated
-	 * at output time. A token added here is sanitized the same way everywhere.
+	 * at output time. The type comes from the option definitions -- the one place a
+	 * token's type is written down -- so a token can never be stored under one rule
+	 * and rendered under another, whatever its name looks like.
 	 *
 	 * @param string $key   The option key, e.g. 'accentColor'.
 	 * @param string $value The raw value.
 	 * @return string The accepted value, or '' when the value is not acceptable.
 	 */
 	public static function sanitize_style_value(string $key, string $value): string {
-		if (substr($key, -5) === 'Color') {
-			return self::normalize_hex_color($value);
+		return self::sanitize_design_type(self::design_token_type($key), $value);
+	}
+
+	/**
+	 * The type of one design token, from the option definitions.
+	 *
+	 * @param string $key The option key, e.g. 'accentColor'.
+	 * @return string The schema type, or '' when the key is not a design token.
+	 */
+	private static function design_token_type(string $key): string {
+		$definition = self::TABLE_OPTION_DEFINITIONS[$key] ?? null;
+		if (!is_array($definition)) {
+			return '';
 		}
-		if ($key === 'headerWeight') {
-			return self::sanitize_css_weight($value);
+		return (string) ($definition[0] ?? '');
+	}
+
+	/**
+	 * The sanitizer for one design type.
+	 *
+	 * @param string $type The schema type: color, css_size, css_font_size,
+	 *                     css_weight or chart_font_size.
+	 * @param mixed  $raw  The raw value.
+	 * @return string The accepted value, or '' when the value is not acceptable.
+	 */
+	private static function sanitize_design_type(string $type, $raw): string {
+		switch ($type) {
+			case 'color':
+				// The colour contract is exact -- "#" plus three or six hex digits -- so the
+				// value is NOT trimmed here. Trimming it would accept a value the admin
+				// script's mirror rejects, and the two would no longer agree.
+				return self::normalize_hex_color((string) $raw);
+			case 'css_size':
+				return self::sanitize_css_size($raw);
+			case 'css_font_size':
+				return self::sanitize_css_font_size($raw);
+			case 'chart_font_size':
+				return self::sanitize_chart_font_size($raw);
+			case 'css_weight':
+				return self::sanitize_css_weight($raw);
+			default:
+				return '';
 		}
-		if ($key === 'fontSize') {
-			return self::sanitize_css_font_size($value);
-		}
-		return self::sanitize_css_size($value);
 	}
 
 	private function merge_chart_options(array $options_raw, array $columns, ?array $previous = null): array {
@@ -1468,6 +1482,12 @@ class BaraTables_Service {
 			// shipped for the chart editor's palette. What 2.0 did NOT do is say so, so
 			// a colour the user typed could vanish without a word. Record it instead.
 			$this->rejected_design_values['stylePalette'] = 'palette';
+			if ($palette === [] && $previous !== null && !empty($previous['stylePalette'])) {
+				// The whole submitted palette was unusable, so none of it can be
+				// stored. A rejected value keeps the one already stored, like every
+				// other design value.
+				$palette = $previous['stylePalette'];
+			}
 		}
 		$options['stylePalette'] = $palette;
 		foreach (['styleBackground', 'styleTextColor', 'styleGridColor'] as $key) {
@@ -3545,11 +3565,16 @@ class BaraTables_Service {
 		$schema['compact']['label'] = __('Compact density', 'baratables');
 		$schema['accentColor']['label'] = __('Accent color', 'baratables');
 		$schema['accentColor']['description'] = __('Color for focus rings, sorted columns, and paging highlights. Blank inherits the site default, then your theme\'s primary color.', 'baratables');
+		// The site Design screen edits the site default itself, so a blank field there does
+		// not inherit the site default -- it inherits the theme. The screen therefore shows
+		// this variant instead of the editor's, which would be circular there.
+		$schema['accentColor']['site_description'] = __('Color for focus rings, sorted columns, and paging highlights. Blank leaves it to your theme\'s primary color.', 'baratables');
 
 		// Design tokens (2.0): the Design tab renders every editor_group === 'design' key from
 		// these labels, grouped exactly as below. Empty means "inherit the theme".
 		$schema['textColor']['label'] = __('Text color', 'baratables');
 		$schema['textColor']['description'] = __('Body text in the table. Blank inherits the site default, then your theme.', 'baratables');
+		$schema['textColor']['site_description'] = __('Body text in the table. Blank leaves it to your theme.', 'baratables');
 		$schema['fontSize']['label'] = __('Font size', 'baratables');
 		$schema['fontSize']['description'] = __('Base size for the table and its controls, e.g. 14px.', 'baratables');
 		$schema['headerBgColor']['label'] = __('Header background', 'baratables');
@@ -3573,8 +3598,6 @@ class BaraTables_Service {
 		$schema['cellPadding']['description'] = __('Space inside cells, e.g. 8px 12px. Lower is denser.', 'baratables');
 		$schema['borderRadius']['label'] = __('Corner radius', 'baratables');
 		$schema['borderRadius']['description'] = __('Roundness of buttons and filter inputs, e.g. 6px.', 'baratables');
-		$schema['styleMode']['label'] = __('Style output', 'baratables');
-		$schema['styleMode']['description'] = __('Inline keeps the styles managed here. Theme CSS stops the inline styles so the copy you moved into your theme takes over.', 'baratables');
 		$schema['customCss']['label'] = __('Additional CSS', 'baratables');
 		$schema['customCss']['description'] = __('Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th.', 'baratables');
 		foreach (array_keys(self::STYLE_VAR_MAP) as $key) {

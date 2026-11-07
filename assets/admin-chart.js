@@ -523,13 +523,15 @@ jQuery(function($) {
 	// The property names come from the server's chart var map, so this block cannot
 	// drift from the one the front end prints.
 	function buildChartCssText() {
-		var lines = [
-			'/* BaraTables chart container styles. The chart\'s background, padding and radius',
-			'   live on the container; its text, grid and series colors are drawn on the',
-			'   canvas and stay in the chart options. Paste this into Appearance > Customize >',
-			'   Additional CSS (or a child theme stylesheet). */'
-		];
 		var context = chartDesignContext();
+		// The note is shipped by the server, so it is translated like every other piece of
+		// copy the user sees. The table's block says the same thing this way.
+		var note = (context && context.copiedCssNote) ? String(context.copiedCssNote) : '';
+		var lines = [];
+		if (note) {
+			lines.push('/* BaraTables chart container styles.');
+			lines.push('   ' + note + ' */');
+		}
 		var values = {
 			styleBackground: effectiveChartValue('styleBackground', context),
 			stylePadding: effectiveChartValue('stylePadding', context),

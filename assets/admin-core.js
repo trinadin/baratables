@@ -335,7 +335,10 @@
 			if (complete) {
 				$picker.val(masked);
 			} else if (masked === '') {
-				$picker.val($field.data('btbl-blank-accent') || '#2271b1');
+				// The field is empty, so the swatch rests on the colour the server
+				// rendered for it. The two agree, so clearing a field never moves
+				// the swatch to a colour the field never had.
+				$picker.val($field.data('btbl-resting-color') || '#ffffff');
 			}
 		});
 		$(document).on('input change', '[data-btbl-size-field]', function() {

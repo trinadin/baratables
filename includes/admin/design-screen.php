@@ -177,7 +177,7 @@ class BaraTables_Admin_Design_Screen {
 				<?php $this->render_chart_groups($chart_values); ?>
 
 				<div class="btbl-control">
-					<strong class="btbl-small-heading"><?php esc_html_e('Style output', 'baratables'); ?></strong>
+					<strong class="btbl-small-heading"><?php esc_html_e('Site CSS', 'baratables'); ?></strong>
 					<div class="btbl-options-row btbl-copy-css-row">
 						<button type="button" class="button" data-btbl-copy-css><?php esc_html_e('Copy CSS', 'baratables'); ?></button>
 						<span class="description" aria-live="polite" data-btbl-copy-status></span>
@@ -255,11 +255,10 @@ class BaraTables_Admin_Design_Screen {
 		?>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Tables', 'baratables'); ?></strong>
-			<p class="description"><?php esc_html_e('The design every table starts from. A table that sets its own value keeps that value.', 'baratables'); ?></p>
 			<p class="description"><?php esc_html_e('These are the colors and the spacing. Whether the stripes and highlights are on at all stays a per-table setting, in each table\'s own Design tab.', 'baratables'); ?></p>
 		</div>
 		<?php
-		BaraTables_Admin_Design_Fields::render_table_groups($values, 'btbl_table_options', 'btbl_site_design');
+		BaraTables_Admin_Design_Fields::render_table_groups($values, 'btbl_table_options', 'btbl_site_design', '', true);
 	}
 
 	/**
@@ -277,7 +276,6 @@ class BaraTables_Admin_Design_Screen {
 		?>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Charts', 'baratables'); ?></strong>
-			<p class="description"><?php esc_html_e('The design every chart starts from. A chart that sets its own value keeps that value.', 'baratables'); ?></p>
 		</div>
 		<div class="btbl-control">
 			<strong class="btbl-small-heading"><?php esc_html_e('Chart style presets', 'baratables'); ?></strong>
@@ -339,7 +337,7 @@ class BaraTables_Admin_Design_Screen {
 	private function render_preview(): void {
 		?>
 		<div class="btbl-control">
-			<strong class="btbl-small-heading"><?php esc_html_e('Preview', 'baratables'); ?></strong>
+			<strong class="btbl-small-heading"><?php esc_html_e('Table preview', 'baratables'); ?></strong>
 			<p class="description"><?php esc_html_e('A sample table with the design above. Changes appear here as you type.', 'baratables'); ?></p>
 			<div class="btbl-admin btbl-admin-embed" id="btbl-site-design-preview">
 				<?php

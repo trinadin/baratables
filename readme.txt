@@ -70,7 +70,7 @@ Create a table first, then go to Charts and create a chart linked to it, embedde
 
 = Can I customize the table appearance? =
 
-Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so what you leave blank falls through to the site default and then to your theme.
+Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart series palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so what you leave blank falls through to the site default and then to your theme.
 
 = Can I set one design for the whole site? =
 
@@ -82,7 +82,7 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent` and `--btbl-border` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover header, stripe, hover, border, footer, conditional, and chart colors, type, padding, and radius.
+Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent` and `--btbl-border` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's background, padding and radius.
 
 A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's background, padding and radius are CSS, and ride the token layer with the tables.
 
@@ -103,7 +103,7 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance, or t
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors, typography and chart palette every table and chart starts from. A table or chart that sets its own value keeps it, and one that switches the site design off follows your theme instead.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table starts from, and the series palette every chart starts from. A table or chart that sets its own value keeps it, and one that switches the site design off follows your theme instead.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:

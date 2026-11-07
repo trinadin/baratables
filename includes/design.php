@@ -207,6 +207,12 @@ class BaraTables_Design {
 			}
 			if ($palette !== []) {
 				$clean['stylePalette'] = $palette;
+			} elseif (isset($rejected['stylePalette']) && !empty($previous['stylePalette'])) {
+				// The whole submitted palette was unusable, so none of it can be
+				// stored. A rejected value keeps the one already stored, like every
+				// other design value on this screen -- the site-wide palette is
+				// too much to lose to one bad submission.
+				$clean['stylePalette'] = $previous['stylePalette'];
 			}
 		}
 		foreach (['styleBackground', 'styleTextColor', 'styleGridColor'] as $key) {

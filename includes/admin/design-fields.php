@@ -67,8 +67,11 @@ class BaraTables_Admin_Design_Fields {
 	 * @param array  $values      The current values, keyed by option key.
 	 * @param string $name_prefix The form field name prefix.
 	 * @param string $id_prefix   The element id prefix.
+	 * @param string $blank_accent The accent that resolves when the accent field is blank.
+	 * @param bool   $is_site_default Whether this is the site Design screen, where the
+	 *                                fields ARE the site default.
 	 */
-	public static function render_table_groups(array $values, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design', string $blank_accent = ''): void {
+	public static function render_table_groups(array $values, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design', string $blank_accent = '', bool $is_site_default = false): void {
 		$schema = BaraTables_Service::get_table_option_schema();
 		// The accent that resolves when the accent field is blank. The table editor passes
 		// the accent that actually applies to that table; the site screen edits the site
@@ -83,7 +86,7 @@ class BaraTables_Admin_Design_Fields {
 				<?php endif; ?>
 				<div class="btbl-flag-grid btbl-table-flags">
 					<?php foreach ($group['fields'] as $field_key) : ?>
-						<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $blank_accent, $name_prefix, $id_prefix); ?>
+						<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $blank_accent, $name_prefix, $id_prefix, $is_site_default); ?>
 					<?php endforeach; ?>
 				</div>
 			</div>
@@ -94,7 +97,7 @@ class BaraTables_Admin_Design_Fields {
 			<strong class="btbl-small-heading"><?php esc_html_e('Typography & shape', 'baratables'); ?></strong>
 			<div class="btbl-flag-grid btbl-table-flags">
 				<?php foreach (self::table_size_fields() as $field_key) : ?>
-					<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $blank_accent, $name_prefix, $id_prefix); ?>
+					<?php self::render_field($field_key, $schema[$field_key] ?? [], $values, $blank_accent, $name_prefix, $id_prefix, $is_site_default); ?>
 				<?php endforeach; ?>
 			</div>
 		</div>
@@ -192,10 +195,10 @@ class BaraTables_Admin_Design_Fields {
 					}
 					$marker = ($grid_field_marker && $field['key'] === 'styleGridColor') ? $field['marker'] : '';
 					if ($field['type'] === 'color') {
-						self::render_color_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $marker);
+						self::render_color_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['key'], $marker);
 						continue;
 					}
-					self::render_size_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['type']);
+					self::render_size_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['type'], $field['key']);
 				}
 				?>
 			</div>
@@ -210,7 +213,7 @@ class BaraTables_Admin_Design_Fields {
 					if ($field['group'] !== 'container') {
 						continue;
 					}
-					self::render_size_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['type']);
+					self::render_size_card($field['name'], $field['label'], (string) ($values[$field['key']] ?? ''), $field['placeholder'], $field['type'], $field['key']);
 				}
 				?>
 			</div>
@@ -279,10 +282,18 @@ class BaraTables_Admin_Design_Fields {
 	 *                             as the accent placeholder and to park the swatch.
 	 * @param string $name_prefix The form field name prefix, e.g. 'btbl_table_options'.
 	 * @param string $id_prefix   The element id prefix.
+	 * @param bool   $is_site_default Whether this is the site Design screen, where the
+	 *                                fields ARE the site default and a few descriptions say
+	 *                                so in their own words.
 	 */
-	public static function render_field(string $key, array $config, array $values, string $blank_accent, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design'): void {
+	public static function render_field(string $key, array $config, array $values, string $blank_accent, string $name_prefix = 'btbl_table_options', string $id_prefix = 'btbl_design', bool $is_site_default = false): void {
 		$label = (string) ($config['label'] ?? $key);
-		$description = (string) ($config['description'] ?? '');
+		// A few fields describe what a blank value inherits. On the site Design screen
+		// that is the theme, not the site default -- the field IS the site default -- so
+		// those fields carry a second description for that surface.
+		$description = ($is_site_default && isset($config['site_description']))
+			? (string) $config['site_description']
+			: (string) ($config['description'] ?? '');
 		// Raw schema key, matching the Options tab's btbl_rowLimit precedent: the id mirrors
 		// the stored camelCase option key (sanitize_key would lowercase it).
 		$input_id = $id_prefix . '_' . $key;
@@ -297,7 +308,10 @@ class BaraTables_Admin_Design_Fields {
 				<label class="btbl-field-name" for="<?php echo esc_attr($input_id); ?>"><?php echo esc_html($label); ?></label>
 			</span>
 			<?php if (($config['type'] ?? '') === 'color') : ?>
-				<div class="btbl-color-field" data-btbl-blank-accent="<?php echo esc_attr($key === 'accentColor' ? $blank_accent : ''); ?>">
+				<?php // The colour the swatch rests on while the field is empty: the accent that
+					// resolves for the accent field, a neutral white for every other colour. The
+					// client parks the swatch on the same value, so the two never disagree. ?>
+				<div class="btbl-color-field" data-btbl-resting-color="<?php echo esc_attr($key === 'accentColor' ? $blank_accent : '#ffffff'); ?>">
 					<input
 						type="text"
 						id="<?php echo esc_attr($input_id); ?>"
@@ -342,14 +356,23 @@ class BaraTables_Admin_Design_Fields {
 		<?php
 	}
 
-	/** A color control with its own field name, for the chart editor's flat names. */
-	public static function render_color_card(string $name, string $label, string $value, string $placeholder, string $marker = ''): void {
+	/**
+	 * A color control with its own field name, for the chart editor's flat names.
+	 *
+	 * @param string $name       The form field name.
+	 * @param string $label      The visible label.
+	 * @param string $value      The current value.
+	 * @param string $placeholder The placeholder shown while the field is empty.
+	 * @param string $design_key The chart design key this field edits.
+	 * @param string $marker     An extra attribute for the chart editor's gridless types.
+	 */
+	public static function render_color_card(string $name, string $label, string $value, string $placeholder, string $design_key, string $marker = ''): void {
 		?>
-		<div class="btbl-checkbox btbl-design-field"<?php echo $marker !== '' ? ' ' . esc_attr($marker) : ''; ?>>
+		<div class="btbl-checkbox btbl-design-field" data-btbl-design-field="<?php echo esc_attr($design_key); ?>"<?php echo $marker !== '' ? ' ' . esc_attr($marker) : ''; ?>>
 			<span class="btbl-checkbox-top">
 				<label class="btbl-field-name" for="<?php echo esc_attr($name); ?>"><?php echo esc_html($label); ?></label>
 			</span>
-			<div class="btbl-color-field">
+			<div class="btbl-color-field" data-btbl-resting-color="#ffffff">
 				<input
 					type="text"
 					id="<?php echo esc_attr($name); ?>"
@@ -368,10 +391,19 @@ class BaraTables_Admin_Design_Fields {
 		<?php
 	}
 
-	/** A size control with its own field name, for the chart editor's flat names. */
-	public static function render_size_card(string $name, string $label, string $value, string $placeholder, string $kind = 'css'): void {
+	/**
+	 * A size control with its own field name, for the chart editor's flat names.
+	 *
+	 * @param string $name       The form field name.
+	 * @param string $label      The visible label.
+	 * @param string $value      The current value.
+	 * @param string $placeholder The placeholder shown while the field is empty.
+	 * @param string $kind       The size contract: 'css' or 'chart-font'.
+	 * @param string $design_key The chart design key this field edits.
+	 */
+	public static function render_size_card(string $name, string $label, string $value, string $placeholder, string $kind = 'css', string $design_key = ''): void {
 		?>
-		<div class="btbl-checkbox btbl-design-field" data-btbl-design-field="<?php echo esc_attr($name); ?>">
+		<div class="btbl-checkbox btbl-design-field"<?php echo $design_key !== '' ? ' data-btbl-design-field="' . esc_attr($design_key) . '"' : ''; ?>>
 			<span class="btbl-checkbox-top">
 				<label class="btbl-field-name" for="<?php echo esc_attr($name); ?>"><?php echo esc_html($label); ?></label>
 			</span>
@@ -428,7 +460,9 @@ class BaraTables_Admin_Design_Fields {
 				<?php endforeach; ?>
 			</div>
 			<div class="btbl-palette-add">
-				<div class="btbl-color-field">
+				<?php // The palette's swatch starts on a colour to adjust, not on a blank
+					// field's resting colour, so it carries its own. ?>
+				<div class="btbl-color-field" data-btbl-resting-color="#2271b1">
 					<input
 						type="text"
 						class="btbl-color-value"
@@ -510,12 +544,12 @@ class BaraTables_Admin_Design_Fields {
 		if ($names !== []) {
 			$parts[] = sprintf(
 				/* translators: %s is a comma-separated list of field names, e.g. "Accent color, Cell padding". */
-				__('These values were not accepted, so the previous ones were kept: %s.', 'baratables'),
+				__('These values were not accepted, so nothing was changed for them: %s.', 'baratables'),
 				implode(', ', $names)
 			);
 		}
 		if ($palette_rejected) {
-			$parts[] = __('Some colors in the series palette were not accepted, so they were left out.', 'baratables');
+			$parts[] = __('Colors in the series palette were not accepted, so they were left out.', 'baratables');
 		}
 		return implode(' ', $parts);
 	}

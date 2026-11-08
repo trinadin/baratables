@@ -1326,7 +1326,7 @@ class BaraTables_Service {
 	}
 
 	public function sanitize_post_types(array $post_types_raw, string $source_type): array {
-		if (!BaraTables_Source_Type::supports_post_type_selection($source_type)) {
+		if (!BaraTables_Source_Type::uses_builder_fields($source_type)) {
 			return ['post'];
 		}
 		return $this->query_sanitizer()->sanitize_public_post_types($post_types_raw, true);

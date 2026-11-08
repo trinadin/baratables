@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
 spl_autoload_register(static function (string $class): void {
 	$groups = [
 		'class-baratables.php' => ['BaraTables'],
-		'core.php' => ['BaraTables_Asset_Utils', 'BaraTables_Crypto', 'BaraTables_Id_Generator', 'BaraTables_Source_Type', 'BaraTables_Taxonomy_Filters', 'BaraTables_Text_Normalizer'],
+		'utils.php' => ['BaraTables_Asset_Utils', 'BaraTables_Crypto', 'BaraTables_Id_Generator', 'BaraTables_Source_Type', 'BaraTables_Taxonomy_Filters', 'BaraTables_Text_Normalizer'],
 		'repositories.php' => ['BaraTables_Abstract_CPT_Repository', 'BaraTables_Base_Repository', 'BaraTables_Chart_Repository', 'BaraTables_Entity_Descriptor', 'BaraTables_Persistence_Guard', 'BaraTables_Repository'],
 		'row-result.php' => ['BaraTables_Row_Result'],
 		'cell-semantics.php' => ['BaraTables_Cell_Semantics'],

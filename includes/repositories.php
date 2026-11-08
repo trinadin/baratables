@@ -361,10 +361,6 @@ abstract class BaraTables_Base_Repository {
 		return !empty($query->posts) ? (int) $query->posts[0]->ID : 0;
 	}
 
-	protected function get_post_id_by_slug_common(string $cpt, string $meta_slug, string $slug): int {
-		return $this->find_post_id_common($cpt, $meta_slug, $slug, true);
-	}
-
 	public function meta_auth_callback(): bool {
 		return current_user_can('manage_options');
 	}
@@ -523,7 +519,7 @@ abstract class BaraTables_Abstract_CPT_Repository extends BaraTables_Base_Reposi
 	}
 
 	public function get_post_id_by_slug(string $slug): int {
-		return $this->get_post_id_by_slug_common($this->get_cpt(), $this->get_meta_slug(), $slug);
+		return $this->find_post_id_common($this->get_cpt(), $this->get_meta_slug(), $slug, true);
 	}
 
 	public function sanitize_meta($value): array {

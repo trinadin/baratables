@@ -16,10 +16,16 @@ jQuery(function($) {
 		if (!text) {
 			return;
 		}
+		// A rejection here means the clipboard refused (non-secure origin, dismissed
+		// permission); try the shared textarea fallback, and only report if that fails too.
 		adminCore.copyText(text).then(function() {
 			showCopiedState($element);
-		}).catch(function(error) {
-			if (window.console && console.warn) { console.warn('Copy failed', error); }
+		}, function() {
+			adminCore.copyTextFallback(text).then(function() {
+				showCopiedState($element);
+			}, function(error) {
+				if (window.console && console.warn) { console.warn('Copy failed', error); }
+			});
 		});
 	}
 

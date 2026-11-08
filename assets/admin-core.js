@@ -356,11 +356,15 @@
 	}
 
 	// Copy text to the clipboard. The async Clipboard API is unavailable on a non-secure
-	// origin (plain http on a LAN) and in some webviews, and an available API can still
-	// reject (permission dismissed), so both routes fall back to the classic
-	// hidden-textarea copy. Shared: both editors copy CSS and the lists copy shortcodes,
-	// and a fallback that only one surface had would fail on exactly the page that
-	// needed it.
+	// origin (plain http on a LAN) and in some webviews, so the classic hidden-textarea
+	// route is the fallback, shared by every copying surface (both editors copy CSS, the
+	// lists copy shortcodes).
+	//
+	// A REJECTION from a present API is NOT fallen back to here, on purpose: the consumers
+	// disagree about what a rejection means. The shortcode copy treats it as "try the
+	// fallback" (it chains copyTextFallback itself); Copy CSS treats it as "clipboard
+	// unavailable" and reveals the generated CSS on the page for a manual copy instead.
+	// copyText itself only falls back when the API is absent outright.
 	function copyTextFallback(text) {
 		var deferred = $.Deferred();
 		var $area = $('<textarea>').val(text).css({position: 'fixed', opacity: '0'}).appendTo('body');
@@ -377,9 +381,7 @@
 
 	function copyText(text) {
 		if (navigator.clipboard && navigator.clipboard.writeText) {
-			return navigator.clipboard.writeText(text).catch(function() {
-				return copyTextFallback(text);
-			});
+			return navigator.clipboard.writeText(text);
 		}
 		return copyTextFallback(text);
 	}
@@ -443,6 +445,7 @@
 		chartCssVars: chartCssVars,
 		effectiveValue: effectiveValue,
 		copyText: copyText,
+		copyTextFallback: copyTextFallback,
 		sanitizeCustomCss: sanitizeCustomCss,
 		truncateUtf8: truncateUtf8,
 		requestFragment: requestFragment,

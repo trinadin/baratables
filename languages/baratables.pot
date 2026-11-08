@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-07T18:11:54+00:00\n"
+"POT-Creation-Date: 2026-11-08T18:12:55+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -194,7 +194,7 @@ msgid "Chart settings"
 msgstr ""
 
 #: includes/admin/admin.php:712
-#: assets/block-chart.js:115
+#: assets/block-picker.js:52
 msgid "Chart"
 msgstr ""
 
@@ -1161,7 +1161,7 @@ msgstr ""
 
 #: includes/admin/support.php:1283
 #: includes/admin/ui.php:1586
-#: assets/block-table.js:115
+#: assets/block-picker.js:35
 msgid "Table"
 msgstr ""
 
@@ -2306,7 +2306,7 @@ msgid "Gantt"
 msgstr ""
 
 #. translators: %d is the number of linked charts still awaiting recovery.
-#: includes/class-baratables.php:198
+#: includes/class-baratables.php:192
 #, php-format
 msgid "BaraTables is still restoring %d linked chart after a cancelled table ID change. It will retry automatically."
 msgid_plural "BaraTables is still restoring %d linked charts after a cancelled table ID change. It will retry automatically."
@@ -2314,14 +2314,14 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d is the number of linked charts restored.
-#: includes/class-baratables.php:207
+#: includes/class-baratables.php:201
 #, php-format
 msgid "BaraTables restored %d linked chart after a cancelled table ID change."
 msgid_plural "BaraTables restored %d linked charts after a cancelled table ID change."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-baratables.php:216
+#: includes/class-baratables.php:210
 msgid "BaraTables could not finish upgrading its saved data. Your previous data was kept and the upgrade will retry automatically."
 msgstr ""
 
@@ -3348,76 +3348,70 @@ msgstr ""
 msgid "Bottom right"
 msgstr ""
 
-#: assets/block-chart.js:68
-#: assets/block-chart.js:76
-#: assets/block-chart.js:112
-#: assets/block-chart.js:128
-msgid "BaraTables chart"
-msgstr ""
-
-#: assets/block-chart.js:77
-msgid "No charts yet. Create a chart first, then pick it here."
-msgstr ""
-
-#: assets/block-chart.js:80
-msgid "Go to charts"
-msgstr ""
-
-#: assets/block-chart.js:84
-msgid "Select a chart..."
-msgstr ""
-
-#. translators: %d is the number of charts the picker loaded.
-#: assets/block-chart.js:103
-#, js-format
-msgid "The picker lists only the first %d charts; the selected one may exist beyond them."
-msgstr ""
-
-#: assets/block-chart.js:106
-msgid "The selected chart no longer exists. Pick another chart."
-msgstr ""
-
-#: assets/block-chart.js:122
-msgid "The chart renders on your site."
-msgstr ""
-
-#: assets/block-chart.js:129
-msgid "Embed a BaraTables chart."
-msgstr ""
-
-#: assets/block-table.js:68
-#: assets/block-table.js:76
-#: assets/block-table.js:112
-#: assets/block-table.js:128
+#: assets/block-picker.js:30
 msgid "BaraTables table"
 msgstr ""
 
-#: assets/block-table.js:77
-msgid "No tables yet. Create a table first, then pick it here."
+#: assets/block-picker.js:31
+msgid "Embed an interactive, searchable BaraTables table."
 msgstr ""
 
-#: assets/block-table.js:80
-msgid "Go to tables"
-msgstr ""
-
-#: assets/block-table.js:84
+#: assets/block-picker.js:32
 msgid "Select a table..."
 msgstr ""
 
+#: assets/block-picker.js:33
+msgid "No tables yet. Create a table first, then pick it here."
+msgstr ""
+
+#: assets/block-picker.js:34
+msgid "Go to tables"
+msgstr ""
+
+#: assets/block-picker.js:36
+msgid "The interactive table renders on your site."
+msgstr ""
+
+#: assets/block-picker.js:37
+msgid "The selected table no longer exists. Pick another table."
+msgstr ""
+
 #. translators: %d is the number of tables the picker loaded.
-#: assets/block-table.js:103
+#: assets/block-picker.js:39
 #, js-format
 msgid "The picker lists only the first %d tables; the selected one may exist beyond them."
 msgstr ""
 
-#: assets/block-table.js:106
-msgid "The selected table no longer exists. Pick another table."
+#: assets/block-picker.js:47
+msgid "BaraTables chart"
 msgstr ""
 
-#: assets/block-table.js:122
-msgid "The interactive table renders on your site."
+#: assets/block-picker.js:48
+msgid "Embed a BaraTables chart."
 msgstr ""
 
-#: assets/block-table.js:129
-msgid "Embed an interactive, searchable BaraTables table."
+#: assets/block-picker.js:49
+msgid "Select a chart..."
+msgstr ""
+
+#: assets/block-picker.js:50
+msgid "No charts yet. Create a chart first, then pick it here."
+msgstr ""
+
+#: assets/block-picker.js:51
+msgid "Go to charts"
+msgstr ""
+
+#: assets/block-picker.js:53
+msgid "The chart renders on your site."
+msgstr ""
+
+#: assets/block-picker.js:54
+msgid "The selected chart no longer exists. Pick another chart."
+msgstr ""
+
+#. translators: %d is the number of charts the picker loaded.
+#: assets/block-picker.js:56
+#, js-format
+msgid "The picker lists only the first %d charts; the selected one may exist beyond them."
 msgstr ""

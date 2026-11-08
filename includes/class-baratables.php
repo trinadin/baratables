@@ -98,37 +98,31 @@ class BaraTables {
 		// logged-in visitor, for scripts that could not load there.
 		if (is_admin()) {
 			wp_register_script(
-				'baratables-block-table',
-				$this->plugin_url . 'assets/block-table.js',
+				'baratables-block-picker',
+				$this->plugin_url . 'assets/block-picker.js',
 				['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
-				BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-table.js'),
+				BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-picker.js'),
 				false
 			);
-			wp_set_script_translations('baratables-block-table', 'baratables');
-			$config = ['ajaxUrl' => admin_url('admin-ajax.php')];
+			wp_set_script_translations('baratables-block-picker', 'baratables');
+			$config = ['ajaxUrl' => admin_url('admin-ajax.php'), 'items' => []];
 			if (is_user_logged_in()) {
-				$config['nonce'] = wp_create_nonce('btbl_block_tables');
+				// One nonce per endpoint: the two pickers are separate AJAX actions, so
+				// each carries the nonce its own handler verifies.
+				$config['items'] = [
+					'table' => [
+						'action' => 'btbl_block_tables',
+						'nonce' => wp_create_nonce('btbl_block_tables'),
+					],
+					'chart' => [
+						'action' => 'btbl_block_charts',
+						'nonce' => wp_create_nonce('btbl_block_charts'),
+					],
+				];
 			}
 			wp_add_inline_script(
-				'baratables-block-table',
-				'window.BaraTablesBlockConfig = ' . wp_json_encode($config) . ';',
-				'before'
-			);
-			wp_register_script(
-				'baratables-block-chart',
-				$this->plugin_url . 'assets/block-chart.js',
-				['wp-blocks', 'wp-element', 'wp-components', 'wp-i18n'],
-				BaraTables_Asset_Utils::get_asset_version($this->plugin_path, 'assets/block-chart.js'),
-				false
-			);
-			wp_set_script_translations('baratables-block-chart', 'baratables');
-			$chart_config = ['ajaxUrl' => admin_url('admin-ajax.php')];
-			if (is_user_logged_in()) {
-				$chart_config['nonce'] = wp_create_nonce('btbl_block_charts');
-			}
-			wp_add_inline_script(
-				'baratables-block-chart',
-				'window.BaraTablesChartBlockConfig = ' . wp_json_encode($chart_config) . ';',
+				'baratables-block-picker',
+				'window.BaraTablesBlockPicker = ' . wp_json_encode($config) . ';',
 				'before'
 			);
 		}
@@ -144,8 +138,8 @@ class BaraTables {
 			'attributes' => [
 				'id' => ['type' => 'string', 'default' => ''],
 			],
-			'editor_script' => 'baratables-block-table',
-			'render_callback' => [$this, 'render_table_block'],
+				'editor_script' => 'baratables-block-picker',
+				'render_callback' => [$this, 'render_table_block'],
 		]);
 
 		register_block_type('baratables/chart', [
@@ -153,8 +147,8 @@ class BaraTables {
 			'attributes' => [
 				'id' => ['type' => 'string', 'default' => ''],
 			],
-			'editor_script' => 'baratables-block-chart',
-			'render_callback' => [$this, 'render_chart_block'],
+				'editor_script' => 'baratables-block-picker',
+				'render_callback' => [$this, 'render_chart_block'],
 		]);
 	}
 

@@ -174,17 +174,13 @@
 	cursor: pointer;
 }
 
-/* A non-empty hex that is not yet a complete #rrggbb: same danger treatment as the invalid
-   Value overrides JSON, so an incomplete color reads as "keep going", not "broken". */
-.btbl-color-field input[type="text"].is-invalid {
-	border-color: var(--btbl-color-danger);
-	box-shadow: 0 0 0 1px var(--btbl-color-danger);
-}
-
-/* A size the server would discard -- "12 pixels", a two-value font size, a negative
-   length -- gets the same danger treatment, so the field looks wrong instead of
-   quietly reverting to the inherited value on save. */
-.btbl-design-field input[data-btbl-size-field].is-invalid {
+/* One danger treatment for every field the server would discard or cannot parse: an
+   incomplete #rrggbb reads as "keep going", a size like "12 pixels" or a negative length
+   looks wrong instead of quietly reverting to the inherited value on save, and invalid
+   Value overrides JSON is flagged where it is typed. */
+.btbl-color-field input[type="text"].is-invalid,
+.btbl-design-field input[data-btbl-size-field].is-invalid,
+textarea.btbl-invalid {
 	border-color: var(--btbl-color-danger);
 	box-shadow: 0 0 0 1px var(--btbl-color-danger);
 }
@@ -234,7 +230,7 @@
 .btbl-chart-modal__close:focus-visible,
 .btbl-chart-type-card:focus-visible {
 	outline: 2px solid var(--btbl-color-primary);
-	outline-offset: 2px;
+	outline-offset: 1px;
 }
 
 /* stylelint-disable-next-line no-descending-specificity -- shares no property with the earlier rule */
@@ -680,7 +676,7 @@
 	/* stylelint-disable-next-line font-family-no-missing-generic-family-keyword -- icon font, glyph by codepoint. */
 	font-family: dashicons;
 	content: "\f105"; /* dashicons-admin-page (copy) */
-	margin-right: 4px;
+	margin-inline-end: 4px;
 	opacity: 0.7;
 }
 
@@ -1162,7 +1158,7 @@ dialog.btbl-chart-modal::backdrop {
 .btbl-row-actions {
 	white-space: nowrap;
 	width: 1%;
-	text-align: right;
+	text-align: end;
 	vertical-align: middle;
 }
 .btbl-row-actions .button-link {
@@ -1221,11 +1217,8 @@ dialog.btbl-chart-modal::backdrop {
 	margin-top: 0;
 }
 
-/* JSON validation feedback on the Value overrides field. */
-textarea.btbl-invalid {
-	border-color: var(--btbl-color-danger);
-	box-shadow: 0 0 0 1px var(--btbl-color-danger);
-}
+/* JSON validation feedback on the Value overrides field: the danger ring lives with the
+   shared invalid treatment above; this block owns the error text below the field. */
 .btbl-json-error {
 	color: var(--btbl-color-danger);
 	font-weight: 600;
@@ -1311,7 +1304,7 @@ textarea.btbl-invalid {
 .btbl-help-toggle {
 	position: absolute;
 	top: 0;
-	right: 12px;
+	inset-inline-end: 12px;
 	z-index: 2;
 	display: inline-flex;
 	align-items: center;
@@ -1428,7 +1421,7 @@ body.btbl-help-hidden .btbl-admin .btbl-field-hint {
 }
 
 .btbl-admin .btbl-external-note {
-	border-left: 4px solid #dba617;
+	border-inline-start: 4px solid #dba617;
 	background: #fff8e5;
 	padding: 6px 10px;
 	margin: 10px 0;

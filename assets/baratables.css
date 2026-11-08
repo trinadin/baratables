@@ -162,7 +162,7 @@
 
 .btbl-filter-options label {
 	display: inline-block;
-	margin-right: 10px;
+	margin-inline-end: 10px;
 }
 
 .btbl-table-wrapper .dt-search {
@@ -281,7 +281,7 @@
 	overflow-y: auto;
 	display: grid;
 	gap: 6px;
-	padding-right: 18px;
+	padding-inline-end: 18px;
 }
 
 .btbl-search-columns-option {

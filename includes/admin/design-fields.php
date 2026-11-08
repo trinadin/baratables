@@ -563,4 +563,22 @@ class BaraTables_Admin_Design_Fields {
 		];
 		return $placeholders[$key] ?? '';
 	}
+
+	/**
+	 * Decode what the palette chip editor posts back: a JSON array of colors, already an
+	 * array when a save path collected it as one. Malformed input is "no palette"; the
+	 * caller re-sanitizes every value, so decoding is this method's only job. Shared by
+	 * the chart editor's save and the site Design screen, which post the same chip
+	 * editor's output.
+	 *
+	 * @param mixed $raw The posted palette: a JSON string, or an array of colors.
+	 * @return string[] The colors, in order.
+	 */
+	public static function decode_palette_input($raw): array {
+		if (is_array($raw)) {
+			return array_values($raw);
+		}
+		$decoded = json_decode((string) $raw, true);
+		return is_array($decoded) ? array_values($decoded) : [];
+	}
 }

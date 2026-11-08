@@ -79,7 +79,7 @@ class BaraTables_Admin_Design_Screen {
 				continue;
 			}
 			$raw['chart'][$key] = $key === 'stylePalette'
-				? $this->decode_palette_input($value)
+				? BaraTables_Admin_Design_Fields::decode_palette_input($value)
 				: $value;
 		}
 
@@ -150,12 +150,6 @@ class BaraTables_Admin_Design_Screen {
 			}
 		}
 		return $keys;
-	}
-
-	/** The palette chip editor serializes its colors as JSON; malformed input is just "no palette". */
-	private function decode_palette_input(string $raw): array {
-		$decoded = json_decode($raw, true);
-		return is_array($decoded) ? array_values($decoded) : [];
 	}
 
 	public function render_page(): void {

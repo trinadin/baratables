@@ -236,4 +236,37 @@ final class BaraTables_Cell_Semantics {
 		];
 		return (string) ($labels[$aggregate] ?? '');
 	}
+
+	/**
+	 * Compute every column's footer value in one pass. Shared by the public renderer and
+	 * the admin preview so the two cannot disagree about what a footer shows.
+	 *
+	 * @param array[] $columns The presentation's column models.
+	 * @param array[] $rows The rows the aggregates cover.
+	 * @return array{values: string[], has_footer: bool} Per-column values, and whether any column aggregates.
+	 */
+	public static function compute_footer_values(array $columns, array $rows): array {
+		$values = [];
+		$has_footer = false;
+		foreach ($columns as $index => $column_model) {
+			$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+			$values[$index] = $aggregate !== 'none'
+				? self::aggregate_rows($rows, (int) $index, $aggregate)
+				: '';
+			$has_footer = $has_footer || $aggregate !== 'none';
+		}
+		return ['values' => $values, 'has_footer' => $has_footer];
+	}
+
+	/**
+	 * The visible footer text: "Sum: 60" when an aggregate produced a value, so the name
+	 * reads on screen instead of an orphaned number; a column without an aggregate, or
+	 * one whose aggregate produced nothing, shows the bare value.
+	 */
+	public static function footer_display(string $aggregate, string $value): string {
+		if ($aggregate === 'none' || $value === '') {
+			return $value;
+		}
+		return self::aggregate_label($aggregate) . ': ' . $value;
+	}
 }

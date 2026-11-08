@@ -854,7 +854,7 @@ class BaraTables_Chart_Admin {
 			// Design tab (2.0): the palette arrives as a JSON array of hex strings from the
 			// chip editor; merge_chart_options() re-sanitizes every value, so decode is the
 			// only step here.
-			'stylePalette'   => self::decode_palette_input($p::raw('btbl_chart_style_palette')),
+			'stylePalette'   => BaraTables_Admin_Design_Fields::decode_palette_input($p::raw('btbl_chart_style_palette')),
 			'styleBackground' => $p::raw('btbl_chart_style_background'),
 			'styleTextColor' => $p::raw('btbl_chart_style_text_color'),
 			'styleGridColor' => $p::raw('btbl_chart_style_grid_color'),
@@ -875,15 +875,6 @@ class BaraTables_Chart_Admin {
 			$options['useSiteDesign'] = $use_site_design;
 		}
 		return $options;
-	}
-
-	/** The palette chip editor serializes its colors as JSON; malformed input is just "no palette". */
-	private static function decode_palette_input($raw): array {
-		if (is_array($raw)) {
-			return array_values($raw);
-		}
-		$decoded = json_decode((string) $raw, true);
-		return is_array($decoded) ? array_values($decoded) : [];
 	}
 
 }

@@ -22,15 +22,9 @@ class BaraTables_Admin_Preview_Renderer {
 		$sorted_columns = $presentation['sorted_columns'];
 		$layout_zones = $presentation['layout_zones'];
 		$layout_seen = [];
-		$footer_values = [];
-		$has_footer = false;
-		foreach ($presentation['columns'] as $column_index => $column_model) {
-			$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
-			$footer_values[$column_index] = $aggregate !== 'none'
-				? BaraTables_Cell_Semantics::aggregate_rows($rows, (int) $column_index, $aggregate)
-				: '';
-			$has_footer = $has_footer || $aggregate !== 'none';
-		}
+	$footer = BaraTables_Cell_Semantics::compute_footer_values($presentation['columns'], $rows);
+	$footer_values = $footer['values'];
+	$has_footer = $footer['has_footer'];
 
 		?>
 		<?php if ($source_error !== '') : ?>
@@ -100,11 +94,11 @@ class BaraTables_Admin_Preview_Renderer {
 								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
 									<?php if ($column_model['hidden']) { continue; } ?>
 									<?php
-									$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
-									$value = (string) ($footer_values[$idx] ?? '');
-									$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
-									$display = $aggregate !== 'none' && $value !== '' ? $label . ': ' . $value : $value;
-									?>
+										$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+										$value = (string) ($footer_values[$idx] ?? '');
+										$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
+										$display = BaraTables_Cell_Semantics::footer_display($aggregate, $value);
+										?>
 									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"><?php echo esc_html($display); ?></td>
 								<?php endforeach; ?>
 							</tr></tfoot>

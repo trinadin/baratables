@@ -1000,24 +1000,10 @@ class BaraTables_Admin_Assets {
 			}
 			$this->frontend->enqueue_preview_styles($is_table_editor, $table_features);
 		}
-		if ($is_design_page) {
+		if ($is_design_page || $is_chart_editor) {
 			// The Design screen's preview is a real table render, so it needs the same
-			// DataTables chrome the published page gets.
-			wp_enqueue_style(
-				'baratables-tom-select',
-				$this->plugin_url . 'assets/vendor/tom-select/tom-select.default.min.css',
-				[],
-				'2.6.2'
-			);
-			wp_enqueue_script(
-				'baratables-tom-select',
-				$this->plugin_url . 'assets/vendor/tom-select/tom-select.complete.min.js',
-				[],
-				'2.6.2',
-				true
-			);
-		}
-		if ($is_chart_editor) {
+			// DataTables chrome the published page gets; the chart editor's table and
+			// source pickers enhance the same control.
 			wp_enqueue_style(
 				'baratables-tom-select',
 				$this->plugin_url . 'assets/vendor/tom-select/tom-select.default.min.css',

@@ -575,13 +575,9 @@ class BaraTables_Frontend {
 		$footer_values = [];
 		$has_footer = false;
 		if ($render_table) {
-			foreach ($presentation['columns'] as $column_index => $column_model) {
-				$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
-				$footer_values[$column_index] = $aggregate !== 'none'
-					? BaraTables_Cell_Semantics::aggregate_rows($rows, (int) $column_index, $aggregate)
-					: '';
-				$has_footer = $has_footer || $aggregate !== 'none';
-			}
+			$footer = BaraTables_Cell_Semantics::compute_footer_values($presentation['columns'], $rows);
+			$footer_values = $footer['values'];
+			$has_footer = $footer['has_footer'];
 		}
 
 		$payload = $this->build_render_payload(
@@ -705,14 +701,12 @@ class BaraTables_Frontend {
 							<tfoot><tr>
 								<?php foreach ($presentation['columns'] as $idx => $column_model) : ?>
 									<?php
-									$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
-									$value = (string) ($footer_values[$idx] ?? '');
-									$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
-									$hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : '';
-									// The aggregate name is visible text, not just an aria-label, so the
-									// footer reads as "Sum: 60" on screen instead of an orphaned number.
-									$display = $aggregate !== 'none' && $value !== '' ? $label . ': ' . $value : $value;
-									?>
+										$aggregate = (string) ($column_model['footer_aggregate'] ?? 'none');
+										$value = (string) ($footer_values[$idx] ?? '');
+										$label = BaraTables_Cell_Semantics::aggregate_label($aggregate);
+										$hidden_attr = $column_model['hidden'] ? ' style="display:none;"' : '';
+										$display = BaraTables_Cell_Semantics::footer_display($aggregate, $value);
+										?>
 									<td data-btbl-footer-column="<?php echo esc_attr((string) $idx); ?>" data-btbl-aggregate="<?php echo esc_attr($aggregate); ?>" data-btbl-aggregate-label="<?php echo esc_attr($label); ?>"<?php echo $hidden_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Attribute pieces are escaped or hardcoded. ?>><?php echo esc_html($display); ?></td>
 								<?php endforeach; ?>
 							</tr></tfoot>

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-08T18:24:12+00:00\n"
+"POT-Creation-Date: 2026-11-08T18:32:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -278,7 +278,7 @@ msgid "Canvas default"
 msgstr ""
 
 #: includes/admin/design-fields.php:128
-#: includes/services.php:3230
+#: includes/services.php:3235
 msgid "Text color"
 msgstr ""
 
@@ -292,7 +292,7 @@ msgid "Grid color"
 msgstr ""
 
 #: includes/admin/design-fields.php:145
-#: includes/services.php:3233
+#: includes/services.php:3238
 msgid "Font size"
 msgstr ""
 
@@ -309,7 +309,7 @@ msgid "None"
 msgstr ""
 
 #: includes/admin/design-fields.php:159
-#: includes/services.php:3254
+#: includes/services.php:3259
 msgid "Corner radius"
 msgstr ""
 
@@ -411,7 +411,7 @@ msgstr ""
 
 #: includes/admin/design-fields.php:515
 #: includes/admin/design-screen.php:313
-#: includes/admin/ui.php:1849
+#: includes/admin/ui.php:1848
 msgid "Series palette"
 msgstr ""
 
@@ -428,7 +428,7 @@ msgstr ""
 #: includes/admin/design-screen.php:37
 #: includes/admin/design-screen.php:167
 #: includes/admin/ui.php:1370
-#: includes/admin/ui.php:1822
+#: includes/admin/ui.php:1821
 msgid "Site design"
 msgstr ""
 
@@ -454,7 +454,7 @@ msgstr ""
 
 #: includes/admin/design-screen.php:204
 #: includes/admin/ui.php:1440
-#: includes/admin/ui.php:1857
+#: includes/admin/ui.php:1856
 msgid "Copy CSS"
 msgstr ""
 
@@ -472,13 +472,13 @@ msgstr ""
 
 #: includes/admin/design-screen.php:245
 #: includes/admin/ui.php:1358
-#: includes/admin/ui.php:1860
+#: includes/admin/ui.php:1859
 msgid "Copied to your clipboard."
 msgstr ""
 
 #: includes/admin/design-screen.php:247
 #: includes/admin/ui.php:1360
-#: includes/admin/ui.php:1860
+#: includes/admin/ui.php:1859
 msgid "Clipboard unavailable — the CSS is selected below; copy it manually."
 msgstr ""
 
@@ -1170,7 +1170,7 @@ msgid "Type"
 msgstr ""
 
 #: includes/admin/support.php:1271
-#: includes/services.php:730
+#: includes/services.php:735
 msgid "Columns"
 msgstr ""
 
@@ -1334,8 +1334,8 @@ msgstr ""
 #: includes/admin/ui.php:197
 #: includes/admin/ui.php:228
 #: includes/service-column-state.php:261
-#: includes/services.php:1670
-#: includes/services.php:1786
+#: includes/services.php:1675
+#: includes/services.php:1791
 #, php-format
 msgid "Column %d"
 msgstr ""
@@ -1608,7 +1608,7 @@ msgid "Options for %s"
 msgstr ""
 
 #: includes/admin/ui.php:778
-#: includes/services.php:743
+#: includes/services.php:748
 msgid "Column"
 msgstr ""
 
@@ -1904,12 +1904,12 @@ msgid "The site default applies to every table that leaves a value blank here."
 msgstr ""
 
 #: includes/admin/ui.php:1384
-#: includes/admin/ui.php:1836
+#: includes/admin/ui.php:1835
 msgid "Use the site default design"
 msgstr ""
 
 #: includes/admin/ui.php:1390
-#: includes/admin/ui.php:1842
+#: includes/admin/ui.php:1841
 msgid "Style presets"
 msgstr ""
 
@@ -1954,7 +1954,7 @@ msgid "Generated table CSS"
 msgstr ""
 
 #: includes/admin/ui.php:1445
-#: includes/services.php:3256
+#: includes/services.php:3261
 msgid "Additional CSS"
 msgstr ""
 
@@ -2066,7 +2066,7 @@ msgid "Stack series"
 msgstr ""
 
 #: includes/admin/ui.php:1604
-#: includes/admin/ui.php:1708
+#: includes/admin/ui.php:1707
 msgid "Chart type"
 msgstr ""
 
@@ -2209,39 +2209,39 @@ msgstr ""
 msgid "Add columns first, then configure the chart."
 msgstr ""
 
-#: includes/admin/ui.php:1704
+#: includes/admin/ui.php:1703
 msgid "Choose chart type"
 msgstr ""
 
-#: includes/admin/ui.php:1705
+#: includes/admin/ui.php:1704
 msgid "Close chart type chooser"
 msgstr ""
 
-#: includes/admin/ui.php:1815
+#: includes/admin/ui.php:1814
 msgid "The chart's background, padding and radius live on the container; its text, grid and series colors are drawn on the canvas and stay in the chart options. Paste this into Appearance > Customize > Additional CSS (or a child theme stylesheet)."
 msgstr ""
 
-#: includes/admin/ui.php:1820
+#: includes/admin/ui.php:1819
 msgid "Styles apply to the Chart preview as you edit, and publish with the chart. Leave anything blank to inherit the site default, and then the chart's own defaults."
 msgstr ""
 
-#: includes/admin/ui.php:1823
+#: includes/admin/ui.php:1822
 msgid "The site default applies to every chart that leaves a value blank here."
 msgstr ""
 
-#: includes/admin/ui.php:1843
+#: includes/admin/ui.php:1842
 msgid "One click fills the controls below; keep tweaking from there. Your chart and its data are not touched."
 msgstr ""
 
-#: includes/admin/ui.php:1855
+#: includes/admin/ui.php:1854
 msgid "Chart CSS"
 msgstr ""
 
-#: includes/admin/ui.php:1860
+#: includes/admin/ui.php:1859
 msgid "Generated chart CSS"
 msgstr ""
 
-#: includes/admin/ui.php:1861
+#: includes/admin/ui.php:1860
 msgid "Copies the chart container's background, padding and radius as CSS. The chart's text, grid and series colors are drawn on the canvas, so they stay in the chart options."
 msgstr ""
 
@@ -2337,7 +2337,7 @@ msgstr[1] ""
 msgid "BaraTables could not finish upgrading its saved data. Your previous data was kept and the upgrade will retry automatically."
 msgstr ""
 
-#: includes/data-migrations.php:116
+#: includes/data-migrations.php:114
 msgid "WordPress could not record that the BaraTables data upgrade completed."
 msgstr ""
 
@@ -2412,7 +2412,7 @@ msgid "Edit table"
 msgstr ""
 
 #: includes/frontend.php:745
-#: includes/services.php:721
+#: includes/services.php:726
 msgid "Filters"
 msgstr ""
 
@@ -2880,471 +2880,471 @@ msgstr ""
 msgid "Column \"%s\" holds values too large for database paging; the table keeps standard loading."
 msgstr ""
 
-#: includes/services.php:718
+#: includes/services.php:723
 msgid "Search:"
 msgstr ""
 
-#: includes/services.php:719
+#: includes/services.php:724
 msgid "Show"
 msgstr ""
 
-#: includes/services.php:720
+#: includes/services.php:725
 msgid "rows"
 msgstr ""
 
-#: includes/services.php:727
+#: includes/services.php:732
 msgid "Showing _START_ to _END_ of _TOTAL_ rows"
 msgstr ""
 
-#: includes/services.php:728
+#: includes/services.php:733
 msgid "Showing 0 to 0 of 0 rows"
 msgstr ""
 
-#: includes/services.php:729
+#: includes/services.php:734
 msgid "(filtered from _MAX_ total rows)"
 msgstr ""
 
-#: includes/services.php:731
-msgid "Search in"
-msgstr ""
-
-#: includes/services.php:732
-#: includes/services.php:3292
-msgid "Copy"
-msgstr ""
-
-#: includes/services.php:733
-#: includes/services.php:3293
-msgid "Export CSV"
-msgstr ""
-
-#: includes/services.php:734
-#: includes/services.php:3294
-msgid "Export Excel"
-msgstr ""
-
-#: includes/services.php:735
-#: includes/services.php:3295
-msgid "Export PDF"
-msgstr ""
-
 #: includes/services.php:736
-#: includes/services.php:3296
-msgid "Print"
+msgid "Search in"
 msgstr ""
 
 #: includes/services.php:737
 #: includes/services.php:3297
-msgid "Column visibility"
+msgid "Copy"
 msgstr ""
 
 #: includes/services.php:738
 #: includes/services.php:3298
-msgid "Page length"
+msgid "Export CSV"
+msgstr ""
+
+#: includes/services.php:739
+#: includes/services.php:3299
+msgid "Export Excel"
+msgstr ""
+
+#: includes/services.php:740
+#: includes/services.php:3300
+msgid "Export PDF"
 msgstr ""
 
 #: includes/services.php:741
+#: includes/services.php:3301
+msgid "Print"
+msgstr ""
+
+#: includes/services.php:742
+#: includes/services.php:3302
+msgid "Column visibility"
+msgstr ""
+
+#: includes/services.php:743
+#: includes/services.php:3303
+msgid "Page length"
+msgstr ""
+
+#: includes/services.php:746
 msgid "Table options"
 msgstr ""
 
-#: includes/services.php:748
-#: includes/services.php:3389
+#: includes/services.php:753
+#: includes/services.php:3394
 msgid "Search"
 msgstr ""
 
-#: includes/services.php:1739
+#: includes/services.php:1744
 msgid "WordPress could not update every linked chart, so the table rename was cancelled."
 msgstr ""
 
-#: includes/services.php:3180
+#: includes/services.php:3185
 msgid "Table caption"
 msgstr ""
 
-#: includes/services.php:3181
+#: includes/services.php:3186
 msgid "Shown with the table and announced to screen readers."
 msgstr ""
 
-#: includes/services.php:3182
+#: includes/services.php:3187
 msgid "Page large database tables on demand"
 msgstr ""
 
-#: includes/services.php:3183
+#: includes/services.php:3188
 msgid "Loads up to 100 rows per request with bounded queries, within the Rows to load limit."
 msgstr ""
 
-#: includes/services.php:3185
+#: includes/services.php:3190
 msgid "Enable pagination"
 msgstr ""
 
-#: includes/services.php:3186
+#: includes/services.php:3191
 msgid "Show per page selector"
 msgstr ""
 
-#: includes/services.php:3187
+#: includes/services.php:3192
 msgid "Show page numbers"
 msgstr ""
 
-#: includes/services.php:3188
+#: includes/services.php:3193
 msgid "Show first/last"
 msgstr ""
 
-#: includes/services.php:3189
+#: includes/services.php:3194
 msgid "Show previous/next"
 msgstr ""
 
-#: includes/services.php:3190
+#: includes/services.php:3195
 msgid "Show search box"
 msgstr ""
 
-#: includes/services.php:3191
+#: includes/services.php:3196
 msgid "Show \"Search in\" dropdown"
 msgstr ""
 
-#: includes/services.php:3192
+#: includes/services.php:3197
 msgid "Show result summary"
 msgstr ""
 
-#: includes/services.php:3193
+#: includes/services.php:3198
 msgid "Summary text"
 msgstr ""
 
-#: includes/services.php:3194
+#: includes/services.php:3199
 msgid "Summary (no results)"
 msgstr ""
 
-#: includes/services.php:3195
+#: includes/services.php:3200
 msgid "Summary (filtered)"
 msgstr ""
 
-#: includes/services.php:3196
+#: includes/services.php:3201
 msgid "Layout: top left"
 msgstr ""
 
-#: includes/services.php:3197
+#: includes/services.php:3202
 msgid "Layout: top right"
 msgstr ""
 
-#: includes/services.php:3198
+#: includes/services.php:3203
 msgid "Layout: bottom left"
 msgstr ""
 
-#: includes/services.php:3199
+#: includes/services.php:3204
 msgid "Layout: bottom right"
 msgstr ""
 
-#: includes/services.php:3200
+#: includes/services.php:3205
 msgid "Show filters title"
 msgstr ""
 
-#: includes/services.php:3201
+#: includes/services.php:3206
 msgid "Filters title text"
 msgstr ""
 
-#: includes/services.php:3202
+#: includes/services.php:3207
 msgid "Allow column sorting"
 msgstr ""
 
-#: includes/services.php:3203
+#: includes/services.php:3208
 msgid "Allow column reordering"
 msgstr ""
 
-#: includes/services.php:3204
+#: includes/services.php:3209
 msgid "Remember table state"
 msgstr ""
 
-#: includes/services.php:3205
+#: includes/services.php:3210
 msgid "Auto-size columns"
 msgstr ""
 
-#: includes/services.php:3206
+#: includes/services.php:3211
 msgid "Keep header visible"
 msgstr ""
 
-#: includes/services.php:3207
+#: includes/services.php:3212
 msgid "Collapse columns on mobile"
 msgstr ""
 
-#: includes/services.php:3208
+#: includes/services.php:3213
 msgid "Wide tables stack their remaining columns into an expandable row instead of horizontal scrolling."
 msgstr ""
 
-#: includes/services.php:3209
+#: includes/services.php:3214
 msgid "Enable horizontal scrolling"
 msgstr ""
 
-#: includes/services.php:3210
+#: includes/services.php:3215
 msgid "Freeze first columns"
 msgstr ""
 
-#: includes/services.php:3211
+#: includes/services.php:3216
 msgid "Columns to freeze"
 msgstr ""
 
-#: includes/services.php:3212
+#: includes/services.php:3217
 msgid "Fixed scroll height"
 msgstr ""
 
-#: includes/services.php:3213
+#: includes/services.php:3218
 msgid "Height (px)"
 msgstr ""
 
-#: includes/services.php:3214
+#: includes/services.php:3219
 msgid "Collapse when shorter"
 msgstr ""
 
-#: includes/services.php:3215
+#: includes/services.php:3220
 msgid "Show zebra stripes"
 msgstr ""
 
-#: includes/services.php:3216
+#: includes/services.php:3221
 msgid "Show row borders"
 msgstr ""
 
-#: includes/services.php:3217
+#: includes/services.php:3222
 msgid "Show cell borders"
 msgstr ""
 
-#: includes/services.php:3218
+#: includes/services.php:3223
 msgid "Highlight rows on hover"
 msgstr ""
 
-#: includes/services.php:3219
+#: includes/services.php:3224
 msgid "Highlight sorted column"
 msgstr ""
 
-#: includes/services.php:3220
+#: includes/services.php:3225
 msgid "Compact density"
 msgstr ""
 
-#: includes/services.php:3221
+#: includes/services.php:3226
 msgid "Accent color"
 msgstr ""
 
-#: includes/services.php:3222
+#: includes/services.php:3227
 msgid "Color for focus rings, sorted columns, and paging highlights. Blank inherits the site default, then your theme's primary color."
 msgstr ""
 
-#: includes/services.php:3226
+#: includes/services.php:3231
 msgid "Color for focus rings, sorted columns, and paging highlights. Blank leaves it to your theme's primary color."
 msgstr ""
 
-#: includes/services.php:3231
+#: includes/services.php:3236
 msgid "Body text in the table. Blank inherits the site default, then your theme."
 msgstr ""
 
-#: includes/services.php:3232
+#: includes/services.php:3237
 msgid "Body text in the table. Blank leaves it to your theme."
 msgstr ""
 
-#: includes/services.php:3234
+#: includes/services.php:3239
 msgid "Base size for the table and its controls, e.g. 14px."
 msgstr ""
 
-#: includes/services.php:3235
+#: includes/services.php:3240
 msgid "Header background"
 msgstr ""
 
-#: includes/services.php:3236
+#: includes/services.php:3241
 msgid "Header text color"
 msgstr ""
 
-#: includes/services.php:3237
+#: includes/services.php:3242
 msgid "Header font weight"
 msgstr ""
 
-#: includes/services.php:3238
+#: includes/services.php:3243
 msgid "Zebra stripe color"
 msgstr ""
 
-#: includes/services.php:3239
+#: includes/services.php:3244
 msgid "Shown on alternating rows when zebra stripes are enabled."
 msgstr ""
 
-#: includes/services.php:3240
+#: includes/services.php:3245
 msgid "Row hover color"
 msgstr ""
 
-#: includes/services.php:3241
+#: includes/services.php:3246
 msgid "Shown on rows under the pointer when hover highlighting is enabled."
 msgstr ""
 
-#: includes/services.php:3242
+#: includes/services.php:3247
 msgid "Border color"
 msgstr ""
 
-#: includes/services.php:3243
+#: includes/services.php:3248
 msgid "Table borders, filter inputs, and buttons."
 msgstr ""
 
-#: includes/services.php:3244
+#: includes/services.php:3249
 msgid "Footer background"
 msgstr ""
 
-#: includes/services.php:3245
+#: includes/services.php:3250
 msgid "Footer text color"
 msgstr ""
 
-#: includes/services.php:3246
+#: includes/services.php:3251
 msgid "Success text color"
 msgstr ""
 
-#: includes/services.php:3247
+#: includes/services.php:3252
 msgid "Success background"
 msgstr ""
 
-#: includes/services.php:3248
+#: includes/services.php:3253
 msgid "Warning text color"
 msgstr ""
 
-#: includes/services.php:3249
+#: includes/services.php:3254
 msgid "Warning background"
 msgstr ""
 
-#: includes/services.php:3250
+#: includes/services.php:3255
 msgid "Danger text color"
 msgstr ""
 
-#: includes/services.php:3251
+#: includes/services.php:3256
 msgid "Danger background"
 msgstr ""
 
-#: includes/services.php:3252
+#: includes/services.php:3257
 msgid "Cell padding"
 msgstr ""
 
-#: includes/services.php:3253
+#: includes/services.php:3258
 msgid "Space inside cells, e.g. 8px 12px. Lower is denser."
 msgstr ""
 
-#: includes/services.php:3255
+#: includes/services.php:3260
 msgid "Roundness of buttons and filter inputs, e.g. 6px."
 msgstr ""
 
-#: includes/services.php:3257
+#: includes/services.php:3262
 msgid "Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th."
 msgstr ""
 
-#: includes/services.php:3269
+#: includes/services.php:3274
 msgid "Normal"
 msgstr ""
 
-#: includes/services.php:3270
+#: includes/services.php:3275
 msgid "Bold"
 msgstr ""
 
-#: includes/services.php:3276
+#: includes/services.php:3281
 msgid "Rows per page"
 msgstr ""
 
-#: includes/services.php:3277
+#: includes/services.php:3282
 msgid "Maximum rows"
 msgstr ""
 
-#: includes/services.php:3278
+#: includes/services.php:3283
 msgid "Rows fetched and rendered, on every data source. Pre-filter larger datasets at the source."
 msgstr ""
 
-#: includes/services.php:3279
+#: includes/services.php:3284
 msgid "Selector prefix"
 msgstr ""
 
-#: includes/services.php:3280
+#: includes/services.php:3285
 msgid "Selector suffix"
 msgstr ""
 
-#: includes/services.php:3281
+#: includes/services.php:3286
 msgid "Pagination label: first"
 msgstr ""
 
-#: includes/services.php:3282
+#: includes/services.php:3287
 msgid "Pagination label: previous"
 msgstr ""
 
-#: includes/services.php:3283
+#: includes/services.php:3288
 msgid "Pagination label: next"
 msgstr ""
 
-#: includes/services.php:3284
+#: includes/services.php:3289
 msgid "Pagination label: last"
 msgstr ""
 
-#: includes/services.php:3285
+#: includes/services.php:3290
 msgid "Search text"
 msgstr ""
 
-#: includes/services.php:3286
+#: includes/services.php:3291
 msgid "Search placeholder"
 msgstr ""
 
-#: includes/services.php:3287
+#: includes/services.php:3292
 msgid "Dropdown text"
 msgstr ""
 
-#: includes/services.php:3288
+#: includes/services.php:3293
 msgid "Dropdown heading"
 msgstr ""
 
-#: includes/services.php:3290
+#: includes/services.php:3295
 msgid "Table buttons"
 msgstr ""
 
-#: includes/services.php:3300
+#: includes/services.php:3305
 msgid "Copy text"
 msgstr ""
 
-#: includes/services.php:3301
+#: includes/services.php:3306
 msgid "CSV text"
 msgstr ""
 
-#: includes/services.php:3302
+#: includes/services.php:3307
 msgid "Excel text"
 msgstr ""
 
-#: includes/services.php:3303
+#: includes/services.php:3308
 msgid "PDF text"
 msgstr ""
 
-#: includes/services.php:3304
+#: includes/services.php:3309
 msgid "Print text"
 msgstr ""
 
-#: includes/services.php:3305
+#: includes/services.php:3310
 msgid "Column visibility text"
 msgstr ""
 
-#: includes/services.php:3306
+#: includes/services.php:3311
 msgid "Page length text"
 msgstr ""
 
-#: includes/services.php:3387
+#: includes/services.php:3392
 msgid "Per-page selector"
 msgstr ""
 
-#: includes/services.php:3388
+#: includes/services.php:3393
 msgid "Buttons"
 msgstr ""
 
-#: includes/services.php:3390
+#: includes/services.php:3395
 msgid "Result summary"
 msgstr ""
 
-#: includes/services.php:3391
+#: includes/services.php:3396
 msgid "Pagination"
 msgstr ""
 
-#: includes/services.php:3394
+#: includes/services.php:3399
 msgid "Top left"
 msgstr ""
 
-#: includes/services.php:3395
+#: includes/services.php:3400
 msgid "Top right"
 msgstr ""
 
-#: includes/services.php:3396
+#: includes/services.php:3401
 msgid "Bottom left"
 msgstr ""
 
-#: includes/services.php:3397
+#: includes/services.php:3402
 msgid "Bottom right"
 msgstr ""
 

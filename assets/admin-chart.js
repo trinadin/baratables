@@ -240,32 +240,16 @@ jQuery(function($) {
 		var $modal = $('#btbl-chart-type-modal');
 		var $chooser = $modal.find('.btbl-chart-type-chooser');
 		var $openers = $('.btbl-chart-preview-trigger');
-		var $closers = $modal.find('.btbl-chart-modal__close, .btbl-chart-modal__backdrop');
-		if (!$select.length || !$modal.length || !$chooser.length) {
+		if (!$select.length || !$modal.length || !$chooser.length || typeof $modal[0].showModal !== 'function') {
 			return;
 		}
 
-		var lastFocus = null;
-
-		function getFocusable() {
-			return $modal.find('.btbl-chart-type-card, .btbl-chart-modal__close, a[href], button').filter(':visible');
-		}
-
-		function closeModal() {
-			if (!$modal.hasClass('is-open')) {
-				return;
-			}
-			$modal.removeClass('is-open');
-			// Return focus to the control that opened the modal.
-			if (lastFocus && typeof lastFocus.focus === 'function') {
-				lastFocus.focus();
-			}
-		}
-
-		function openModal(trigger) {
-			lastFocus = trigger || document.activeElement;
-			$modal.addClass('is-open');
-			// Move focus into the dialog (active card, else first card/close).
+		// The dialog element carries the mechanics showModal() provides: the top layer,
+		// focus trapping, Escape to close, and returning focus to the control that opened
+		// it. Only the open/close calls and the initial focus target remain here.
+		function openModal() {
+			$modal[0].showModal();
+			// Focus the active card (else the first card, else the close button).
 			var $target = $chooser.find('.btbl-chart-type-card.is-active').first();
 			if (!$target.length) {
 				$target = $chooser.find('.btbl-chart-type-card').first();
@@ -286,26 +270,6 @@ jQuery(function($) {
 				activate(this);
 			});
 		}
-
-		// Trap Tab within the open dialog.
-		$modal.on('keydown', function(e) {
-			if (e.key !== 'Tab' || !$modal.hasClass('is-open')) {
-				return;
-			}
-			var $focusable = getFocusable();
-			if (!$focusable.length) {
-				return;
-			}
-			var first = $focusable[0];
-			var last = $focusable[$focusable.length - 1];
-			if (e.shiftKey && document.activeElement === first) {
-				e.preventDefault();
-				last.focus();
-			} else if (!e.shiftKey && document.activeElement === last) {
-				e.preventDefault();
-				first.focus();
-			}
-		});
 
 		function syncFromSelect() {
 			var val = $select.val() || '';
@@ -328,19 +292,23 @@ jQuery(function($) {
 			}
 			$select.val(type).trigger('change');
 			syncFromSelect();
-			closeModal();
+			$modal[0].close();
+		});
+
+		// The ::backdrop area hit-tests as the dialog element itself, so a click that
+		// reached the dialog and not its content is a backdrop click.
+		$modal.on('click', function(e) {
+			if (e.target === this) {
+				this.close();
+			}
 		});
 
 		$select.on('change', syncFromSelect);
 		syncFromSelect();
 
 		bindActivation($openers, openModal);
-		bindActivation($closers, closeModal);
-
-		$(document).on('keydown', function(e) {
-			if (e.key === 'Escape' && $modal.hasClass('is-open')) {
-				closeModal();
-			}
+		bindActivation($modal.find('.btbl-chart-modal__close'), function() {
+			$modal[0].close();
 		});
 	}
 

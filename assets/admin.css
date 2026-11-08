@@ -933,22 +933,16 @@
 	cursor: pointer;
 }
 
-.btbl-chart-modal {
-	position: fixed;
-	inset: 0;
-	display: none;
-	align-items: center;
-	justify-content: center;
-	z-index: 9999;
+/* A native <dialog> shown with showModal(): the browser owns the top layer,
+   focus trapping, Escape-to-close, and the backdrop. */
+dialog.btbl-chart-modal {
+	border: none;
+	padding: 0;
+	background: none;
+	width: min(900px, 92vw);
 }
 
-.btbl-chart-modal.is-open {
-	display: flex;
-}
-
-.btbl-chart-modal__backdrop {
-	position: absolute;
-	inset: 0;
+dialog.btbl-chart-modal::backdrop {
 	background: rgba(0, 0, 0, 0.35);
 }
 
@@ -957,8 +951,6 @@
 	background: #fff;
 	border-radius: 10px;
 	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
-	max-width: 900px;
-	width: 92%;
 	max-height: 80vh;
 	overflow: hidden;
 	display: flex;

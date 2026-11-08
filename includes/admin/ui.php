@@ -1697,9 +1697,8 @@ class BaraTables_Admin_Tab_Chart {
 				<p class="description"><?php esc_html_e('Add columns first, then configure the chart.', 'baratables'); ?></p>
 			<?php endif; ?>
 		</div>
-		<div id="btbl-chart-type-modal" class="btbl-chart-modal" role="dialog" aria-modal="true" aria-labelledby="btbl-chart-type-modal-title">
-			<div class="btbl-chart-modal__backdrop"></div>
-			<div class="btbl-chart-modal__content" role="document">
+		<dialog id="btbl-chart-type-modal" class="btbl-chart-modal" aria-labelledby="btbl-chart-type-modal-title">
+			<div class="btbl-chart-modal__content">
 				<div class="btbl-chart-modal__header">
 					<h3 id="btbl-chart-type-modal-title"><?php esc_html_e('Choose chart type', 'baratables'); ?></h3>
 					<a href="#" class="btbl-chart-modal__close" aria-label="<?php esc_attr_e('Close chart type chooser', 'baratables'); ?>">&times;</a>
@@ -1731,7 +1730,7 @@ class BaraTables_Admin_Tab_Chart {
 					</div>
 				</div>
 			</div>
-		</div>
+		</dialog>
 		<?php
 	}
 

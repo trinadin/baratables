@@ -567,7 +567,7 @@ class BaraTables_Frontend {
 			? BaraTables_Service::sanitize_custom_css((string) ($table_options['customCss'] ?? ''))
 			: '';
 		if ($custom_css !== '') {
-			$custom_css = BaraTables_Service::scope_table_css($custom_css, $base_id);
+			$custom_css = BaraTables_Css_Scoper::scope_table_css($custom_css, $base_id);
 		}
 		$custom_css_tag = $custom_css !== ''
 			? '<style data-btbl-css="' . esc_attr($table_id) . '">' . $custom_css . '</style>'

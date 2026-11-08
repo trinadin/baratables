@@ -184,7 +184,7 @@ class BaraTables {
 	}
 
 	public function run_data_migrations(): void {
-		$recovery = $this->service()->retry_chart_link_recovery();
+		$recovery = BaraTables_Chart_Link_Recovery::retry();
 		if ($recovery['remaining'] > 0 || $recovery['error']) {
 			BaraTables_Admin_Notice::queue(
 				sprintf(
@@ -204,7 +204,7 @@ class BaraTables {
 				'success'
 			);
 		}
-		$error = $this->service()->migrate_data_schema();
+		$error = BaraTables_Data_Migrations::run();
 		if ($error) {
 			BaraTables_Admin_Notice::queue(
 				__('BaraTables could not finish upgrading its saved data. Your previous data was kept and the upgrade will retry automatically.', 'baratables'),

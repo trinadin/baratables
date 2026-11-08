@@ -79,7 +79,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 	//   - 'btbl_auto_label_migrated' option  (legacy gate left by the 1.1.0 auto-label backfill,
 	//                                          removed in a later version; cleaned here for old sites)
 	//   - 'btbl_label_i18n_migrated' option  (gate for the 1.2.3 English-label backfill,
-	//                                          BaraTables_Service::LABEL_I18N_MIGRATION_OPTION)
+	//                                          BaraTables_Data_Migrations::LABEL_I18N_MIGRATION_OPTION)
 	//   - 'btbl_data_schema_version' option  (current consolidated data-schema gate)
 	//   - 'btbl_chart_link_recovery' option (retry journal for an interrupted linked-chart rollback)
 	//   - 'btbl_default_design' option     (the site-wide default design, BaraTables_Design::OPTION_KEY)

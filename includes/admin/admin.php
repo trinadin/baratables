@@ -334,7 +334,7 @@ class BaraTables_Admin {
 					? array_values(array_unique(array_map('intval', $error_data['rollback_failed_chart_ids'])))
 					: [];
 				if (!$rollback_error && !empty($failed_chart_ids)) {
-					$queue_error = $this->service->queue_chart_link_recovery($failed_chart_ids, $slug, $old_slug);
+					$queue_error = BaraTables_Chart_Link_Recovery::queue($failed_chart_ids, $slug, $old_slug);
 					BaraTables_Admin_Notice::queue(
 						$queue_error
 							? sprintf(

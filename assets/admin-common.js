@@ -1,46 +1,26 @@
 jQuery(function($) {
-	var isActivationEvent = window.BaraTablesAdminCore.isActivationEvent;
+	var adminCore = window.BaraTablesAdminCore;
+	var isActivationEvent = adminCore.isActivationEvent;
+	var announce = adminCore.announce;
 
 	function showCopiedState($element) {
 		if (!$element || !$element.length) {
 			return;
 		}
 		$element.addClass('is-copied');
-		var label = $element.data('copied-label') || 'Copied';
-		var $live = $('#btbl-copy-live');
-		if (!$live.length) {
-			$live = $('<span id="btbl-copy-live" class="screen-reader-text" aria-live="polite"></span>').appendTo('body');
-		}
-		$live.text('');
-		setTimeout(function() { $live.text(label); }, 50);
+		announce($element.data('copied-label') || 'Copied');
 		setTimeout(function() { $element.removeClass('is-copied'); }, 1500);
-	}
-
-	function fallbackCopy(text, $element) {
-		var $temporary = $('<textarea>').css({position: 'absolute', left: '-9999px', top: '0'}).val(text).appendTo('body');
-		$temporary[0].select();
-		try {
-			document.execCommand('copy');
-			showCopiedState($element);
-		} catch (error) {
-			if (window.console && console.warn) { console.warn('Copy failed', error); }
-		}
-		$temporary.remove();
 	}
 
 	function copyShortcode(text, $element) {
 		if (!text) {
 			return;
 		}
-		if (navigator.clipboard && navigator.clipboard.writeText) {
-			navigator.clipboard.writeText(text).then(function() {
-				showCopiedState($element);
-			}).catch(function() {
-				fallbackCopy(text, $element);
-			});
-		} else {
-			fallbackCopy(text, $element);
-		}
+		adminCore.copyText(text).then(function() {
+			showCopiedState($element);
+		}).catch(function(error) {
+			if (window.console && console.warn) { console.warn('Copy failed', error); }
+		});
 	}
 
 	$(document).on('click keydown', '.btbl-shortcode', function(event) {

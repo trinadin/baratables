@@ -1108,7 +1108,7 @@ jQuery(function($) {
 	});
 	$(document).on('keydown', SAVE_CONTROLS, function(e) {
 		// Enter or Space on a focused save button activates it.
-		if (e.which === 13 || e.which === 32) {
+		if (adminCore.isActivationEvent(e)) {
 			saveIntent = true;
 		}
 	});

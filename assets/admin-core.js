@@ -339,7 +339,7 @@
 			// The server accepts "#" plus exactly three or six hex digits and rejects
 			// everything else, so the field has to agree with it exactly: a valid #rgb is not
 			// "not finished yet", and a bare "fff" or a doubled "##fff" is not a colour.
-			var complete = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(masked);
+			var complete = normalizeHex(masked) !== '';
 			markValidity($(this), masked === '' || complete);
 			if (complete) {
 				$picker.val(masked);
@@ -356,13 +356,12 @@
 	}
 
 	// Copy text to the clipboard. The async Clipboard API is unavailable on a non-secure
-	// origin (plain http on a LAN) and in some webviews, so the classic hidden-textarea
-	// route is the fallback. Shared: both editors copy CSS, and a fallback that only
-	// one of them had would fail on exactly the page that needed it.
-	function copyText(text) {
-		if (navigator.clipboard && navigator.clipboard.writeText) {
-			return navigator.clipboard.writeText(text);
-		}
+	// origin (plain http on a LAN) and in some webviews, and an available API can still
+	// reject (permission dismissed), so both routes fall back to the classic
+	// hidden-textarea copy. Shared: both editors copy CSS and the lists copy shortcodes,
+	// and a fallback that only one surface had would fail on exactly the page that
+	// needed it.
+	function copyTextFallback(text) {
 		var deferred = $.Deferred();
 		var $area = $('<textarea>').val(text).css({position: 'fixed', opacity: '0'}).appendTo('body');
 		$area[0].select();
@@ -374,6 +373,15 @@
 		}
 		$area.remove();
 		return deferred.promise();
+	}
+
+	function copyText(text) {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			return navigator.clipboard.writeText(text).catch(function() {
+				return copyTextFallback(text);
+			});
+		}
+		return copyTextFallback(text);
 	}
 
 	// A live region for saying something the screen cannot show.

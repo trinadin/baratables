@@ -107,7 +107,10 @@
 	// The effective value of a token: the table's own value wins, a blank one inherits
 	// the site default, and a blank one in both places stays blank. The preview and Copy
 	// CSS both read this, so neither can show something the page will not publish.
-	function effectiveValue(key) {
+	// Named distinctly from admin-core's effectiveValue(): that one selects on the raw
+	// value, while this surface sanitizes each candidate first, so an invalid typed value
+	// falls through to the inherited default here instead of showing as itself.
+	function effectiveTokenValue(key) {
 		return sanitizedValue(key, fieldValue(key)) || siteDefaultValue(key);
 	}
 
@@ -115,7 +118,7 @@
 		var vars = [];
 		var map = (config && config.varMap) || {};
 		Object.keys(map).forEach(function(key) {
-			var value = effectiveValue(key);
+			var value = effectiveTokenValue(key);
 			if (!value) { return; }
 			map[key].forEach(function(property) {
 				vars.push(property + ':' + value);

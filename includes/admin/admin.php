@@ -5,8 +5,8 @@ if (!defined('ABSPATH')) {
 }
 
 class BaraTables_Admin {
-	public const NONCE_ACTION = 'baratables_save';
-	public const NONCE_FIELD = '_baratables_nonce';
+	public const NONCE_ACTION = 'btbl_save';
+	public const NONCE_FIELD = '_btbl_nonce';
 
 	private BaraTables_Service $service;
 	private BaraTables_Repository $repo;

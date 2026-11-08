@@ -492,6 +492,8 @@ trait BaraTables_Server_Side_Trait {
 				$sortable[$slug] = true;
 			}
 		}
+		// btbl_search_columns here is the AJAX field (a JSON array); the published URL
+		// parameter btbl_search_cols is read client-side and never reaches this endpoint.
 		$search_slugs = $this->decode_server_side_list($request['btbl_search_columns'] ?? []);
 		if (is_wp_error($search_slugs)) {
 			return $search_slugs;

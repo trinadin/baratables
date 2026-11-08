@@ -242,12 +242,12 @@ class BaraTables_Admin_Duplicator {
 		$post = get_post($post_id);
 		$map = $this->cpt_map();
 		if (!$post instanceof WP_Post || !isset($map[$post->post_type])) {
-			return new WP_Error('btbl_invalid_duplicate', __('Invalid duplicate request.', 'baratables'));
+			return new WP_Error('baratables_invalid_duplicate', __('Invalid duplicate request.', 'baratables'));
 		}
 		$conf = $map[$post->post_type];
 		$definition = get_post_meta($post_id, $conf['meta_key'], true);
 		if (!is_array($definition) || empty($definition)) {
-			return new WP_Error('btbl_duplicate_missing_definition', __('The original item has no saved definition to duplicate.', 'baratables'));
+			return new WP_Error('baratables_duplicate_missing_definition', __('The original item has no saved definition to duplicate.', 'baratables'));
 		}
 
 		/* translators: %s is the original item title. */
@@ -263,7 +263,7 @@ class BaraTables_Admin_Duplicator {
 
 		$new_post = get_post((int) $new_id);
 		if (!$new_post instanceof WP_Post) {
-			return $this->cleanup_failed_duplicate((int) $new_id, new WP_Error('btbl_duplicate_missing_post', __('The duplicated item could not be loaded.', 'baratables')));
+			return $this->cleanup_failed_duplicate((int) $new_id, new WP_Error('baratables_duplicate_missing_post', __('The duplicated item could not be loaded.', 'baratables')));
 		}
 		$persistence = BaraTables_Entity_Persistence::from_descriptor($conf);
 		// Drafts bypass WordPress' normal slug-collision check, so use the entity identity

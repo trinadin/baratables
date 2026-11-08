@@ -45,7 +45,7 @@ jQuery(function($) {
 				load: function(query, callback) {
 					var base = {
 						action: 'btbl_search_chart_tables',
-						_baratables_nonce: auth.nonce,
+						_btbl_nonce: auth.nonce,
 						post_id: auth.postId,
 						search: query
 					};

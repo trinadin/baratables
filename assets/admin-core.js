@@ -1,9 +1,11 @@
 (function(window, $) {
+	// The nonce field name is a PHP<->JS contract: BaraTables_Admin::NONCE_FIELD renders it
+	// and this reads it; keep the two in step.
 	function formAuth($control) {
 		var $form = $control && $control.length ? $control.closest('form') : $();
 		if (!$form.length) { $form = $('#post'); }
 		return {
-			nonce: $form.find('input[name="_baratables_nonce"]').val() || '',
+			nonce: $form.find('input[name="_btbl_nonce"]').val() || '',
 			postId: $('#post_ID').val() || $form.find('input[name="post_ID"]').val() || 0
 		};
 	}
@@ -38,7 +40,7 @@
 			}
 			data = $.extend({}, data, {
 				post_id: auth.postId,
-				_baratables_nonce: auth.nonce
+				_btbl_nonce: auth.nonce
 			});
 		} else if (!window.ajaxurl) {
 			unavailable();

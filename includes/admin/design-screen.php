@@ -235,7 +235,9 @@ class BaraTables_Admin_Design_Screen {
 			'tokenTypes' => BaraTables_Service::design_token_types(),
 			// The chart's own maps, shipped like the table's varMap: the site screen
 			// edits the chart half of the design too, and its Copy CSS has to hand the
-			// chart's container tokens back as CSS.
+			// chart's container tokens back as CSS. The page therefore carries these
+			// maps twice -- here and in the chart script's own element below -- because
+			// each script owns its config element; sharing one element would couple them.
 			'chartVarMap' => $chart['chartVarMap'],
 			'chartFieldMap' => $chart['chartFieldMap'],
 			'siteDefault' => [],

@@ -85,6 +85,32 @@
 		return decodeEntities(html.replace(/<[^>]*?>/g, ' ')).replace(/\s+/g, ' ').trim();
 	}
 
+	// The wrapper's runtime-error notice, shown when initialization fails. Both the table
+	// runtime and the chart-only bootstrap fail through these so the visitor sees the same
+	// recovery message either way.
+	function showRuntimeError(wrapper) {
+		if (!wrapper) { return; }
+		var message = wrapper.querySelector('.btbl-runtime-error');
+		if (message) { message.hidden = false; }
+	}
+
+	function hideRuntimeError(wrapper) {
+		if (!wrapper) { return; }
+		var message = wrapper.querySelector('.btbl-runtime-error');
+		if (message) { message.hidden = true; }
+	}
+
+	function revealFailure(wrapper, consoleMessage, error) {
+		if (wrapper) {
+			wrapper.classList.remove('is-loading');
+			wrapper.classList.add('is-init-failed');
+			showRuntimeError(wrapper);
+		}
+		if (window.console && console.error) {
+			console.error(consoleMessage, error || 'Required runtime unavailable.');
+		}
+	}
+
 	window.BaraTablesUtils = {
 		extractText: extractText,
 		escapeHtml: escapeHtml,
@@ -94,6 +120,9 @@
 		slugIndex: slugIndex,
 		compactValues: compactValues,
 		resolveLabelHtml: resolveLabelHtml,
-		labelToPlainText: labelToPlainText
+		labelToPlainText: labelToPlainText,
+		showRuntimeError: showRuntimeError,
+		hideRuntimeError: hideRuntimeError,
+		revealFailure: revealFailure
 	};
 })(window);

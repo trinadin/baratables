@@ -59,15 +59,15 @@ jQuery(function($) {
 	}
 
 	var gridLabels = {
-		moveUp: $customGrid.data('label-move-up') || 'Move row up',
-		moveDown: $customGrid.data('label-move-down') || 'Move row down',
-		insert: $customGrid.data('label-insert') || 'Insert row below',
-		duplicate: $customGrid.data('label-duplicate') || 'Duplicate row',
-		remove: $customGrid.data('label-delete') || 'Delete row'
+		moveUp: $customGrid.data('label-move-up') || '',
+		moveDown: $customGrid.data('label-move-down') || '',
+		insert: $customGrid.data('label-insert') || '',
+		duplicate: $customGrid.data('label-duplicate') || '',
+		remove: $customGrid.data('label-delete') || ''
 	};
-	var gridConfirmShrinkOne = $customGrid.data('confirm-shrink-one') || 'Reducing the grid will remove %d filled cell. Continue?';
-	var gridConfirmShrinkMany = $customGrid.data('confirm-shrink-many') || 'Reducing the grid will remove %d filled cells. Continue?';
-	var gridAtRowCap = $customGrid.data('at-row-cap') || 'The grid is at its maximum of %d rows.';
+	var gridConfirmShrinkOne = $customGrid.data('confirm-shrink-one') || '';
+	var gridConfirmShrinkMany = $customGrid.data('confirm-shrink-many') || '';
+	var gridAtRowCap = $customGrid.data('at-row-cap') || '';
 	var gridPasteCapped = $customGrid.data('paste-capped') || '';
 
 	// One-level undo for the restructure actions (delete/insert/duplicate and multi-cell
@@ -152,12 +152,9 @@ jQuery(function($) {
 	// Build the grid as one HTML string and parse it once. Constructing jQuery objects per row and
 	// cell scales poorly and also resets the scroll position during row actions.
 	var escGridHtml = window.BaraTablesUtils.escapeHtml;
-	// The plain text of a heading, for an accessible name. The heading may carry
-	// markup, and an accessible name is text, so the tags are stripped -- not parsed,
-	// so nothing in the string is ever executed.
-	function gridPlainText(value) {
-		return String(value === null || value === undefined ? '' : value).replace(/<[^>]*>/g, '');
-	}
+	// The plain text of a heading, for an accessible name: the shared helper strips
+	// markup, decodes entities, and collapses whitespace, so the name reads as text.
+	var gridPlainText = window.BaraTablesUtils.labelToPlainText;
 	function rowActionHtml(cls, dashicon, label, disabled) {
 		return '<button type="button" class="button-link ' + cls + '"'
 			+ ' title="' + escGridHtml(label) + '" aria-label="' + escGridHtml(label) + '"'
@@ -177,10 +174,10 @@ jQuery(function($) {
 	}
 
 	function renderCustomGrid(headers, rows, counts) {
-		var headingLabel = $customGrid.data('heading-label') || 'Column';
-		var colTemplate = $customGrid.data('column-label') || 'Column %d';
-		var rowTemplate = $customGrid.data('row-label') || 'Row %d';
-		var cellTemplate = $customGrid.data('cell-label') || 'Row %1$d, %2$s';
+		var headingLabel = $customGrid.data('heading-label') || '';
+		var colTemplate = $customGrid.data('column-label') || '';
+		var rowTemplate = $customGrid.data('row-label') || '';
+		var cellTemplate = $customGrid.data('cell-label') || '';
 		var html = ['<table class="widefat fixed striped"><thead><tr>'];
 		html.push('<th scope="col" class="btbl-grid-corner">' + escGridHtml(headingLabel) + '</th>');
 		for (var c = 0; c < counts.cols; c++) {

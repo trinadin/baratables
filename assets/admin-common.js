@@ -8,7 +8,7 @@ jQuery(function($) {
 			return;
 		}
 		$element.addClass('is-copied');
-		announce($element.data('copied-label') || 'Copied');
+		announce($element.data('copied-label') || '');
 		setTimeout(function() { $element.removeClass('is-copied'); }, 1500);
 	}
 
@@ -43,7 +43,7 @@ jQuery(function($) {
 		var $toggle = $(this);
 		var hide = !document.body.classList.contains('btbl-help-hidden');
 		document.body.classList.toggle('btbl-help-hidden', hide);
-		var label = hide ? ($toggle.data('show-label') || 'Show help text') : ($toggle.data('hide-label') || 'Hide help text');
+		var label = hide ? ($toggle.data('show-label') || '') : ($toggle.data('hide-label') || '');
 		$toggle.attr({'aria-label': label, title: label});
 		$.post(window.ajaxurl, {action: 'btbl_toggle_help', hide: hide ? '1' : '0', _wpnonce: $toggle.data('nonce')});
 	});

@@ -382,9 +382,9 @@ jQuery(function($) {
 	}
 
 	function formatTermCount($count, count) {
-		var emptyText = $count.data('empty') || 'No terms selected';
-		var singular = $count.data('singular') || '%d term selected';
-		var plural = $count.data('plural') || '%d terms selected';
+		var emptyText = $count.data('empty') || '';
+		var singular = $count.data('singular') || '';
+		var plural = $count.data('plural') || '';
 		if (!count) {
 			return emptyText;
 		}
@@ -490,8 +490,8 @@ jQuery(function($) {
 	$(document).on('click', '.btbl-media-select', function(e) {
 		e.preventDefault();
 		var targetSelector = $(this).data('target');
-		var frameTitle = $(this).data('frame-title') || 'Select CSV file';
-		var frameButton = $(this).data('frame-button') || 'Use CSV';
+		var frameTitle = $(this).data('frame-title') || '';
+		var frameButton = $(this).data('frame-button') || '';
 		var $target = $(targetSelector);
 		if (!$target.length) {
 			return;

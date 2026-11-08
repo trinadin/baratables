@@ -947,6 +947,21 @@ class BaraTables_Admin_Tab_Columns {
 
 
 class BaraTables_Admin_Tab_Table {
+
+	/**
+	 * The gear button that reveals one flag setting's inline options. Every flag control
+	 * renders the same button shape, differing only in the setting it names, whether the
+	 * flag is currently off (disabled gear), and the options block it controls.
+	 */
+	private static function render_flag_options_toggle(string $setting_name, bool $disabled, string $controls_id = ''): void {
+		$controls_attr = $controls_id !== '' ? ' aria-controls="' . esc_attr($controls_id) . '"' : '';
+		?>
+		<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false"<?php echo $controls_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Assembled from escaped parts. ?> aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $setting_name)); ?>" <?php disabled($disabled); ?>>
+			<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+		</button>
+		<?php
+	}
+
 	public function render(array $context): void {
 		$table_options = $context['table_options'] ?? [];
 		$option_schema = BaraTables_Service::get_table_option_schema();
@@ -1060,9 +1075,7 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_caption" data-btbl-override-toggle <?php checked($caption_value !== ''); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($option_schema['caption']['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $option_schema['caption']['label'])); ?>" <?php disabled($caption_value === ''); ?>>
-									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-								</button>
+								<?php self::render_flag_options_toggle($option_schema['caption']['label'], $caption_value === ''); ?>
 							</span>
 							<div class="btbl-field-options-body<?php echo $caption_value !== '' ? '' : ' is-hidden'; ?>">
 								<div class="btbl-options-row btbl-options-inline">
@@ -1079,9 +1092,7 @@ class BaraTables_Admin_Tab_Table {
 									<input type="checkbox" id="btbl_override_rowlimit" data-btbl-override-toggle <?php checked($row_limit_overridden); ?> />
 									<span class="btbl-field-name"><?php echo esc_html($row_limit_config['label']); ?></span>
 								</label>
-								<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $row_limit_config['label'])); ?>" <?php disabled(!$row_limit_overridden); ?>>
-									<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-								</button>
+								<?php self::render_flag_options_toggle($row_limit_config['label'], !$row_limit_overridden); ?>
 							</span>
 							<div class="btbl-field-options-body<?php echo $row_limit_overridden ? '' : ' is-hidden'; ?>">
 								<div class="btbl-options-row btbl-options-inline">
@@ -1123,9 +1134,7 @@ class BaraTables_Admin_Tab_Table {
 										<span class="btbl-field-name"><?php echo esc_html($config['label']); ?></span>
 									</label>
 									<?php if ($has_inline) : ?>
-										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $config['label'])); ?>" <?php disabled(empty($table_options[$flag_key])); ?>>
-											<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-										</button>
+										<?php self::render_flag_options_toggle($config['label'], empty($table_options[$flag_key])); ?>
 									<?php endif; ?>
 								</span>
 								<?php if ($has_inline) : ?>
@@ -1278,9 +1287,7 @@ class BaraTables_Admin_Tab_Table {
 										<span class="btbl-field-name"><?php echo esc_html($choice_label); ?></span>
 									</label>
 									<?php if ($text_key !== '') : ?>
-										<button type="button" class="btbl-options-toggle btbl-flag-options-toggle" aria-expanded="false" aria-label="<?php echo esc_attr(sprintf(/* translators: %s is the name of the column or setting the button belongs to. */ __('Options for %s', 'baratables'), $choice_label)); ?>" aria-controls="<?php echo esc_attr($choice_id . '_options'); ?>" <?php disabled(!$button_checked); ?>>
-											<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
-										</button>
+										<?php self::render_flag_options_toggle($choice_label, !$button_checked, $choice_id . '_options'); ?>
 									<?php endif; ?>
 								</div>
 								<?php if ($text_key !== '') : ?>

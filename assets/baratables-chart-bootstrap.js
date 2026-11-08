@@ -9,13 +9,12 @@
 		return chartElement && chartElement.closest ? chartElement.closest('.btbl-table-wrapper') : null;
 	}
 
+	// The failure reveal itself lives in baratables-utils, shared with the table runtime.
+	// The guard keeps the no-utils path (the runtime never loaded) able to say so.
 	function fail(config, error) {
-		var wrapper = wrapperFor(config);
-		if (wrapper) {
-			wrapper.classList.remove('is-loading');
-			wrapper.classList.add('is-init-failed');
-			var message = wrapper.querySelector('.btbl-runtime-error');
-			if (message) { message.hidden = false; }
+		if (utils && utils.revealFailure) {
+			utils.revealFailure(wrapperFor(config), '[BaraTables] Chart initialization failed.', error);
+			return;
 		}
 		if (window.console && console.error) {
 			console.error('[BaraTables] Chart initialization failed.', error || 'Required runtime unavailable.');

@@ -11,27 +11,12 @@
 		return null;
 	}
 
-	function showRuntimeError(wrapper) {
-		if (!wrapper) { return; }
-		var message = wrapper.querySelector('.btbl-runtime-error');
-		if (message) { message.hidden = false; }
-	}
-
-	function hideRuntimeError(wrapper) {
-		if (!wrapper) { return; }
-		var message = wrapper.querySelector('.btbl-runtime-error');
-		if (message) { message.hidden = true; }
-	}
-
+	// The failure reveal lives in baratables-utils so the chart-only bootstrap and this
+	// runtime fail through one path; only the console message differs per caller.
+	var showRuntimeError = utils.showRuntimeError;
+	var hideRuntimeError = utils.hideRuntimeError;
 	function revealFailure(wrapper, error) {
-		if (wrapper) {
-			wrapper.classList.remove('is-loading');
-			wrapper.classList.add('is-init-failed');
-			showRuntimeError(wrapper);
-		}
-		if (window.console && console.error) {
-			console.error('[BaraTables] Front-end initialization failed.', error || 'Required runtime unavailable.');
-		}
+		utils.revealFailure(wrapper, '[BaraTables] Front-end initialization failed.', error);
 	}
 
 	if (!utils) {
@@ -640,6 +625,9 @@
 					data.table_id = config.serverSide.tableId;
 					data.token = config.serverSide.token;
 					data.btbl_search_term = state.term || '';
+					// The AJAX field is btbl_search_columns (server-side.php decodes a JSON
+					// array); the shareable URL parameter is btbl_search_cols (readme-documented).
+					// Two transports, two names -- kept as-is because the URL form is published.
 					data.btbl_search_columns = JSON.stringify((state.columns || []).map(function(index) {
 						return indexedSlugs[parseInt(index, 10)] || '';
 					}).filter(Boolean));

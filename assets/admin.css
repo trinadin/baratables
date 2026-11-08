@@ -1466,7 +1466,7 @@ body.btbl-help-hidden .btbl-admin .btbl-field-hint {
 	align-items: center;
 	gap: 5px;
 	padding: 2px 4px 2px 2px;
-	border: 1px solid var(--btbl-color-border, #c3c4c7);
+	border: 1px solid var(--btbl-border-medium);
 	border-radius: 3px;
 	background: #fff;
 	cursor: grab;

@@ -22,8 +22,11 @@
 	--dt-body_padding: var(--btbl-cell-padding, 8px 10px);
 	--dt-header_border: 1px solid var(--btbl-header-border, rgba(0, 0, 0, 0.3));
 	--dt-body_border: 1px solid var(--btbl-row-border, rgba(0, 0, 0, 0.15));
-	--dt-input_border-radius: var(--btbl-radius, 3px);
-	--dt-paging-button_border-radius: var(--btbl-radius, 3px);
+	/* The unset fallback is the 6px the Design tab's "Corner radius" placeholder names;
+	   every control that reads --btbl-radius uses the same default so an unstyled table
+	   keeps one corner language. */
+	--dt-input_border-radius: var(--btbl-radius, 6px);
+	--dt-paging-button_border-radius: var(--btbl-radius, 6px);
 }
 
 /* The sorted column carries a subtle accent tint instead of DataTables' neutral gray. It is
@@ -141,7 +144,7 @@
 
 .btbl-filter .ts-control {
 	border: 1px solid var(--btbl-border);
-	border-radius: var(--btbl-radius, 4px);
+	border-radius: var(--btbl-radius, 6px);
 }
 
 .btbl-filter .ts-wrapper.focus .ts-control {
@@ -151,7 +154,7 @@
 
 .btbl-filter .ts-dropdown {
 	border-color: var(--btbl-border);
-	border-radius: var(--btbl-radius, 4px);
+	border-radius: var(--btbl-radius, 6px);
 	box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
 	margin-top: 4px;
 	z-index: 9999;
@@ -225,7 +228,7 @@
 .btbl-edit-link {
 	border: 1px solid var(--btbl-border);
 	background: var(--btbl-surface);
-	border-radius: var(--btbl-radius, 4px);
+	border-radius: var(--btbl-radius, 6px);
 	padding: 5px 10px;
 	font-size: 13px;
 	cursor: pointer;

@@ -4,7 +4,7 @@ Tags: tables, datatables, charts, csv, shortcode
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -96,6 +96,11 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance.
 5. Responsive table on a phone.
 
 == Changelog ==
+
+= 2.1.1 =
+Fixes:
+
+* On right-to-left sites, filter spacing and the search dropdown's scrollbar sit on the correct side, and the admin's actions column, help toggle, layout arrows, and editor tabs follow the text direction.
 
 = 2.1.0 =
 New:
@@ -373,6 +378,9 @@ Security:
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.1.1 =
+Fixes right-to-left spacing and direction details in the front end and the admin.
 
 = 2.1.0 =
 Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.

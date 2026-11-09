@@ -9,7 +9,7 @@
  * Property prefixes avoid collisions with wpdb members.
  */
 
-if (!defined("ABSPATH")) {
+if (!defined('ABSPATH')) {
 	exit;
 }
 

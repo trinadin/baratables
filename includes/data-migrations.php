@@ -8,7 +8,7 @@
  * upgrade retries on the next request.
  */
 
-if (!defined("ABSPATH")) {
+if (!defined('ABSPATH')) {
 	exit;
 }
 

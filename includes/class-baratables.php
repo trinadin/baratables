@@ -139,7 +139,7 @@ class BaraTables {
 				'id' => ['type' => 'string', 'default' => ''],
 			],
 				'editor_script' => 'baratables-block-picker',
-				'render_callback' => [$this, 'render_table_block'],
+			'render_callback' => [$this, 'render_table_block'],
 		]);
 
 		register_block_type('baratables/chart', [
@@ -148,7 +148,7 @@ class BaraTables {
 				'id' => ['type' => 'string', 'default' => ''],
 			],
 				'editor_script' => 'baratables-block-picker',
-				'render_callback' => [$this, 'render_chart_block'],
+			'render_callback' => [$this, 'render_chart_block'],
 		]);
 	}
 

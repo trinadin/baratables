@@ -8,7 +8,7 @@
  * Idempotent: a chart an administrator has deliberately re-pointed since is kept.
  */
 
-if (!defined("ABSPATH")) {
+if (!defined('ABSPATH')) {
 	exit;
 }
 

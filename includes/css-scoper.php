@@ -7,7 +7,7 @@
  * selector onto every top-level rule; malformed CSS passes through as-is.
  */
 
-if (!defined("ABSPATH")) {
+if (!defined('ABSPATH')) {
 	exit;
 }
 

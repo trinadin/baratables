@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-09T20:47:19+00:00\n"
+"POT-Creation-Date: 2026-11-09T22:43:46+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -487,7 +487,7 @@ msgid "Paste it into Appearance > Customize > Additional CSS (or a child theme s
 msgstr ""
 
 #: includes/admin/design-screen.php:284
-#: includes/repositories.php:615
+#: includes/repositories.php:622
 msgid "Tables"
 msgstr ""
 
@@ -496,7 +496,7 @@ msgid "These are the colors and the spacing. Whether the stripes and highlights 
 msgstr ""
 
 #: includes/admin/design-screen.php:305
-#: includes/repositories.php:733
+#: includes/repositories.php:740
 msgid "Charts"
 msgstr ""
 
@@ -1185,7 +1185,7 @@ msgid "Switching tables will reset the column choices for this chart. Continue?"
 msgstr ""
 
 #: includes/admin/ui-chart-tabs.php:44
-#: includes/repositories.php:617
+#: includes/repositories.php:624
 msgid "No tables found."
 msgstr ""
 
@@ -2404,7 +2404,7 @@ msgid "Table admin tools"
 msgstr ""
 
 #: includes/frontend.php:754
-#: includes/repositories.php:613
+#: includes/repositories.php:620
 msgid "Edit table"
 msgstr ""
 
@@ -2595,101 +2595,101 @@ msgstr ""
 msgid "WordPress did not save the plugin ID lookup."
 msgstr ""
 
-#: includes/repositories.php:606
+#: includes/repositories.php:613
 msgctxt "post type general name"
 msgid "Tables"
 msgstr ""
 
-#: includes/repositories.php:607
+#: includes/repositories.php:614
 msgctxt "post type singular name"
 msgid "Table"
 msgstr ""
 
-#: includes/repositories.php:608
+#: includes/repositories.php:615
 msgctxt "admin menu"
 msgid "BaraTables"
 msgstr ""
 
-#: includes/repositories.php:609
+#: includes/repositories.php:616
 msgctxt "add new on admin bar"
 msgid "Table"
 msgstr ""
 
-#: includes/repositories.php:610
+#: includes/repositories.php:617
 msgctxt "table"
 msgid "Add New"
 msgstr ""
 
-#: includes/repositories.php:611
+#: includes/repositories.php:618
 msgid "Add table"
 msgstr ""
 
-#: includes/repositories.php:612
+#: includes/repositories.php:619
 msgid "New table"
 msgstr ""
 
-#: includes/repositories.php:614
+#: includes/repositories.php:621
 msgid "View table"
 msgstr ""
 
-#: includes/repositories.php:616
+#: includes/repositories.php:623
 msgid "Search tables"
 msgstr ""
 
-#: includes/repositories.php:618
+#: includes/repositories.php:625
 msgid "No tables found in Trash."
 msgstr ""
 
-#: includes/repositories.php:724
+#: includes/repositories.php:731
 msgctxt "post type general name"
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:725
+#: includes/repositories.php:732
 msgctxt "post type singular name"
 msgid "Chart"
 msgstr ""
 
-#: includes/repositories.php:726
+#: includes/repositories.php:733
 msgctxt "admin menu"
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:727
+#: includes/repositories.php:734
 msgctxt "add new on admin bar"
 msgid "Chart"
 msgstr ""
 
-#: includes/repositories.php:728
+#: includes/repositories.php:735
 msgctxt "chart"
 msgid "Add New"
 msgstr ""
 
-#: includes/repositories.php:729
+#: includes/repositories.php:736
 msgid "Add chart"
 msgstr ""
 
-#: includes/repositories.php:730
+#: includes/repositories.php:737
 msgid "New chart"
 msgstr ""
 
-#: includes/repositories.php:731
+#: includes/repositories.php:738
 msgid "Edit chart"
 msgstr ""
 
-#: includes/repositories.php:732
+#: includes/repositories.php:739
 msgid "View chart"
 msgstr ""
 
-#: includes/repositories.php:734
+#: includes/repositories.php:741
 msgid "Search charts"
 msgstr ""
 
-#: includes/repositories.php:735
+#: includes/repositories.php:742
 msgid "No charts found."
 msgstr ""
 
-#: includes/repositories.php:736
+#: includes/repositories.php:743
 msgid "No charts found in Trash."
 msgstr ""
 

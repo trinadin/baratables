@@ -12,11 +12,31 @@
 	}
 
 	// The failure reveal lives in baratables-utils so the chart-only bootstrap and this
-	// runtime fail through one path; only the console message differs per caller.
-	var showRuntimeError = utils.showRuntimeError;
-	var hideRuntimeError = utils.hideRuntimeError;
+	// runtime fail through one path; only the console message differs per caller. The
+	// utilities script is a declared dependency, but if it fails to load (404, blocked,
+	// CSP) this module must still say so: revealFailure falls back to the inline reveal
+	// the shared one was extracted from. The utils reads stay inside function bodies so
+	// the !utils branch below can actually run.
 	function revealFailure(wrapper, error) {
-		utils.revealFailure(wrapper, '[BaraTables] Front-end initialization failed.', error);
+		if (utils && utils.revealFailure) {
+			utils.revealFailure(wrapper, '[BaraTables] Front-end initialization failed.', error);
+			return;
+		}
+		if (wrapper) {
+			wrapper.classList.remove('is-loading');
+			wrapper.classList.add('is-init-failed');
+			var message = wrapper.querySelector('.btbl-runtime-error');
+			if (message) { message.hidden = false; }
+		}
+		if (window.console && console.error) {
+			console.error('[BaraTables] Front-end initialization failed.', error || 'Required runtime unavailable.');
+		}
+	}
+	function showRuntimeError(wrapper) {
+		if (utils) { utils.showRuntimeError(wrapper); }
+	}
+	function hideRuntimeError(wrapper) {
+		if (utils) { utils.hideRuntimeError(wrapper); }
 	}
 
 	if (!utils) {

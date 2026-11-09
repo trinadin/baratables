@@ -27,6 +27,11 @@
 	   keeps one corner language. */
 	--dt-input_border-radius: var(--btbl-radius, 6px);
 	--dt-paging-button_border-radius: var(--btbl-radius, 6px);
+	/* Buttons has its own radius token, and it was left at its vendored 3px, so the
+	   toolbar's own buttons (Copy, Export, Print, Columns) rounded differently from
+	   the search box beside them. The hover, active and active-hover variants all
+	   derive from this one, so bridging it carries them too. */
+	--dtb-button_border-radius: var(--btbl-radius, 6px);
 }
 
 /* The sorted column carries a subtle accent tint instead of DataTables' neutral gray. It is

@@ -91,10 +91,25 @@
 		var settle = function(ok) {
 			state.finished = true;
 			state.ok = ok;
-			state.waiting.forEach(function(pair) {
-				(ok ? pair[0] : pair[1])();
-			});
+			var waiting = state.waiting;
 			state.waiting = [];
+			if (!ok) {
+				// A failed load is not remembered as failed: the next click asks for the
+				// library again, so one lost connection does not leave the page with an
+				// export button that can never work.
+				delete lazyExportState[kind];
+			}
+			waiting.forEach(function(pair) {
+				// One table's handler must not strand the other tables that were waiting
+				// for the same library.
+				try {
+					(ok ? pair[0] : pair[1])();
+				} catch (err) {
+					if (window.console && console.error) {
+						console.error('[BaraTables] An export handler failed.', err);
+					}
+				}
+			});
 		};
 		// Scripts load in array order (pdfmake before its fonts); async=false keeps
 		// dynamically inserted scripts executing in insertion order.
@@ -116,14 +131,19 @@
 	// notice, and the message is the server's, translated, so it never reads as English
 	// on a translated site. The notice keeps the server's own wording on record, so a
 	// later runtime error can put it back.
-	function showExportFailure(kind, node, config, reason, error) {
-		var messages = config.exportErrorMessages || {};
-		var message = messages[kind] || '';
+	function exportWrapper(node) {
 		// Buttons hands the action a node collection, not the element; the element is its
 		// first entry. A raw element is accepted too, so the lookup does not depend on
 		// which one this version of Buttons passes.
 		var element = node && typeof node.get === 'function' ? node.get(0) : node;
-		var wrapper = element && element.closest ? element.closest('.btbl-table-wrapper') : null;
+		if (!element || !element.closest) { return null; }
+		return element.closest('.btbl-table-wrapper');
+	}
+
+	function showExportFailure(kind, node, config, reason, error) {
+		var messages = config.exportErrorMessages || {};
+		var message = messages[kind] || '';
+		var wrapper = exportWrapper(node);
 		if (wrapper) {
 			var notice = wrapper.querySelector('.btbl-runtime-error');
 			if (notice) {
@@ -141,48 +161,128 @@
 		}
 	}
 
+	// How long an export may run before the button is released anyway. The built-in
+	// actions do report completion, but the Excel one waits on a promise the plugin
+	// cannot see and the PDF one hands the file to an async save, so a failure can
+	// leave the button greyed out for the rest of the visit. The watchdog is the
+	// backstop: the button comes back and says what happened.
+	var EXPORT_WATCHDOG_MS = 30000;
+
+	// How long the failure watcher stays after the PDF action reports completion. That
+	// action hands the file over before the save finishes, so a save that fails
+	// arrives just after the button is already back.
+	var EXPORT_SETTLE_MS = 3000;
+
 	// The export button's stand-in action: load the library, then hand the click to the
 	// built-in html5 export action, unchanged. Buttons calls actions as
 	// action.call(buttonInstance, event, dtApi, node, config, callback) -- `this` is the
-	// button instance (disable/enable live on it) and the trailing callback reports
-	// completion, so both are forwarded. The button disables itself for the load so the
-	// wait reads as work in progress rather than a dead click.
+	// button instance (disable/enable and processing live on it) and the trailing
+	// callback reports completion, so both are forwarded. The button disables itself
+	// for the load so the wait reads as work in progress rather than a dead click.
 	//
 	// It stays disabled until the built-in action reports completion, so a click during
-	// the export cannot start a second download. Both built-in actions do call it: the
-	// Excel one after the workbook is written, the PDF one after the file is handed over.
+	// the export cannot start a second download. The button's own definition sets async
+	// to 0, so the action runs on the click instead of being deferred: a deferred
+	// action leaves the button live for the length of the deferral, and a second click
+	// in that window starts a second download. The plugin shows the working state
+	// itself for the same reason.
 	function lazyExportAction(kind, extendName, config) {
 		return function(e, dt, node, buttonConfig, callback) {
 			var buttonApi = this;
-			var reenable = function() {
+			var element = node && typeof node.get === 'function' ? node.get(0) : node;
+			var released = false;
+			var failed = false;
+			var watchdog = null;
+			var watcher = null;
+
+			var showProcessing = function(show) {
+				// Buttons draws its working state with a "processing" class on the button,
+				// and its own method for that does not clear the class reliably, so the
+				// class is toggled here. The vendored stylesheet is what draws the spinner,
+				// so the name is the one the bundle already ships.
+				if (element && element.classList) {
+					element.classList.toggle('processing', !!show);
+				}
+			};
+
+			var stopWatching = function() {
+				if (watcher) {
+					window.removeEventListener('unhandledrejection', watcher);
+					watcher = null;
+				}
+			};
+
+			// Give the button back to the visitor.
+			var release = function() {
+				if (released) { return; }
+				released = true;
+				if (watchdog) { window.clearTimeout(watchdog); watchdog = null; }
 				if (buttonApi && typeof buttonApi.enable === 'function') {
 					buttonApi.enable();
 				}
+				showProcessing(false);
+				if (typeof callback === 'function') { callback(); }
 			};
+
+			var fail = function(reason, error) {
+				if (failed) { return; }
+				failed = true;
+				release();
+				stopWatching();
+				showExportFailure(kind, node, config, reason, error || null);
+			};
+
+			var succeed = function() {
+				if (failed || released) { return; }
+				release();
+				// The export worked, so a failure notice from an earlier attempt must
+				// not stay up above a working table.
+				var wrapper = exportWrapper(node);
+				if (wrapper) { hideRuntimeError(wrapper); }
+				if (kind === 'pdf') {
+					// The PDF action reports completion before the file is handed over,
+					// so the watcher stays a moment longer to catch a save that fails.
+					window.setTimeout(stopWatching, EXPORT_SETTLE_MS);
+				} else {
+					stopWatching();
+				}
+			};
+
+			// The built-in actions are asynchronous, and a rejection in one is not a
+			// thrown error the try/catch below can see: it arrives as an unhandled
+			// rejection. While an export runs, one of those is the export failing, and
+			// nothing else would report it.
+			watcher = function(event) {
+				if (failed) { return; }
+				fail('failed', event && event.reason ? event.reason : null);
+			};
+			if (window.addEventListener) {
+				window.addEventListener('unhandledrejection', watcher);
+			}
+			watchdog = window.setTimeout(function() {
+				fail('did not finish', null);
+			}, EXPORT_WATCHDOG_MS);
+
 			if (buttonApi && typeof buttonApi.disable === 'function') {
 				buttonApi.disable();
 			}
+			showProcessing(true);
+
 			loadLazyExportScripts(kind, config.lazyScripts && config.lazyScripts[kind], function() {
 				var buttonType = dataTablesLib() && dataTablesLib().ext.buttons[extendName];
 				if (!buttonType || typeof buttonType.action !== 'function') {
-					reenable();
-					if (typeof callback === 'function') { callback(); }
+					fail('is unavailable', null);
 					return;
 				}
-				var done = function() {
-					reenable();
-					if (typeof callback === 'function') { callback(); }
-				};
 				try {
-					buttonType.action.call(buttonApi, e, dt, node, buttonConfig, done);
+					buttonType.action.call(buttonApi, e, dt, node, buttonConfig, function() {
+						succeed();
+					});
 				} catch (err) {
-					done();
-					showExportFailure(kind, node, config, 'failed', err);
+					fail('failed', err);
 				}
 			}, function() {
-				reenable();
-				if (typeof callback === 'function') { callback(); }
-				showExportFailure(kind, node, config, 'library failed to load', null);
+				fail('library failed to load', null);
 			});
 		};
 	}
@@ -602,6 +702,11 @@
 					: function() {
 						return !(typeof window.FileReader === 'undefined' || typeof window.Blob === 'undefined');
 					};
+				// Buttons defers an action by its async option, and the deferral leaves
+				// the button live until it fires: a second click in that window starts
+				// a second download. The action runs on the click instead, and the
+				// plugin shows the working state itself.
+				definition.async = 0;
 				definition.action = lazyExportAction(key, registry[key].extend, config);
 			}
 			if (['copy', 'csv', 'excel', 'pdf', 'print'].indexOf(key) !== -1) {

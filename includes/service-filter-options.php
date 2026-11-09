@@ -343,7 +343,13 @@ trait BaraTables_Filter_Options_Trait {
 		return $this->build_slug_index_map($definition['columns'] ?? []);
 	}
 
-	private function collect_column_indices(array $definition, callable $predicate): array {
+	/**
+	 * The indices of the columns a predicate matches.
+	 *
+	 * Public since 2.1.1: it is the documented replacement for the deprecated
+	 * get_non_sortable_indices() and get_hidden_column_indices().
+	 */
+	public function collect_column_indices(array $definition, callable $predicate): array {
 		$indices = [];
 		$columns = $definition['columns'] ?? [];
 		foreach ($columns as $idx => $col) {

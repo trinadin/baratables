@@ -306,6 +306,26 @@ class BaraTables_Service {
 	// Ceiling on terms fetched per taxonomy for the editor's term picker. Already-selected terms
 	// are always merged in on top of this, so the cap can never drop an existing selection.
 	public const MAX_TERM_PICKER_TERMS = 200;
+
+	/**
+	 * The plugin's own bookkeeping option names. They moved to the classes that now own them;
+	 * these aliases keep the published names working until the 2.2.0 minor removes them.
+	 *
+	 * @deprecated 2.1.1 Use BaraTables_Data_Migrations::AUTO_LABEL_MIGRATION_OPTION.
+	 */
+	public const AUTO_LABEL_MIGRATION_OPTION = BaraTables_Data_Migrations::AUTO_LABEL_MIGRATION_OPTION;
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Data_Migrations::LABEL_I18N_MIGRATION_OPTION.
+	 */
+	public const LABEL_I18N_MIGRATION_OPTION = BaraTables_Data_Migrations::LABEL_I18N_MIGRATION_OPTION;
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Data_Migrations::DATA_SCHEMA_OPTION.
+	 */
+	public const DATA_SCHEMA_OPTION = BaraTables_Data_Migrations::DATA_SCHEMA_OPTION;
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Chart_Link_Recovery::CHART_LINK_RECOVERY_OPTION.
+	 */
+	public const CHART_LINK_RECOVERY_OPTION = BaraTables_Chart_Link_Recovery::CHART_LINK_RECOVERY_OPTION;
 	/** @var array<string,BaraTables_Row_Result> Per-request atomic row results. */
 	private array $row_cache = [];
 	/** @var array<string,wpdb> Per-request external connections keyed by credentials + charset. */
@@ -1159,7 +1179,14 @@ class BaraTables_Service {
 		}
 	}
 
-	private function merge_chart_options(array $options_raw, array $columns, ?array $previous = null): array {
+	/**
+	 * Merge saved chart options over the chart defaults.
+	 *
+	 * Public since 2.1.1: it is the documented replacement for the deprecated
+	 * get_chart_options(). Pass the saved chart options and the table's columns:
+	 * merge_chart_options($definition['chart'] ?? [], $definition['columns'] ?? []).
+	 */
+	public function merge_chart_options(array $options_raw, array $columns, ?array $previous = null): array {
 		$options = self::CHART_OPTION_DEFAULTS;
 		$slug_map = [];
 		foreach ($columns as $col) {
@@ -3634,6 +3661,38 @@ class BaraTables_Service {
 		}
 		$value = get_user_meta(get_current_user_id(), $user_meta_key, true);
 		return $this->normalize_tokens($value);
+	}
+
+	// The four concerns below moved to classes of their own in 2.1.1. They were public in the
+	// published 2.1.0, so they keep working here for the 2.2.0 minor, with the same one-minor
+	// window the other 2.1.1 deprecations use.
+
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Css_Scoper::scope_table_css().
+	 */
+	public static function scope_table_css(string $css, string $table_id): string {
+		return BaraTables_Css_Scoper::scope_table_css($css, $table_id);
+	}
+
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Data_Migrations::run().
+	 */
+	public function migrate_data_schema(): ?WP_Error {
+		return BaraTables_Data_Migrations::run();
+	}
+
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Chart_Link_Recovery::queue().
+	 */
+	public function queue_chart_link_recovery(array $chart_ids, string $failed_id, string $restore_id): ?WP_Error {
+		return BaraTables_Chart_Link_Recovery::queue($chart_ids, $failed_id, $restore_id);
+	}
+
+	/**
+	 * @deprecated 2.1.1 Use BaraTables_Chart_Link_Recovery::retry().
+	 */
+	public function retry_chart_link_recovery(): array {
+		return BaraTables_Chart_Link_Recovery::retry();
 	}
 
 }

@@ -268,6 +268,13 @@ final class BaraTables_Source_Type {
 		return in_array($source, [self::WP_QUERY, self::CUSTOM_QUERY], true);
 	}
 
+	/**
+	 * @deprecated 2.1.1 Use uses_builder_fields().
+	 */
+	public static function supports_post_type_selection(string $source): bool {
+		return self::uses_builder_fields($source);
+	}
+
 	public static function is_csv(string $source): bool {
 		return $source === self::CSV;
 	}

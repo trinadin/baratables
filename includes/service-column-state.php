@@ -237,6 +237,9 @@ trait BaraTables_Column_State_Trait {
 		);
 	}
 
+	/**
+	 * @deprecated 2.1.1 Resolve the column source yourself and call build_column_slug_label_map().
+	 */
 	public function build_column_choices(array $display_columns, array $definition_columns): array {
 		$columns = !empty($display_columns) ? $display_columns : $definition_columns;
 		return $this->build_column_slug_label_map($columns);

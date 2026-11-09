@@ -148,6 +148,7 @@ class BaraTables_Chart_Types {
 	/**
 	 * Map of slug => translated label.
 	 *
+	 * @deprecated 2.1.1 Read the label from BaraTables_Chart_Types::all().
 	 * @return array<string, string>
 	 */
 	public static function labels(): array {
@@ -159,6 +160,7 @@ class BaraTables_Chart_Types {
 	/**
 	 * Map of slug => gallery preview image filename.
 	 *
+	 * @deprecated 2.1.1 Read the image from BaraTables_Chart_Types::all().
 	 * @return array<string, string>
 	 */
 	public static function images(): array {

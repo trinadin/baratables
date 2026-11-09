@@ -354,6 +354,9 @@ trait BaraTables_Filter_Options_Trait {
 		return $indices;
 	}
 
+	/**
+	 * @deprecated 2.1.1 Call collect_column_indices() with the hidden predicate.
+	 */
 	public function get_hidden_column_indices(array $definition): array {
 		return $this->collect_column_indices($definition, static function ($col): bool {
 			return !empty($col['hidden']);

@@ -702,6 +702,9 @@ class BaraTables_Service {
 		return $options;
 	}
 
+	/**
+	 * @deprecated 2.1.1 Call merge_chart_options() with the saved chart options directly.
+	 */
 	public function get_chart_options(array $definition): array {
 		$saved = isset($definition['chart']) && is_array($definition['chart'])
 			? $definition['chart']
@@ -3459,6 +3462,9 @@ class BaraTables_Service {
 		return $defaults;
 	}
 
+	/**
+	 * @deprecated 2.1.1 Call collect_column_indices() with the sortable-false predicate.
+	 */
 	public function get_non_sortable_indices(array $definition): array {
 		return $this->collect_column_indices($definition, static function ($col): bool {
 			return isset($col['sortable']) && $col['sortable'] === false;

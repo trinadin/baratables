@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-09T16:56:49+00:00\n"
+"POT-Creation-Date: 2026-11-09T20:47:19+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -42,118 +42,118 @@ msgstr ""
 msgid "The external database settings were not valid, so the previous connection was kept. Check the host, database name, user, and table name."
 msgstr ""
 
-#: includes/admin/admin.php:58
+#: includes/admin/admin.php:66
 msgid "Table builder"
 msgstr ""
 
-#: includes/admin/admin.php:67
+#: includes/admin/admin.php:75
 #: includes/admin/design-screen.php:367
 msgid "Table preview"
 msgstr ""
 
-#: includes/admin/admin.php:91
+#: includes/admin/admin.php:99
 msgid "Pick a data source and at least one column on the Columns &amp; filters tab, then save to preview the table here."
 msgstr ""
 
-#: includes/admin/admin.php:99
+#: includes/admin/admin.php:107
 msgid "Refresh preview"
 msgstr ""
 
-#: includes/admin/admin.php:123
+#: includes/admin/admin.php:131
 #: includes/admin/preview.php:33
 msgid "No columns selected yet for this table."
 msgstr ""
 
-#: includes/admin/admin.php:127
+#: includes/admin/admin.php:135
 #: includes/admin/preview.php:35
 msgid "No data available for this table yet."
 msgstr ""
 
-#: includes/admin/admin.php:135
+#: includes/admin/admin.php:143
 msgid "Footer totals cover the first 50 preview rows."
 msgstr ""
 
-#: includes/admin/admin.php:237
+#: includes/admin/admin.php:245
 msgid "Save the table before fetching a remote snapshot."
 msgstr ""
 
-#: includes/admin/admin.php:241
+#: includes/admin/admin.php:249
 #: includes/remote-snapshot.php:312
 msgid "Save remote snapshot as the data source before fetching."
 msgstr ""
 
-#: includes/admin/admin.php:258
+#: includes/admin/admin.php:266
 msgid "Remote snapshot updated. Reloading the editor..."
 msgstr ""
 
-#: includes/admin/admin.php:298
+#: includes/admin/admin.php:306
 msgid "The table ID could not be saved. The previous ID was kept."
 msgstr ""
 
-#: includes/admin/admin.php:311
+#: includes/admin/admin.php:319
 msgid "The table could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again."
 msgstr ""
 
-#: includes/admin/admin.php:312
+#: includes/admin/admin.php:320
 msgid "The table could not be saved. Its previous data and table ID were restored."
 msgstr ""
 
 #. translators: %s is a comma-separated list of chart post IDs.
-#: includes/admin/admin.php:342
+#: includes/admin/admin.php:350
 #, php-format
 msgid "The table ID was restored, but linked chart post IDs %s could not be restored or queued for automatic recovery. Retry the save before editing those charts."
 msgstr ""
 
 #. translators: %d is the number of linked charts queued for recovery.
-#: includes/admin/admin.php:347
+#: includes/admin/admin.php:355
 #, php-format
 msgid "The table ID was restored. %d linked chart will be restored automatically on the next admin request."
 msgid_plural "The table ID was restored. %d linked charts will be restored automatically on the next admin request."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/admin.php:355
+#: includes/admin/admin.php:363
 msgid "The table ID and linked charts could not be updated consistently. Retry the save before editing them again."
 msgstr ""
 
-#: includes/admin/admin.php:356
+#: includes/admin/admin.php:364
 msgid "The table ID change was cancelled because a linked chart could not be updated. Previous data was restored."
 msgstr ""
 
-#: includes/admin/admin.php:375
+#: includes/admin/admin.php:383
 msgid "This table has no columns, so it will not display anything. Select at least one column on the Columns &amp; filters tab, then update."
 msgstr ""
 
-#: includes/admin/admin.php:384
+#: includes/admin/admin.php:392
 msgid "Value overrides were not valid JSON, so no rules were saved. Check the JSON on the Advanced tab."
 msgstr ""
 
 #. translators: %s is a comma-separated list of invalid regex patterns.
-#: includes/admin/admin.php:408
+#: includes/admin/admin.php:416
 #, php-format
 msgid "These value-override regex patterns are invalid and were skipped (remember the delimiters, e.g. #pattern#): %s"
 msgstr ""
 
 #. translators: %s: the table shortcode to paste into content.
-#: includes/admin/admin.php:428
+#: includes/admin/admin.php:436
 #, php-format
 msgid "Table published. Add it to any page or post with the shortcode %s, or choose the BaraTables table block in the block editor."
 msgstr ""
 
-#: includes/admin/admin.php:449
+#: includes/admin/admin.php:457
 msgid "The external database settings were not valid, so the previous connection was kept. The table name may only contain letters, numbers, and underscores. Clear every connection field to remove the connection."
 msgstr ""
 
-#: includes/admin/admin.php:454
+#: includes/admin/admin.php:462
 msgid "The external database settings are not valid or incomplete. Fill in host, database, user, and table to connect."
 msgstr ""
 
-#: includes/admin/admin.php:460
+#: includes/admin/admin.php:468
 msgid "The external database connection was removed from this table."
 msgstr ""
 
 #. translators: %d: number of linked charts updated.
-#: includes/admin/admin.php:472
+#: includes/admin/admin.php:480
 #, php-format
 msgid "%d linked chart was updated automatically."
 msgid_plural "%d linked charts were updated automatically."
@@ -161,81 +161,81 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: 1: the ID the user asked for, 2: the unique ID actually saved.
-#: includes/admin/admin.php:481
+#: includes/admin/admin.php:489
 #, php-format
 msgid "The table ID \"%1$s\" was already in use, so it was saved as \"%2$s\"."
 msgstr ""
 
 #. translators: 1: old Table ID, 2: new Table ID.
-#: includes/admin/admin.php:483
+#: includes/admin/admin.php:491
 #, php-format
 msgid "Table ID changed from \"%1$s\" to \"%2$s\". Update any [bara_table id=\"%1$s\"] you have already pasted into your content."
 msgstr ""
 
-#: includes/admin/admin.php:566
+#: includes/admin/admin.php:574
 msgid "Chart builder"
 msgstr ""
 
-#: includes/admin/admin.php:576
+#: includes/admin/admin.php:584
 #: includes/admin/design-screen.php:343
 msgid "Chart preview"
 msgstr ""
 
-#: includes/admin/admin.php:588
+#: includes/admin/admin.php:596
 msgid "Save the chart to see a preview."
 msgstr ""
 
-#: includes/admin/admin.php:704
+#: includes/admin/admin.php:712
 msgid "Chart ID"
 msgstr ""
 
-#: includes/admin/admin.php:711
+#: includes/admin/admin.php:719
 msgid "Chart settings"
 msgstr ""
 
-#: includes/admin/admin.php:712
+#: includes/admin/admin.php:720
 #: assets/block-picker.js:52
 msgid "Chart"
 msgstr ""
 
-#: includes/admin/admin.php:713
+#: includes/admin/admin.php:721
 #: includes/admin/design-screen.php:38
 #: includes/admin/pages.php:66
 msgid "Design"
 msgstr ""
 
-#: includes/admin/admin.php:751
+#: includes/admin/admin.php:759
 msgid "This chart has no source table, so it will show \"Chart not found.\" Edit the chart and choose one."
 msgstr ""
 
-#: includes/admin/admin.php:752
+#: includes/admin/admin.php:760
 msgid "This chart's table no longer exists, so it will show \"Chart not found.\" Edit the chart and choose another."
 msgstr ""
 
-#: includes/admin/admin.php:773
+#: includes/admin/admin.php:781
 msgid "The chart ID could not be saved. The previous ID was kept."
 msgstr ""
 
-#: includes/admin/admin.php:786
+#: includes/admin/admin.php:794
 msgid "The chart could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again."
 msgstr ""
 
-#: includes/admin/admin.php:787
+#: includes/admin/admin.php:795
 msgid "The chart could not be saved. Its previous data and chart ID were restored."
 msgstr ""
 
-#: includes/admin/admin.php:809
+#: includes/admin/admin.php:817
 msgid "This chart has no series selected, so it will render empty. Choose at least one series column."
 msgstr ""
 
 #. translators: 1: the ID the user asked for, 2: the unique ID actually saved.
-#: includes/admin/admin.php:832
+#: includes/admin/admin.php:840
 #, php-format
 msgid "The chart ID \"%1$s\" was already in use, so it was saved as \"%2$s\"."
 msgstr ""
 
 #. translators: 1: old Chart ID, 2: new Chart ID.
-#: includes/admin/admin.php:834
+#: includes/admin/admin.php:842
 #, php-format
 msgid "Chart ID changed from \"%1$s\" to \"%2$s\". Update any [bara_chart id=\"%1$s\"] you have already pasted into your content."
 msgstr ""
@@ -1100,76 +1100,76 @@ msgstr ""
 msgid "Nothing was saved. The editor sent more fields than this server accepts (max_input_vars is %d), so the data arrived incomplete. Use fewer grid cells, or ask your host to raise max_input_vars."
 msgstr ""
 
-#: includes/admin/support.php:534
+#: includes/admin/support.php:550
 msgid "WordPress did not delete an incomplete item, but BaraTables kept it non-public."
 msgstr ""
 
-#: includes/admin/support.php:535
+#: includes/admin/support.php:551
 msgid "WordPress did not delete or quarantine an incomplete item."
 msgstr ""
 
-#: includes/admin/support.php:631
+#: includes/admin/support.php:647
 msgid "WordPress did not save the requested ID."
 msgstr ""
 
-#: includes/admin/support.php:700
+#: includes/admin/support.php:716
 msgid "WordPress could not completely restore the previous plugin data."
 msgstr ""
 
-#: includes/admin/support.php:722
+#: includes/admin/support.php:738
 msgid "WordPress did not repair the stored ID."
 msgstr ""
 
-#: includes/admin/support.php:878
+#: includes/admin/support.php:894
 msgid "BaraTables could not synchronize this item's ID or restore its previous data. Retry the save before editing it again."
 msgstr ""
 
-#: includes/admin/support.php:879
+#: includes/admin/support.php:895
 msgid "BaraTables could not synchronize this item's ID. Its previous data was restored."
 msgstr ""
 
 #. translators: %d is the number of data rows.
-#: includes/admin/support.php:1170
+#: includes/admin/support.php:1186
 #, php-format
 msgid "(%d row)"
 msgid_plural "(%d rows)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/support.php:1186
+#: includes/admin/support.php:1202
 #: includes/admin/ui.php:264
 msgid "Post type"
 msgstr ""
 
-#: includes/admin/support.php:1187
+#: includes/admin/support.php:1203
 #: includes/admin/ui.php:78
 msgid "Data source"
 msgstr ""
 
-#: includes/admin/support.php:1188
+#: includes/admin/support.php:1204
 msgid "Taxonomy"
 msgstr ""
 
-#: includes/admin/support.php:1189
+#: includes/admin/support.php:1205
 msgid "Fields"
 msgstr ""
 
-#: includes/admin/support.php:1190
-#: includes/admin/support.php:1272
+#: includes/admin/support.php:1206
+#: includes/admin/support.php:1288
 msgid "Shortcode"
 msgstr ""
 
-#: includes/admin/support.php:1269
+#: includes/admin/support.php:1285
 #: includes/admin/ui-chart-tabs.php:43
 #: assets/block-picker.js:35
 msgid "Table"
 msgstr ""
 
-#: includes/admin/support.php:1270
+#: includes/admin/support.php:1286
 msgid "Type"
 msgstr ""
 
-#: includes/admin/support.php:1271
+#: includes/admin/support.php:1287
 #: includes/services.php:758
 msgid "Columns"
 msgstr ""

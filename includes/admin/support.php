@@ -437,8 +437,15 @@ class BaraTables_Admin_Action_Guard {
 		if (wp_is_post_revision($post_id) || (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)) {
 			return false;
 		}
-		if (!isset($_POST[$nonce_field]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[$nonce_field])), $nonce_action)) {
-			return false;
+		$nonce = isset($_POST[$nonce_field]) ? sanitize_text_field(wp_unslash($_POST[$nonce_field])) : '';
+		if ($nonce === '' || !wp_verify_nonce($nonce, $nonce_action)) {
+			// A form rendered before the update carries the 2.1.0 pair. It is verified
+			// against its own action, so accepting it grants nothing the current pair
+			// does not; the fallback goes with the 2.2.0 minor.
+			$legacy = isset($_POST[BaraTables_Admin::LEGACY_NONCE_FIELD]) ? sanitize_text_field(wp_unslash($_POST[BaraTables_Admin::LEGACY_NONCE_FIELD])) : '';
+			if ($legacy === '' || !wp_verify_nonce($legacy, BaraTables_Admin::LEGACY_NONCE_ACTION)) {
+				return false;
+			}
 		}
 		return self::user_can_manage($post_id);
 	}
@@ -449,6 +456,15 @@ final class BaraTables_Admin_Ajax_Guard {
 	public static function verify(string $nonce_action, string $nonce_field): void {
 		if (!current_user_can('manage_options')) {
 			wp_send_json_error(['message' => 'forbidden'], 403);
+		}
+		$nonce = isset($_REQUEST[$nonce_field]) ? sanitize_text_field(wp_unslash($_REQUEST[$nonce_field])) : '';
+		if ($nonce !== '' && wp_verify_nonce($nonce, $nonce_action)) {
+			return;
+		}
+		// The 2.1.0 pair, for a page that was open across the update.
+		$legacy = isset($_REQUEST[BaraTables_Admin::LEGACY_NONCE_FIELD]) ? sanitize_text_field(wp_unslash($_REQUEST[BaraTables_Admin::LEGACY_NONCE_FIELD])) : '';
+		if ($legacy !== '' && wp_verify_nonce($legacy, BaraTables_Admin::LEGACY_NONCE_ACTION)) {
+			return;
 		}
 		check_ajax_referer($nonce_action, $nonce_field);
 	}

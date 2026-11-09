@@ -7,6 +7,14 @@ if (!defined('ABSPATH')) {
 class BaraTables_Admin {
 	public const NONCE_ACTION = 'btbl_save';
 	public const NONCE_FIELD = '_btbl_nonce';
+	/**
+	 * The pair 2.1.0 rendered the editor form with. 2.1.1 moved the pair into the btbl_
+	 * family, so an editor page left open across the update posts the old one; refusing
+	 * that save loses the administrator's work. The guards accept it once more, verified
+	 * against its own action, and it goes with the 2.2.0 minor.
+	 */
+	public const LEGACY_NONCE_ACTION = 'baratables_save';
+	public const LEGACY_NONCE_FIELD = '_baratables_nonce';
 
 	private BaraTables_Service $service;
 	private BaraTables_Repository $repo;

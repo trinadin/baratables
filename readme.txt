@@ -103,6 +103,7 @@ Fixes:
 * On right-to-left sites, filter spacing and the search dropdown's scrollbar now sit on the correct side, and the admin's actions column, help toggle, and arrow keys follow the text direction.
 * Export-button pages are much lighter: the Excel and PDF libraries load on first click.
 * A table's search box, filters and buttons now all round their corners the same way, instead of each rounding differently.
+* A table's custom CSS is applied in full: rules after a media query or a keyframes block are no longer dropped, and a rule that names the table wrapper now reaches that table.
 
 Developer:
 
@@ -386,7 +387,7 @@ Security:
 == Upgrade Notice ==
 
 = 2.1.1 =
-Fixes right-to-left details; export libraries load on first click. Developers: fifteen published PHP methods and constants are deprecated.
+Fixes right-to-left details; export libraries load on first click; custom CSS is applied in full. Developers: sixteen published PHP methods and constants are deprecated.
 
 = 2.1.0 =
 Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.

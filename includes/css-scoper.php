@@ -13,6 +13,9 @@ if (!defined('ABSPATH')) {
 
 final class BaraTables_Css_Scoper {
 
+	/** The element the scope is rooted on; user selectors may name it themselves. */
+	private const WRAPPER_SELECTOR = '.btbl-table-wrapper';
+
 	/**
 	 * Scope user-authored Additional CSS to one table. The Design tab invites plain
 	 * selectors ("td { ... }"), so every top-level rule gets the table's wrapper scope
@@ -33,7 +36,7 @@ final class BaraTables_Css_Scoper {
 		// An EXACT match on the base id. A prefix match ("[data-table-id^=...]") also matched a
 		// sibling table whose slug merely started with the same string -- table "sales" styled
 		// table "sales-2024" on the same page.
-		$scope = '.btbl-table-wrapper[data-btbl-table-id="' . $table_id . '"]';
+		$scope = self::WRAPPER_SELECTOR . '[data-btbl-table-id="' . $table_id . '"]';
 		$index = 0;
 		return self::scope_css_segment($css, $index, $scope, true);
 	}
@@ -126,10 +129,14 @@ final class BaraTables_Css_Scoper {
 			if ($at_name === 'keyframes' || $at_name === '-webkit-keyframes') {
 				// Animation steps are percentage selectors; copying the body verbatim keeps
 				// them that way.
-				$out .= $prelude . ' {' . self::scope_css_segment($css, $index, $scope, false) . '}';
+				$body = self::scope_css_segment($css, $index, $scope, false);
+				self::consume_css_brace($css, $index);
+				$out .= $prelude . ' {' . $body . '}';
 			} elseif ($is_at_rule) {
 				// @media, @supports and friends re-nest rules: scope their contents.
-				$out .= $prelude . ' {' . self::scope_css_segment($css, $index, $scope, $scoping) . '}';
+				$body = self::scope_css_segment($css, $index, $scope, $scoping);
+				self::consume_css_brace($css, $index);
+				$out .= $prelude . ' {' . $body . '}';
 			} elseif ($scoping) {
 				$out .= self::scope_selector_list($prelude, $scope) . ' {' . self::copy_css_block($css, $index) . '}';
 			} else {
@@ -137,6 +144,21 @@ final class BaraTables_Css_Scoper {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * Consumes the closing brace the segment reader stopped at.
+	 *
+	 * The segment reader leaves its own block's closing brace for the caller. Leaving
+	 * that brace in place made the enclosing loop read it as the end of its own block,
+	 * which ended the scope there: every rule after an @media, @supports or
+	 * @keyframes block was dropped.
+	 */
+	private static function consume_css_brace(string $css, int &$index): void {
+		$length = strlen($css);
+		if ($index < $length && $css[$index] === '}') {
+			$index++;
+		}
 	}
 
 	/** Copies a declaration block verbatim (strings honored) through its closing brace. */
@@ -187,10 +209,30 @@ final class BaraTables_Css_Scoper {
 		foreach ($selectors as $selector) {
 			$selector = trim($selector);
 			if ($selector !== '') {
-				$scoped[] = $scope . ' ' . $selector;
+				$scoped[] = self::scope_selector($selector, $scope);
 			}
 		}
 		return $scoped === [] ? $scope : implode(', ', $scoped);
+	}
+
+	/**
+	 * Scopes one selector to the table.
+	 *
+	 * A selector that already names the wrapper is scoped by swapping that name for
+	 * the scoped one. Prefixing it instead would ask for a wrapper inside the
+	 * wrapper, which never exists, so the rule could never match.
+	 */
+	private static function scope_selector(string $selector, string $scope): string {
+		$wrapper = self::WRAPPER_SELECTOR;
+		if (strpos($selector, $wrapper) !== 0) {
+			return $scope . ' ' . $selector;
+		}
+		$rest = substr($selector, strlen($wrapper));
+		// A different class that merely starts with the same name.
+		if ($rest !== '' && preg_match('/^[A-Za-z0-9_-]/', $rest) === 1) {
+			return $scope . ' ' . $selector;
+		}
+		return $scope . $rest;
 	}
 
 }

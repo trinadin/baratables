@@ -43,7 +43,7 @@ Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS, or ZIP export from another plugin
 
 CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON, or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are unsupported; re-create the table when remote columns change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting the source. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are unsupported; re-create the table when columns change.
 
 = Which plugin exports can I import? =
 
@@ -55,7 +55,7 @@ Imports rebuild table data and compatible display settings, not styling, formula
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, because PHP's MySQL driver cannot use the system trust store.
+External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the CA certificate path, because PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -79,7 +79,7 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's own default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's shape.
+Minimal frontend styles keep your theme in control; adjust colors, spacing, and typography with your theme, the Site Editor, or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's shape.
 
 A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's shape is CSS, and rides the token layer with the tables.
 
@@ -103,10 +103,14 @@ Fixes:
 * On right-to-left sites, filter spacing and the search dropdown's scrollbar now sit on the correct side, and the admin's actions column, help toggle, and arrow keys follow the text direction.
 * Export-button pages are much lighter: the Excel and PDF libraries load on first click.
 
+Developer:
+
+* Fifteen published PHP methods and constants are deprecated and will be removed in the 2.2.0 minor; each carries its replacement.
+
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from. A table or chart with its own value keeps it; one that opts out follows your theme.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from; one with its own value keeps it, one that opts out follows your theme.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:
@@ -117,7 +121,7 @@ Fixes:
 * Charts with no palette now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
 * The Grid color control is no longer offered on charts that have no grid.
 * The series palette can now be reordered from the keyboard, and each color's remove button names the color it removes.
-* The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius with the table, so your theme's CSS stays in charge.
+* The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius, so your theme's CSS stays in charge.
 * The "Theme default" preset is now "Clear overrides": a blank value inherits the site default first, so the old name no longer said what the button did.
 * A table or chart whose name contains "&" or ">" saves again, and Additional CSS keeps the characters you typed.
 * A ZIP holding a readme next to your table imports the table, not the readme.
@@ -381,7 +385,7 @@ Security:
 == Upgrade Notice ==
 
 = 2.1.1 =
-Fixes right-to-left details; export libraries load on first click.
+Fixes right-to-left details; export libraries load on first click. Developers: fifteen published PHP methods and constants are deprecated.
 
 = 2.1.0 =
 Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.
@@ -433,7 +437,7 @@ Initial release.
 
 == Third-Party Libraries ==
 
-Bundled libraries and admin thumbnails, under GPL-compatible licenses; full notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt.
+Bundled libraries, under GPL-compatible licenses; full notices ship in assets/vendor/THIRD-PARTY-LICENSES.txt.
 
 * DataTables v3.1.5 - MIT License - https://github.com/DataTables/DataTablesSrc/tree/3.1.5
 * DataTables Buttons v4.1.3 - MIT License - https://github.com/DataTables/Buttons/tree/4.1.3 (bundles FileSaver.js - MIT License - https://github.com/eligrey/FileSaver.js/tree/1.3.3)
@@ -442,8 +446,8 @@ Bundled libraries and admin thumbnails, under GPL-compatible licenses; full noti
 * DataTables FixedHeader v5.1.2 - MIT License - https://github.com/DataTables/FixedHeader/tree/5.1.2
 * DataTables FixedColumns v6.1.2 - MIT License - https://github.com/DataTables/FixedColumns/tree/6.1.2
 * Tom Select v2.6.2 - Apache License 2.0 - https://github.com/orchidjs/tom-select/tree/v2.6.2
-* JSZip v3.10.1 - MIT License - https://github.com/Stuk/jszip/tree/v3.10.1 (bundles pako - MIT License - https://github.com/nodeca/pako)
-* pdfmake v0.2.23 - MIT License - https://github.com/bpampuch/pdfmake/tree/0.2.23 (bundles the Roboto fonts - Apache License 2.0)
+* JSZip v3.10.2 - MIT License - https://github.com/Stuk/jszip/tree/v3.10.2 (bundles pako - MIT License - https://github.com/nodeca/pako)
+* pdfmake v0.3.13 - MIT License - https://github.com/bpampuch/pdfmake/tree/0.3.13 (bundles the Roboto fonts - Apache License 2.0)
 * ECharts v6.1.0 - Apache License 2.0 - https://github.com/apache/echarts/tree/6.1.0
 * Chart-type gallery thumbnails from the Apache ECharts examples, Apache License 2.0 - https://github.com/apache/echarts-examples
-* BaraTables' custom ECharts bundle entry and build command - https://github.com/trinadin/baratables/blob/main/tools/echarts-entry.js
+* BaraTables' custom ECharts bundle - https://github.com/trinadin/baratables/blob/main/tools/echarts-entry.js

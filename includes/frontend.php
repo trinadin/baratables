@@ -473,13 +473,13 @@ class BaraTables_Frontend {
 				// Buttons 4 ships html5 export, print, and column visibility inside the one bundle;
 				// only JSZip (Excel) and pdfmake (PDF) stay separate, feature-gated libraries.
 				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '4.1.3', ['table_only' => true, 'feature' => 'buttons']),
-				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.1', ['table_only' => true, 'feature' => 'buttons-excel']),
+				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.2', ['table_only' => true, 'feature' => 'buttons-excel']),
 				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '3.1.2', ['table_only' => true, 'feature' => 'colreorder']),
 				$this->script_spec('baratables-datatables-responsive', 'assets/vendor/datatables/dataTables.responsive.min.js', ['baratables-datatables'], '4.1.1', ['table_only' => true, 'feature' => 'responsive']),
 				$this->script_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/dataTables.fixedHeader.min.js', ['baratables-datatables'], '5.1.2', ['table_only' => true, 'feature' => 'fixedheader']),
 				$this->script_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/dataTables.fixedColumns.min.js', ['baratables-datatables'], '6.1.2', ['table_only' => true, 'feature' => 'fixedcolumns']),
-				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
-				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.min.js', ['baratables-pdfmake'], '0.2.23', ['table_only' => true, 'feature' => 'buttons-pdf']),
+				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.3.13', ['table_only' => true, 'feature' => 'buttons-pdf']),
+				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.js', ['baratables-pdfmake'], '0.3.13', ['table_only' => true, 'feature' => 'buttons-pdf']),
 				$this->script_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.complete.min.js', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
 				$this->script_spec('baratables-echarts', 'assets/vendor/echarts/echarts.min.js', [], '6.1.0', ['chart_only' => true]),
 				$this->script_spec('baratables-charts', 'assets/baratables-charts.js', ['baratables-echarts'], null, ['chart_only' => true]),

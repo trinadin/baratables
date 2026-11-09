@@ -54,7 +54,7 @@ Copyright 2013-2015 Brian Reavis
 JSZip
 -----
 
-JSZip v3.10.1
+JSZip v3.10.2
 
 License: MIT
 
@@ -71,7 +71,7 @@ Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
 pdfmake
 -------
 
-pdfmake v0.2.23
+pdfmake v0.3.13
 
 License: MIT
 

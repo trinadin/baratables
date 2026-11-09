@@ -112,38 +112,77 @@
 		})(0);
 	}
 
+	// A failed export must say so. The wrapper already carries a visible runtime-error
+	// notice, and the message is the server's, translated, so it never reads as English
+	// on a translated site. The notice keeps the server's own wording on record, so a
+	// later runtime error can put it back.
+	function showExportFailure(kind, node, config, reason, error) {
+		var messages = config.exportErrorMessages || {};
+		var message = messages[kind] || '';
+		// Buttons hands the action a node collection, not the element; the element is its
+		// first entry. A raw element is accepted too, so the lookup does not depend on
+		// which one this version of Buttons passes.
+		var element = node && typeof node.get === 'function' ? node.get(0) : node;
+		var wrapper = element && element.closest ? element.closest('.btbl-table-wrapper') : null;
+		if (wrapper) {
+			var notice = wrapper.querySelector('.btbl-runtime-error');
+			if (notice) {
+				if (message !== '') {
+					if (!notice.hasAttribute('data-btbl-default-error')) {
+						notice.setAttribute('data-btbl-default-error', notice.textContent);
+					}
+					notice.textContent = message;
+				}
+				notice.hidden = false;
+			}
+		}
+		if (window.console && console.error) {
+			console.error('[BaraTables] The ' + kind.toUpperCase() + ' export ' + reason + '.', error || '');
+		}
+	}
+
 	// The export button's stand-in action: load the library, then hand the click to the
 	// built-in html5 export action, unchanged. Buttons calls actions as
 	// action.call(buttonInstance, event, dtApi, node, config, callback) -- `this` is the
 	// button instance (disable/enable live on it) and the trailing callback reports
 	// completion, so both are forwarded. The button disables itself for the load so the
 	// wait reads as work in progress rather than a dead click.
+	//
+	// It stays disabled until the built-in action reports completion, so a click during
+	// the export cannot start a second download. Both built-in actions do call it: the
+	// Excel one after the workbook is written, the PDF one after the file is handed over.
 	function lazyExportAction(kind, extendName, config) {
 		return function(e, dt, node, buttonConfig, callback) {
 			var buttonApi = this;
+			var reenable = function() {
+				if (buttonApi && typeof buttonApi.enable === 'function') {
+					buttonApi.enable();
+				}
+			};
 			if (buttonApi && typeof buttonApi.disable === 'function') {
 				buttonApi.disable();
 			}
 			loadLazyExportScripts(kind, config.lazyScripts && config.lazyScripts[kind], function() {
-				if (buttonApi && typeof buttonApi.enable === 'function') {
-					buttonApi.enable();
-				}
 				var buttonType = dataTablesLib() && dataTablesLib().ext.buttons[extendName];
-				if (buttonType && typeof buttonType.action === 'function') {
-					buttonType.action.call(buttonApi, e, dt, node, buttonConfig, callback);
-				} else if (typeof callback === 'function') {
-					callback();
+				if (!buttonType || typeof buttonType.action !== 'function') {
+					reenable();
+					if (typeof callback === 'function') { callback(); }
+					return;
+				}
+				var done = function() {
+					reenable();
+					if (typeof callback === 'function') { callback(); }
+				};
+				try {
+					buttonType.action.call(buttonApi, e, dt, node, buttonConfig, done);
+				} catch (err) {
+					done();
+					showExportFailure(kind, node, config, 'failed', err);
 				}
 			}, function() {
-				if (buttonApi && typeof buttonApi.enable === 'function') {
-					buttonApi.enable();
-				}
-				if (typeof callback === 'function') {
-					callback();
-				}
-				if (window.console && console.error) {
-					console.error('[BaraTables] The ' + kind.toUpperCase() + ' export library failed to load.');
-				}
+				reenable();
+				if (typeof callback === 'function') { callback(); }
+				showExportFailure(kind, node, config, 'library failed to load', null);
 			});
 		};
 	}
@@ -554,9 +593,15 @@
 				// built-in available() gates on the library being present, which would drop
 				// the button at init -- before any click could load it -- so this button
 				// claims availability on the browser primitives the export really needs.
-				definition.available = function() {
-					return !(typeof window.FileReader === 'undefined' || typeof window.Blob === 'undefined');
-				};
+				// Those are the built-in checks minus the library: FileReader and Blob for
+				// both, plus XMLSerializer for the Excel workbook.
+				definition.available = key === 'excel'
+					? function() {
+						return !(typeof window.FileReader === 'undefined' || typeof window.Blob === 'undefined' || typeof window.XMLSerializer === 'undefined');
+					}
+					: function() {
+						return !(typeof window.FileReader === 'undefined' || typeof window.Blob === 'undefined');
+					};
 				definition.action = lazyExportAction(key, registry[key].extend, config);
 			}
 			if (['copy', 'csv', 'excel', 'pdf', 'print'].indexOf(key) !== -1) {

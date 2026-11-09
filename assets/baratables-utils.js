@@ -91,13 +91,27 @@
 	function showRuntimeError(wrapper) {
 		if (!wrapper) { return; }
 		var message = wrapper.querySelector('.btbl-runtime-error');
-		if (message) { message.hidden = false; }
+		if (!message) { return; }
+		// An export failure borrows this notice and replaces its text; put the
+		// server's own wording back so this notice reads correctly.
+		var original = message.getAttribute('data-btbl-default-error');
+		if (original !== null) {
+			message.textContent = original;
+			message.removeAttribute('data-btbl-default-error');
+		}
+		message.hidden = false;
 	}
 
 	function hideRuntimeError(wrapper) {
 		if (!wrapper) { return; }
 		var message = wrapper.querySelector('.btbl-runtime-error');
-		if (message) { message.hidden = true; }
+		if (!message) { return; }
+		message.hidden = true;
+		var original = message.getAttribute('data-btbl-default-error');
+		if (original !== null) {
+			message.textContent = original;
+			message.removeAttribute('data-btbl-default-error');
+		}
 	}
 
 	function revealFailure(wrapper, consoleMessage, error) {

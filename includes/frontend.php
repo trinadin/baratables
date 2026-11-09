@@ -889,6 +889,13 @@ class BaraTables_Frontend {
 			$lazy_scripts = $this->get_lazy_script_urls($this->get_table_asset_features($definition));
 			if ($lazy_scripts !== []) {
 				$payload['lazyScripts'] = $lazy_scripts;
+				// A library that fails to load must say so in the visitor's language. The
+				// message ships with the table config so the button can show it without
+				// carrying an English literal of its own.
+				$payload['exportErrorMessages'] = [
+					'excel' => __('The Excel file could not be created. Check your connection and try again.', 'baratables'),
+					'pdf'   => __('The PDF could not be created. Check your connection and try again.', 'baratables'),
+				];
 			}
 		}
 		if ($render_table && !empty($definition['__server_side']['enabled'])) {

@@ -143,7 +143,7 @@
 		return String($wrapper.attr('data-table-id') || '').replace(/-\d+$/, '');
 	}
 
-	// Mirrors BaraTables_Service::scope_table_css(): prefixes each selector of every
+	// Mirrors BaraTables_Css_Scoper::scope_table_css(): prefixes each selector of every
 	// top-level rule (and @media/@supports bodies) with the table scope; @keyframes steps
 	// and selector-less at-rules pass through. Keep the two in step.
 	function scopeCss(css, targetId) {
@@ -154,7 +154,7 @@
 		var i = 0;
 
 		// Fragments are RETURNED so each caller appends to its own buffer, mirroring
-		// BaraTables_Service::scope_table_css() (whose writers share one output string).
+		// BaraTables_Css_Scoper::scope_table_css() (whose writers share one output string).
 		function copyComment() {
 			var end = css.indexOf('*/', i + 2);
 			end = end === -1 ? css.length - 1 : end + 1;

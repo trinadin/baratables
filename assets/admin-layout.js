@@ -244,7 +244,11 @@ jQuery(function($) {
 				else { $chip.insertAfter($siblings.eq(nextIndex)); }
 			} else {
 				var zoneIndex = $zones.index($currentZone);
-				var targetIndex = event.key === 'ArrowLeft' ? zoneIndex - 1 : zoneIndex + 1;
+				// The arrows follow the visual order of the zones, which mirrors in a
+				// right-to-left layout -- the same mirror the drop handler below applies.
+				var forward = event.key === 'ArrowRight';
+				if (window.getComputedStyle($currentZone[0]).direction === 'rtl') { forward = !forward; }
+				var targetIndex = forward ? zoneIndex + 1 : zoneIndex - 1;
 				if (targetIndex < 0 || targetIndex >= $zones.length) { return; }
 				$zones.eq(targetIndex).append($chip);
 			}

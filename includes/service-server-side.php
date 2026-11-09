@@ -385,7 +385,10 @@ trait BaraTables_Server_Side_Trait {
 		$hash = md5($table_id);
 		$value_like = $wpdb->esc_like('_transient_btbl_ss_rate_' . $hash . '_') . '%';
 		$timeout_like = $wpdb->esc_like('_transient_timeout_btbl_ss_rate_' . $hash . '_') . '%';
-		$sql = $wpdb->prepare('DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s', $wpdb->options, $value_like, $timeout_like);
+		// Rows written before the _transient_ naming was adopted: unprefixed names are
+		// invisible to core's expired-transient sweep, so this cleanup is their only exit.
+		$legacy_like = $wpdb->esc_like('btbl_ss_rate_' . $hash . '_') . '%';
+		$sql = $wpdb->prepare('DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s', $wpdb->options, $value_like, $timeout_like, $legacy_like);
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery -- Prepared bounded cleanup of plugin-owned transient shards.
 		$wpdb->query($sql);
 		for ($index = 0; $index < 256; $index++) {

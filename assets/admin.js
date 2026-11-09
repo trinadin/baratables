@@ -709,10 +709,18 @@ jQuery(function($) {
 			return;
 		}
 		var next = null;
-		if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-			next = (index + 1) % $tabs.length;
-		} else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-			next = (index - 1 + $tabs.length) % $tabs.length;
+		if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+			// The horizontal arrows follow the reading order, which mirrors in a
+			// right-to-left layout (ARIA tabs pattern); the vertical pair never mirrors.
+			var forward;
+			if (e.key === 'ArrowDown') {
+				forward = true;
+			} else if (e.key === 'ArrowUp') {
+				forward = false;
+			} else {
+				forward = (e.key === 'ArrowRight') !== (window.getComputedStyle(this).direction === 'rtl');
+			}
+			next = forward ? (index + 1) % $tabs.length : (index - 1 + $tabs.length) % $tabs.length;
 		} else if (e.key === 'Home') {
 			next = 0;
 		} else if (e.key === 'End') {

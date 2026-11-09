@@ -1708,7 +1708,7 @@ class BaraTables_Admin_Tab_Chart {
 			<div class="btbl-chart-modal__content">
 				<div class="btbl-chart-modal__header">
 					<h3 id="btbl-chart-type-modal-title"><?php esc_html_e('Choose chart type', 'baratables'); ?></h3>
-					<a href="#" class="btbl-chart-modal__close" aria-label="<?php esc_attr_e('Close chart type chooser', 'baratables'); ?>">&times;</a>
+					<button type="button" class="btbl-chart-modal__close" aria-label="<?php esc_attr_e('Close chart type chooser', 'baratables'); ?>">&times;</button>
 				</div>
 				<div class="btbl-chart-modal__body">
 					<div class="btbl-chart-type-chooser" role="group" aria-label="<?php esc_attr_e('Chart type', 'baratables'); ?>">

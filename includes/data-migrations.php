@@ -17,7 +17,6 @@ final class BaraTables_Data_Migrations {
 	public const AUTO_LABEL_MIGRATION_OPTION = 'btbl_auto_label_migrated';
 	public const LABEL_I18N_MIGRATION_OPTION = 'btbl_label_i18n_migrated';
 	public const DATA_SCHEMA_OPTION = 'btbl_data_schema_version';
-	public const CHART_LINK_RECOVERY_OPTION = 'btbl_chart_link_recovery';
 	// Generation 1 could be stamped after an unchecked write. Revisit it once through the
 	// verified persistence path; only generation 2 proves the complete site scan succeeded.
 	private const DATA_MIGRATION_GENERATION = 2;

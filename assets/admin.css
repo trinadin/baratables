@@ -638,7 +638,7 @@ textarea.btbl-invalid {
 .btbl-preview-table th.btbl-preview-sorted-asc::after,
 .btbl-preview-table th.btbl-preview-sorted-desc::after {
 	display: inline-block;
-	margin-left: 4px;
+	margin-inline-start: 4px;
 	font-size: 10px;
 	opacity: 0.7;
 }
@@ -769,7 +769,7 @@ textarea.btbl-invalid {
    both Enter and Space (an <a href="#"> does neither). Reset the UA button chrome so it keeps
    looking like the bare gear icon it always was. */
 .btbl-options-toggle {
-	margin-left: 8px;
+	margin-inline-start: 8px;
 	text-decoration: none;
 	display: inline-flex;
 	align-items: center;
@@ -970,7 +970,9 @@ dialog.btbl-chart-modal::backdrop {
 	font-size: 18px;
 	line-height: 1;
 	color: #000;
-	text-decoration: none;
+	background: none;
+	border: none;
+	cursor: pointer;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -1184,7 +1186,7 @@ dialog.btbl-chart-modal::backdrop {
 }
 /* Visually separate the reorder group from the edit group. */
 .btbl-row-actions .btbl-row-insert {
-	margin-left: 8px;
+	margin-inline-start: 8px;
 }
 .btbl-row-actions .button-link[disabled] {
 	opacity: 0.35;

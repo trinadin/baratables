@@ -175,12 +175,28 @@ class BaraTables {
 
 		// Run durable, idempotent data upgrades only in the admin. One autoloaded schema gate keeps
 		// subsequent admin requests query-free and remains unset after a failed write so it retries.
-		add_action('admin_init', [$this, 'run_data_migrations']);
+		add_action('admin_init', [$this, 'maybe_run_data_migrations'], 10, 0);
 
 		add_action('admin_menu', [$this, 'cleanup_admin_menu'], 20);
 		add_filter('parent_file', [$this, 'highlight_tables_parent_menu']);
 		add_filter('submenu_file', [$this, 'highlight_tables_submenu'], 10, 1);
 		add_action('admin_enqueue_scripts', [$admin, 'enqueue_admin_assets']);
+	}
+
+	/**
+	 * Start the durable data upgrades, but only for a user who may manage tables.
+	 *
+	 * admin_init fires for the real admin screens AND for the publicly reachable admin-ajax.php
+	 * and admin-post.php entry points. An anonymous request to either must not be able to start
+	 * a site-wide data upgrade: it would scan every table and rewrite the ones it still has to
+	 * fix, on demand, with no administrator present. manage_options is the capability the table
+	 * screens themselves require, so it is the right bar for a change to saved table data.
+	 */
+	public function maybe_run_data_migrations(): void {
+		if (!current_user_can('manage_options')) {
+			return;
+		}
+		$this->run_data_migrations();
 	}
 
 	public function run_data_migrations(): void {

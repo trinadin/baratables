@@ -240,7 +240,16 @@ jQuery(function($) {
 		var $modal = $('#btbl-chart-type-modal');
 		var $chooser = $modal.find('.btbl-chart-type-chooser');
 		var $openers = $('.btbl-chart-preview-trigger');
-		if (!$select.length || !$modal.length || !$chooser.length || typeof $modal[0].showModal !== 'function') {
+		if (!$select.length || !$modal.length || !$chooser.length) {
+			return;
+		}
+
+		// Without a native <dialog> there is no showModal() to open the gallery, and
+		// the element cannot be hidden by the browser's own closed-dialog rule either.
+		// The type select remains the way to pick a chart type, so the trigger is hidden
+		// rather than left as a link that goes nowhere.
+		if (typeof $modal[0].showModal !== 'function') {
+			$openers.hide();
 			return;
 		}
 

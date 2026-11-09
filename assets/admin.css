@@ -938,6 +938,15 @@ dialog.btbl-chart-modal {
 	width: min(900px, 92vw);
 }
 
+/* A browser without native <dialog> (Firefox before 98, Safari before 15.4)
+   does not know this element, so it falls back to the default inline display
+   and the chart-type gallery spills into the form. The closed dialog is hidden
+   by the browser's own rule where that rule exists; this repeats it for the
+   browsers that lack it, so the gallery stays hidden until it can be shown. */
+dialog.btbl-chart-modal:not([open]) {
+	display: none;
+}
+
 dialog.btbl-chart-modal::backdrop {
 	background: rgba(0, 0, 0, 0.35);
 }

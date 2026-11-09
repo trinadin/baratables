@@ -67,6 +67,87 @@
 		return window.DataTable;
 	}
 
+	// The Excel and PDF export libraries load on first use: their URLs arrive in the
+	// table config (config.lazyScripts) instead of the page's script tags, so a table
+	// with a PDF button no longer ships pdfmake's megabyte to every visitor. One load
+	// per library per page, shared by every table on it; the later tables of the same
+	// kind wait on the first table's load.
+	var lazyExportState = {};
+	function loadLazyExportScripts(kind, urls, onDone, onFail) {
+		var state = lazyExportState[kind];
+		if (state) {
+			if (state.finished) {
+				(state.ok ? onDone : onFail)();
+				return;
+			}
+			state.waiting.push([onDone, onFail]);
+			return;
+		}
+		if (!Array.isArray(urls) || !urls.length) {
+			onFail();
+			return;
+		}
+		state = lazyExportState[kind] = { finished: false, ok: false, waiting: [[onDone, onFail]] };
+		var settle = function(ok) {
+			state.finished = true;
+			state.ok = ok;
+			state.waiting.forEach(function(pair) {
+				(ok ? pair[0] : pair[1])();
+			});
+			state.waiting = [];
+		};
+		// Scripts load in array order (pdfmake before its fonts); async=false keeps
+		// dynamically inserted scripts executing in insertion order.
+		(function next(index) {
+			if (index >= urls.length) {
+				settle(true);
+				return;
+			}
+			var script = document.createElement('script');
+			script.src = urls[index];
+			script.async = false;
+			script.addEventListener('load', function() { next(index + 1); });
+			script.addEventListener('error', function() { settle(false); });
+			document.head.appendChild(script);
+		})(0);
+	}
+
+	// The export button's stand-in action: load the library, then hand the click to the
+	// built-in html5 export action, unchanged. Buttons calls actions as
+	// action.call(buttonInstance, event, dtApi, node, config, callback) -- `this` is the
+	// button instance (disable/enable live on it) and the trailing callback reports
+	// completion, so both are forwarded. The button disables itself for the load so the
+	// wait reads as work in progress rather than a dead click.
+	function lazyExportAction(kind, extendName, config) {
+		return function(e, dt, node, buttonConfig, callback) {
+			var buttonApi = this;
+			if (buttonApi && typeof buttonApi.disable === 'function') {
+				buttonApi.disable();
+			}
+			loadLazyExportScripts(kind, config.lazyScripts && config.lazyScripts[kind], function() {
+				if (buttonApi && typeof buttonApi.enable === 'function') {
+					buttonApi.enable();
+				}
+				var buttonType = dataTablesLib() && dataTablesLib().ext.buttons[extendName];
+				if (buttonType && typeof buttonType.action === 'function') {
+					buttonType.action.call(buttonApi, e, dt, node, buttonConfig, callback);
+				} else if (typeof callback === 'function') {
+					callback();
+				}
+			}, function() {
+				if (buttonApi && typeof buttonApi.enable === 'function') {
+					buttonApi.enable();
+				}
+				if (typeof callback === 'function') {
+					callback();
+				}
+				if (window.console && console.error) {
+					console.error('[BaraTables] The ' + kind.toUpperCase() + ' export library failed to load.');
+				}
+			});
+		};
+	}
+
 	// API methods such as column().header() return raw elements, but defensive unwrapping
 	// keeps the code correct if a build ever hands back a collection instead.
 	//
@@ -404,7 +485,7 @@
 		return definitions;
 	}
 
-	function buildButtonDefinitions(options, buttonList) {
+	function buildButtonDefinitions(options, buttonList, config) {
 		var definitions = [];
 		var utilityDefinitions = [];
 		var seen = {};
@@ -467,6 +548,17 @@
 			if (!key || !registry[key] || seen[key]) { return; }
 			seen[key] = true;
 			var definition = { extend: registry[key].extend };
+			if (key === 'excel' || key === 'pdf') {
+				// Their libraries are not script tags on the page: the button loads its own
+				// on the first click, then runs the built-in html5 export action. The
+				// built-in available() gates on the library being present, which would drop
+				// the button at init -- before any click could load it -- so this button
+				// claims availability on the browser primitives the export really needs.
+				definition.available = function() {
+					return !(typeof window.FileReader === 'undefined' || typeof window.Blob === 'undefined');
+				};
+				definition.action = lazyExportAction(key, registry[key].extend, config);
+			}
 			if (['copy', 'csv', 'excel', 'pdf', 'print'].indexOf(key) !== -1) {
 				definition.footer = false;
 			}
@@ -602,7 +694,7 @@
 			scrollX: options.scrollX === true && options.responsive !== true,
 			info: options.info !== false,
 			lengthChange: options.lengthChange !== false,
-			buttons: buildButtonDefinitions(options, buttonList),
+			buttons: buildButtonDefinitions(options, buttonList, config),
 			order: order,
 			columnDefs: buildColumnDefinitions(config),
 			language: languageResult.language,

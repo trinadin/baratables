@@ -315,9 +315,9 @@ class BaraTables_Frontend {
 	 * column's `filter` to 'none' (the enhanced dropdown picker is only ever instantiated for
 	 * dropdown filters). They are loaded only when used. Buttons 4 bundles every button module
 	 * (html5 export, print, column visibility) in one file behind the single `buttons` feature;
-	 * only the third-party export libraries stay per-action, so JSZip ships only with Excel and
-	 * pdfmake (plus its fonts) only with PDF, rather than with every Copy/CSV/Print/visibility
-	 * control.
+	 * the third-party export libraries go further and load on demand: JSZip and pdfmake (plus
+	 * its fonts) are not script tags at all until the visitor clicks Excel or PDF -- their
+	 * versioned URLs ship in the table config and the button loads them itself.
 	 */
 	public function get_table_asset_features(array $definition): array {
 		$features = [];
@@ -381,10 +381,36 @@ class BaraTables_Frontend {
 		}
 
 		foreach ($this->get_script_specs() as $script) {
+			// Lazy specs never enqueue: their URLs ship in the table config instead, and
+			// the export button loads its library on the visitor's first click.
+			if (!empty($script['lazy'])) {
+				continue;
+			}
 			if ($wanted($script)) {
 				wp_enqueue_script($script['handle']);
 			}
 		}
+	}
+
+	/**
+	 * Versioned URLs for the per-action export libraries, keyed by the button that needs
+	 * them. They ride the table config instead of the page's script tags, so a table with
+	 * a PDF button stops shipping pdfmake's megabyte to every visitor: the button's first
+	 * click loads its library, and later clicks reuse it.
+	 *
+	 * @param string[] $features The table's asset features (see get_table_asset_features()).
+	 * @return array<string, string[]> URLs in load order (pdfmake before its fonts).
+	 */
+	private function get_lazy_script_urls(array $features): array {
+		$lazy = [];
+		foreach ($this->get_script_specs() as $spec) {
+			if (empty($spec['lazy']) || empty($spec['feature']) || !in_array($spec['feature'], $features, true)) {
+				continue;
+			}
+			$group = $spec['feature'] === 'buttons-pdf' ? 'pdf' : 'excel';
+			$lazy[$group][] = add_query_arg('ver', $spec['ver'], $spec['src']);
+		}
+		return $lazy;
 	}
 
 	private function build_table_context($atts): ?array {
@@ -473,13 +499,13 @@ class BaraTables_Frontend {
 				// Buttons 4 ships html5 export, print, and column visibility inside the one bundle;
 				// only JSZip (Excel) and pdfmake (PDF) stay separate, feature-gated libraries.
 				$this->script_spec('baratables-datatables-buttons', 'assets/vendor/datatables/dataTables.buttons.min.js', ['baratables-datatables'], '4.1.3', ['table_only' => true, 'feature' => 'buttons']),
-				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.2', ['table_only' => true, 'feature' => 'buttons-excel']),
+				$this->script_spec('baratables-jszip', 'assets/vendor/jszip/jszip.min.js', [], '3.10.2', ['table_only' => true, 'feature' => 'buttons-excel', 'lazy' => true]),
 				$this->script_spec('baratables-datatables-colreorder', 'assets/vendor/datatables/dataTables.colReorder.min.js', ['baratables-datatables'], '3.1.2', ['table_only' => true, 'feature' => 'colreorder']),
 				$this->script_spec('baratables-datatables-responsive', 'assets/vendor/datatables/dataTables.responsive.min.js', ['baratables-datatables'], '4.1.1', ['table_only' => true, 'feature' => 'responsive']),
 				$this->script_spec('baratables-datatables-fixedheader', 'assets/vendor/datatables/dataTables.fixedHeader.min.js', ['baratables-datatables'], '5.1.2', ['table_only' => true, 'feature' => 'fixedheader']),
 				$this->script_spec('baratables-datatables-fixedcolumns', 'assets/vendor/datatables/dataTables.fixedColumns.min.js', ['baratables-datatables'], '6.1.2', ['table_only' => true, 'feature' => 'fixedcolumns']),
-				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.3.13', ['table_only' => true, 'feature' => 'buttons-pdf']),
-				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.js', ['baratables-pdfmake'], '0.3.13', ['table_only' => true, 'feature' => 'buttons-pdf']),
+				$this->script_spec('baratables-pdfmake', 'assets/vendor/pdfmake/pdfmake.min.js', [], '0.3.13', ['table_only' => true, 'feature' => 'buttons-pdf', 'lazy' => true]),
+				$this->script_spec('baratables-pdfmake-vfs', 'assets/vendor/pdfmake/vfs_fonts.js', ['baratables-pdfmake'], '0.3.13', ['table_only' => true, 'feature' => 'buttons-pdf', 'lazy' => true]),
 				$this->script_spec('baratables-tom-select', 'assets/vendor/tom-select/tom-select.complete.min.js', [], '2.6.2', ['table_only' => true, 'feature' => 'enhanced-select']),
 				$this->script_spec('baratables-echarts', 'assets/vendor/echarts/echarts.min.js', [], '6.1.0', ['chart_only' => true]),
 				$this->script_spec('baratables-charts', 'assets/baratables-charts.js', ['baratables-echarts'], null, ['chart_only' => true]),
@@ -857,6 +883,14 @@ class BaraTables_Frontend {
 			'slugToIndex' => $this->service->map_column_slug_to_index($definition),
 			'chartOnly' => true,
 		];
+		if ($render_table) {
+			// The export libraries ride the config, not the page: the Excel/PDF button loads
+			// its library on the visitor's first click (see get_lazy_script_urls()).
+			$lazy_scripts = $this->get_lazy_script_urls($this->get_table_asset_features($definition));
+			if ($lazy_scripts !== []) {
+				$payload['lazyScripts'] = $lazy_scripts;
+			}
+		}
 		if ($render_table && !empty($definition['__server_side']['enabled'])) {
 			$payload['serverSide'] = [
 				'url' => admin_url('admin-ajax.php'),

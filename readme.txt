@@ -100,18 +100,19 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance.
 = 2.1.1 =
 Fixes:
 
-* On right-to-left sites, filter spacing and the search dropdown's scrollbar sit on the correct side, and the admin's actions column, help toggle, layout arrows, and editor tabs follow the text direction.
+* On right-to-left sites, filter spacing and the search dropdown's scrollbar now sit on the correct side, and the admin's actions column, help toggle, and arrow keys follow the text direction.
+* Export-button pages are much lighter: the Excel and PDF libraries load on first click.
 
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from. A table or chart with its own value keeps it; one that switches the site design off follows your theme.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from. A table or chart with its own value keeps it; one that opts out follows your theme.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:
 
-* A colour or size the plugin cannot use no longer erases the value you had: the previous value is kept and the field is named, so a change cannot vanish while the save reports success.
-* The chart Design tab's controls now reach every chart type: the palette colors a heatmap's cells and a Gantt's task groups, and the text and grid colors reach radar, treemap and tooltip labels.
+* A colour or size the plugin cannot use no longer erases the value you had: the previous value is kept and the field named, so a change cannot vanish while the save reports success.
+* The chart Design tab's controls now reach every chart type: the palette colors heatmap cells and Gantt task groups, and the text and grid colors reach radar, treemap and tooltip labels.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
 * Charts with no palette now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
 * The Grid color control is no longer offered on charts that have no grid.
@@ -132,7 +133,7 @@ Fixes:
 = 2.0.1 =
 New:
 
-* External database sources can encrypt their connection with TLS. Give the source the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
+* External database sources can encrypt their connection with TLS. Give it the CA certificate path: PHP's MySQL driver cannot use the system trust store.
 
 Fixes:
 
@@ -380,7 +381,7 @@ Security:
 == Upgrade Notice ==
 
 = 2.1.1 =
-Fixes right-to-left spacing and direction details in the front end and the admin.
+Fixes right-to-left details; export libraries load on first click.
 
 = 2.1.0 =
 Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.

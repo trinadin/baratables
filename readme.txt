@@ -102,6 +102,7 @@ Fixes:
 
 * On right-to-left sites, filter spacing and the search dropdown's scrollbar now sit on the correct side, and the admin's actions column, help toggle, and arrow keys follow the text direction.
 * Export-button pages are much lighter: the Excel and PDF libraries load on first click.
+* A table's search box, filters and buttons now all round their corners the same way, instead of each rounding differently.
 
 Developer:
 

@@ -55,7 +55,7 @@ Imports rebuild table data and compatible display settings, not styling, formula
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the CA certificate path, because PHP's MySQL driver cannot use the system trust store.
+External MySQL/MariaDB tables can instead page large tables on demand: at most 100 rows per request, paged, sorted, and searched by the database within a 100,000-result limit. It requires selected columns, pagination, and a non-null single-column primary or unique key, and none of access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, because PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -111,12 +111,12 @@ Developer:
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from; one with its own value keeps it, one that opts out follows your theme.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from; its own value wins, one that opts out follows your theme.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:
 
-* A colour or size the plugin cannot use no longer erases the value you had: the previous value is kept and the field named, so a change cannot vanish while the save reports success.
+* A colour or size the plugin cannot use no longer erases the value you had: it is kept and the field named, so a change cannot vanish while the save reports success.
 * The chart Design tab's controls now reach every chart type: the palette colors heatmap cells and Gantt task groups, and the text and grid colors reach radar, treemap and tooltip labels.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
 * Charts with no palette now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
@@ -138,7 +138,7 @@ Fixes:
 = 2.0.1 =
 New:
 
-* External database sources can encrypt their connection with TLS. Give it the CA certificate path: PHP's MySQL driver cannot use the system trust store.
+* External database sources can encrypt their connection with TLS. Give the source the path of the CA certificate that signed it: PHP's MySQL driver cannot use the system trust store.
 
 Fixes:
 

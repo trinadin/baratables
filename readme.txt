@@ -106,7 +106,7 @@ Fixes:
 
 Developer:
 
-* Fifteen published PHP methods and constants are deprecated and will be removed in the 2.2.0 minor; each carries its replacement.
+* Sixteen published PHP methods and constants are deprecated and will be removed in the 2.2.0 minor; each carries its replacement.
 
 = 2.1.0 =
 New:

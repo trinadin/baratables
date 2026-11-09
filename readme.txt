@@ -67,7 +67,7 @@ Create a table first, then go to Charts and create a chart linked to it, embedde
 
 = Can I customize the table appearance? =
 
-Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart series palette, each live in the preview as you type. It also takes per-table Additional CSS. Styles print as CSS custom properties, so what you leave blank falls through to the site default and then to your theme.
+Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing, and a per-chart series palette, each live in the preview as you type. It also takes per-table Additional CSS, scoped to that table: `@import` and `@font-face` are not scoped and load for the whole page. Styles print as CSS custom properties, so what you leave blank falls through to the site default and then to your theme.
 
 = Can I set one design for the whole site? =
 

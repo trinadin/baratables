@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-09T22:54:14+00:00\n"
+"POT-Creation-Date: 2026-11-09T23:38:46+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -2315,7 +2315,7 @@ msgid "Gantt"
 msgstr ""
 
 #. translators: %d is the number of linked charts still awaiting recovery.
-#: includes/class-baratables.php:192
+#: includes/class-baratables.php:208
 #, php-format
 msgid "BaraTables is still restoring %d linked chart after a cancelled table ID change. It will retry automatically."
 msgid_plural "BaraTables is still restoring %d linked charts after a cancelled table ID change. It will retry automatically."
@@ -2323,14 +2323,14 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d is the number of linked charts restored.
-#: includes/class-baratables.php:201
+#: includes/class-baratables.php:217
 #, php-format
 msgid "BaraTables restored %d linked chart after a cancelled table ID change."
 msgid_plural "BaraTables restored %d linked charts after a cancelled table ID change."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-baratables.php:210
+#: includes/class-baratables.php:226
 msgid "BaraTables could not finish upgrading its saved data. Your previous data was kept and the upgrade will retry automatically."
 msgstr ""
 
@@ -3234,7 +3234,7 @@ msgid "Roundness of buttons and filter inputs, e.g. 6px."
 msgstr ""
 
 #: includes/services.php:3292
-msgid "Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th."
+msgid "Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th. @import and @font-face cannot be scoped: they load for the whole page, and an @import must be the first rule to work."
 msgstr ""
 
 #: includes/services.php:3304

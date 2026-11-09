@@ -3289,7 +3289,7 @@ class BaraTables_Service {
 		$schema['borderRadius']['label'] = __('Corner radius', 'baratables');
 		$schema['borderRadius']['description'] = __('Roundness of buttons and filter inputs, e.g. 6px.', 'baratables');
 		$schema['customCss']['label'] = __('Additional CSS', 'baratables');
-		$schema['customCss']['description'] = __('Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th.', 'baratables');
+		$schema['customCss']['description'] = __('Anything the controls above do not cover. Rules are scoped to this table automatically, so write plain selectors like td or thead th. @import and @font-face cannot be scoped: they load for the whole page, and an @import must be the first rule to work.', 'baratables');
 		foreach (array_keys(self::STYLE_VAR_MAP) as $key) {
 			$schema[$key]['editor_group'] = 'design';
 		}

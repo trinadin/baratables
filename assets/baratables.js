@@ -140,9 +140,9 @@
 		return element.closest('.btbl-table-wrapper');
 	}
 
-	function showExportFailure(kind, node, config, reason, error) {
-		var messages = config.exportErrorMessages || {};
-		var message = messages[kind] || '';
+	function showExportFailure(kind, node, config, reason, error, messages) {
+		var map = messages || config.exportErrorMessages || {};
+		var message = map[kind] || '';
 		var wrapper = exportWrapper(node);
 		if (wrapper) {
 			var notice = wrapper.querySelector('.btbl-runtime-error');
@@ -165,7 +165,8 @@
 	// actions do report completion, but the Excel one waits on a promise the plugin
 	// cannot see and the PDF one hands the file to an async save, so a failure can
 	// leave the button greyed out for the rest of the visit. The watchdog is the
-	// backstop: the button comes back and says what happened.
+	// backstop: the button comes back and says the export is slow, which is not the
+	// same as saying it failed. A late success clears that notice.
 	var EXPORT_WATCHDOG_MS = 30000;
 
 	// How long the failure watcher stays after the PDF action reports completion. That
@@ -192,6 +193,7 @@
 			var element = node && typeof node.get === 'function' ? node.get(0) : node;
 			var released = false;
 			var failed = false;
+			var timedOut = false;
 			var watchdog = null;
 			var watcher = null;
 
@@ -227,17 +229,40 @@
 			var fail = function(reason, error) {
 				if (failed) { return; }
 				failed = true;
+				timedOut = false;
 				release();
 				stopWatching();
 				showExportFailure(kind, node, config, reason, error || null);
 			};
 
+			// The watchdog is a backstop, not a verdict. The export may still be running
+			// and may still succeed, so the button comes back and the notice says the
+			// export is slow rather than that it failed. A late success clears it.
+			var timeOut = function() {
+				if (failed) { return; }
+				timedOut = true;
+				release();
+				// The watcher stays: the built-in Excel action has no rejection handler
+				// of its own, so the watcher is the only way to see a late failure. The
+				// next success or failure removes it.
+				showExportFailure(kind, node, config, 'took too long', null, config.exportTimeoutMessages);
+			};
+
 			var succeed = function() {
+				var wrapper = exportWrapper(node);
+				if (timedOut) {
+					// The export finished after the watchdog stopped waiting for it. It
+					// worked, so the slow-export notice must not stay up above a working
+					// table.
+					timedOut = false;
+					stopWatching();
+					if (wrapper) { hideRuntimeError(wrapper); }
+					return;
+				}
 				if (failed || released) { return; }
 				release();
 				// The export worked, so a failure notice from an earlier attempt must
 				// not stay up above a working table.
-				var wrapper = exportWrapper(node);
 				if (wrapper) { hideRuntimeError(wrapper); }
 				if (kind === 'pdf') {
 					// The PDF action reports completion before the file is handed over,
@@ -260,7 +285,7 @@
 				window.addEventListener('unhandledrejection', watcher);
 			}
 			watchdog = window.setTimeout(function() {
-				fail('did not finish', null);
+				timeOut();
 			}, EXPORT_WATCHDOG_MS);
 
 			if (buttonApi && typeof buttonApi.disable === 'function') {

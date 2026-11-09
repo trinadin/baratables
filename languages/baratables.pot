@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-09T22:43:46+00:00\n"
+"POT-Creation-Date: 2026-11-09T22:54:14+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -2418,8 +2418,8 @@ msgid "Clear filters"
 msgstr ""
 
 #: includes/frontend.php:808
-#: includes/frontend.php:1013
-#: includes/frontend.php:1071
+#: includes/frontend.php:1020
+#: includes/frontend.php:1078
 msgid "All"
 msgstr ""
 
@@ -2435,15 +2435,23 @@ msgstr ""
 msgid "The PDF could not be created. Check your connection and try again."
 msgstr ""
 
-#: includes/frontend.php:927
+#: includes/frontend.php:903
+msgid "The Excel file is taking longer than expected. It may still download."
+msgstr ""
+
+#: includes/frontend.php:904
+msgid "The PDF is taking longer than expected. It may still download."
+msgstr ""
+
+#: includes/frontend.php:934
 msgid "Start"
 msgstr ""
 
-#: includes/frontend.php:928
+#: includes/frontend.php:935
 msgid "End"
 msgstr ""
 
-#: includes/frontend.php:929
+#: includes/frontend.php:936
 msgid "Progress"
 msgstr ""
 

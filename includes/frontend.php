@@ -896,6 +896,13 @@ class BaraTables_Frontend {
 					'excel' => __('The Excel file could not be created. Check your connection and try again.', 'baratables'),
 					'pdf'   => __('The PDF could not be created. Check your connection and try again.', 'baratables'),
 				];
+				// The watchdog releases a button whose export is taking too long. That is
+				// not a failure: the export may still finish and download, so the
+				// message says so rather than blaming the connection.
+				$payload['exportTimeoutMessages'] = [
+					'excel' => __('The Excel file is taking longer than expected. It may still download.', 'baratables'),
+					'pdf'   => __('The PDF is taking longer than expected. It may still download.', 'baratables'),
+				];
 			}
 		}
 		if ($render_table && !empty($definition['__server_side']['enabled'])) {

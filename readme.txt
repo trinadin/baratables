@@ -103,7 +103,7 @@ Fixes:
 * On right-to-left sites, filter spacing and the search dropdown's scrollbar now sit on the correct side, and the admin's actions column, help toggle, and arrow keys follow the text direction.
 * Export-button pages are much lighter: the Excel and PDF libraries load on first click.
 * A table's search box, filters and buttons now all round their corners the same way, instead of each rounding differently.
-* A table's custom CSS is applied in full: rules after a media query or a keyframes block are no longer dropped, and a rule that names the table wrapper now reaches that table.
+* A table's custom CSS is applied in full: rules after a media query or a keyframes block are kept, and a rule naming the table wrapper reaches that table.
 
 Developer:
 
@@ -117,14 +117,14 @@ New:
 
 Fixes:
 
-* A colour or size the plugin cannot use no longer erases the value you had: it is kept and the field named, so a change cannot vanish while the save reports success.
-* The chart Design tab's controls now reach every chart type: the palette colors heatmap cells and Gantt task groups, and the text and grid colors reach radar, treemap and tooltip labels.
+* A colour or size the plugin cannot use no longer erases your value: it is kept and the field named, so a change cannot vanish while the save reports success.
+* The chart Design tab's controls reach every chart type: the palette colors heatmap cells and Gantt task groups, and the text and grid colors reach radar, treemap and tooltip labels.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
-* Charts with no palette now use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
+* Charts with no palette use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
 * The Grid color control is no longer offered on charts that have no grid.
-* The series palette can now be reordered from the keyboard, and each color's remove button names the color it removes.
-* The "Theme CSS" output mode now hands over completely: the plugin no longer prints the chart container's background, padding and radius, so your theme's CSS stays in charge.
-* The "Theme default" preset is now "Clear overrides": a blank value inherits the site default first, so the old name no longer said what the button did.
+* The series palette is reordered from the keyboard, and each color's remove button names the color it removes.
+* The "Theme CSS" output mode hands over completely: the plugin no longer prints the chart container's background, padding and radius, so your theme's CSS stays in charge.
+* The "Theme default" preset is now "Clear overrides": a blank value inherits the site default first, the old name no longer said what the button did.
 * A table or chart whose name contains "&" or ">" saves again, and Additional CSS keeps the characters you typed.
 * A ZIP holding a readme next to your table imports the table, not the readme.
 * An uploaded file named DATA.CSV is accepted.
@@ -387,7 +387,7 @@ Security:
 == Upgrade Notice ==
 
 = 2.1.1 =
-Fixes right-to-left details; export libraries load on first click; custom CSS is applied in full. Developers: sixteen published PHP methods and constants are deprecated.
+Fixes right-to-left details; export libraries load on first click. Developers: sixteen published PHP methods and constants are deprecated.
 
 = 2.1.0 =
 Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.

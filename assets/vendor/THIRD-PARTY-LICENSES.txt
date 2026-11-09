@@ -78,7 +78,7 @@ License: MIT
 Copyright (c) 2014-2023 Bartek Pampuch and pdfmake contributors
 http://pdfmake.org
 
-vfs_fonts.min.js embeds the Roboto font family (Roboto-Regular, Roboto-Italic,
+vfs_fonts.js embeds the Roboto font family (Roboto-Regular, Roboto-Italic,
 Roboto-Medium, and Roboto-MediumItalic), used to render exported PDF text.
 Roboto is available under the Apache License 2.0 (full text below).
 

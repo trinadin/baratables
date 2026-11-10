@@ -100,10 +100,11 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance.
 = 2.1.1 =
 Fixes:
 
-* On right-to-left sites, filter spacing and the search dropdown scrollbar now sit on the correct side, and the admin's actions column, help toggle and arrow keys follow the text direction.
+* On right-to-left sites, filter spacing and the search dropdown scrollbar sit on the correct side, and the admin's actions column, help toggle and arrow keys follow the text direction.
 * Export-button pages are much lighter: the Excel and PDF libraries load on first click.
-* A table's search box, filters and buttons now round their corners the same way, instead of each rounding differently.
-* A table's custom CSS is applied in full: rules after a media query or keyframes block are kept, and a rule naming the table wrapper reaches that table.
+* A table's search box, filters and buttons now use the same corner radius.
+* A table's custom CSS is applied in full: rules after a media query or keyframes block are kept, and a rule naming the table wrapper reaches it.
+* The chart type gallery no longer lets the page scroll behind it.
 
 Security:
 
@@ -111,7 +112,7 @@ Security:
 
 Developer:
 
-* Sixteen published PHP methods and constants are deprecated and will be removed in the 2.2.0 minor; each names its replacement.
+* Sixteen published PHP methods and constants are deprecated and will be removed in 2.2.0; each names its replacement.
 
 = 2.1.0 =
 New:

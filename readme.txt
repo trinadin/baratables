@@ -55,7 +55,7 @@ Imports rebuild table data and compatible display settings, not styling, formula
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can page large tables on demand instead: at most 100 rows per request, paged, sorted and searched by the database within a 100,000-result limit. It requires selected columns, pagination and a non-null single-column primary or unique key, and no access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, as PHP's MySQL driver cannot use the system trust store.
+External MySQL/MariaDB tables can page large tables on demand instead: at most 100 rows per request, paged, sorted and searched by the database within a 100,000-result limit. It requires selected columns, pagination and a non-null single-column primary or unique key, and no access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, as PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -67,7 +67,7 @@ Create a table first, then go to Charts and create a chart linked to it, embedde
 
 = Can I customize the table appearance? =
 
-Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing and a per-chart series palette, each live in the preview as you type. It also takes per-table Additional CSS, scoped to that table, except `@import` and `@font-face`, which load for the whole page. Styles print as CSS custom properties, so what you leave blank falls through to the site default and then to your theme.
+Yes. The Design tab (charts get one too) styles tables without code: presets, colors, typography, spacing and a per-chart series palette, each live in the preview as you type. It also takes per-table Additional CSS, scoped to that table, except `@import` and `@font-face`, which load for the whole page. Styles print as CSS custom properties, so what you leave blank falls through to the site default, then to your theme.
 
 = Can I set one design for the whole site? =
 
@@ -100,7 +100,7 @@ See https://ktisisweb.com/baratables/ for screenshots and styling guidance.
 = 2.1.1 =
 Fixes:
 
-* On right-to-left sites, filter spacing and the search dropdown's scrollbar now sit on the correct side, and the admin's actions column, help toggle and arrow keys follow the text direction.
+* On right-to-left sites, filter spacing and the search dropdown scrollbar now sit on the correct side, and the admin's actions column, help toggle and arrow keys follow the text direction.
 * Export-button pages are much lighter: the Excel and PDF libraries load on first click.
 * A table's search box, filters and buttons now round their corners the same way, instead of each rounding differently.
 * A table's custom CSS is applied in full: rules after a media query or keyframes block are kept, and a rule naming the table wrapper reaches that table.

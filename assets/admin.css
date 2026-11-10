@@ -951,6 +951,15 @@ dialog.btbl-chart-modal::backdrop {
 	background: rgba(0, 0, 0, 0.35);
 }
 
+/* The chart-type gallery holds the page behind it still while it is open; see
+   admin-chart.js. Hiding the overflow takes the scrollbar with it, so the
+   width it had is given back as padding -- otherwise the page widens by that
+   much every time the gallery opens and the content shifts sideways. */
+html.btbl-scroll-locked {
+	overflow: hidden;
+	padding-right: var(--btbl-scrollbar-width, 0px);
+}
+
 .btbl-chart-modal__content {
 	position: relative;
 	background: #fff;

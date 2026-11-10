@@ -256,8 +256,41 @@ jQuery(function($) {
 		// The dialog element carries the mechanics showModal() provides: the top layer,
 		// focus trapping, Escape to close, and returning focus to the control that opened
 		// it. Only the open/close calls and the initial focus target remain here.
+		// A native <dialog> opened with showModal() puts the rest of the document into the
+		// top layer's inert state, but it does not stop the page behind it from scrolling:
+		// a wheel over the backdrop moves the content the administrator was reading, and
+		// they come back to a different place. Locking the document's scroll while the
+		// gallery is open keeps the backdrop where it was.
+		//
+		// Hiding the overflow takes the scrollbar with it, so its width is measured first
+		// and handed back as padding. Without that the page widens by a few pixels every
+		// time the gallery opens, which moves the content the lock was meant to hold still.
+		function lockPageScroll() {
+			var root = document.documentElement;
+			if (!root || root.classList.contains('btbl-scroll-locked')) {
+				return;
+			}
+			var scrollbar = window.innerWidth - root.clientWidth;
+			if (scrollbar > 0) {
+				root.style.setProperty('--btbl-scrollbar-width', scrollbar + 'px');
+			}
+			root.classList.add('btbl-scroll-locked');
+		}
+
+		function unlockPageScroll() {
+			var root = document.documentElement;
+			if (!root) {
+				return;
+			}
+			root.classList.remove('btbl-scroll-locked');
+			root.style.removeProperty('--btbl-scrollbar-width');
+		}
+
 		function openModal() {
 			$modal[0].showModal();
+			// Locked after showModal(), so a dialog that refuses to open (already open as a
+			// modal) cannot leave the page locked behind a gallery that never appeared.
+			lockPageScroll();
 			// Focus the active card (else the first card, else the close button).
 			var $target = $chooser.find('.btbl-chart-type-card.is-active').first();
 			if (!$target.length) {
@@ -311,6 +344,11 @@ jQuery(function($) {
 				this.close();
 			}
 		});
+
+		// Every close path -- the close button, a backdrop click, Escape, and picking a
+		// chart type -- ends in close(), and close() fires this event. Releasing the lock
+		// here is therefore the one place that has to know about all of them.
+		$modal[0].addEventListener('close', unlockPageScroll);
 
 		$select.on('change', syncFromSelect);
 		syncFromSelect();

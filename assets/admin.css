@@ -956,13 +956,20 @@ dialog.btbl-chart-modal::backdrop {
    width it had is given back as padding -- otherwise the page widens by that
    much every time the gallery opens and the content shifts sideways.
 
-   The scrollbar sits on the inline-end edge of the box, which is the right in
-   a left-to-right site and the left in a right-to-left one, so the padding is
-   named logically: a physical right padding would push the content the wrong
-   way on an RTL site. */
+   Which edge that padding goes on is measured at lock time, not taken from
+   the writing direction: a browser can keep the scrollbar on the right in a
+   right-to-left document, and one that mirrors it there would need the other
+   side. The class names which edge was measured. */
 html.btbl-scroll-locked {
 	overflow: hidden;
-	padding-inline-end: var(--btbl-scrollbar-width, 0px);
+}
+
+html.btbl-scroll-locked-right {
+	padding-right: var(--btbl-scrollbar-width, 0px);
+}
+
+html.btbl-scroll-locked-left {
+	padding-left: var(--btbl-scrollbar-width, 0px);
 }
 
 .btbl-chart-modal__content {

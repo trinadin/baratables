@@ -265,6 +265,13 @@ jQuery(function($) {
 		// Hiding the overflow takes the scrollbar with it, so its width is measured first
 		// and handed back as padding. Without that the page widens by a few pixels every
 		// time the gallery opens, which moves the content the lock was meant to hold still.
+		//
+		// The edge the gutter is on is measured too, not taken from the writing direction:
+		// a browser that keeps the scrollbar on the right in a right-to-left document and
+		// one that mirrors it to the left there would both be compensated on the wrong
+		// side by a fixed rule.
+		var scrollLockObserver = null;
+
 		function lockPageScroll() {
 			var root = document.documentElement;
 			if (!root || root.classList.contains('btbl-scroll-locked')) {
@@ -273,16 +280,35 @@ jQuery(function($) {
 			var scrollbar = window.innerWidth - root.clientWidth;
 			if (scrollbar > 0) {
 				root.style.setProperty('--btbl-scrollbar-width', scrollbar + 'px');
+				root.classList.add(root.getBoundingClientRect().left > 0 ? 'btbl-scroll-locked-left' : 'btbl-scroll-locked-right');
 			}
 			root.classList.add('btbl-scroll-locked');
+			// A dialog that leaves the page while it is open never fires close, which would
+			// leave the whole admin page unscrollable for the rest of the session. The
+			// observer watches only while the gallery is open, and the page behind a modal
+			// is inert, so it has almost nothing to react to.
+			if (window.MutationObserver && document.body) {
+				scrollLockObserver = new MutationObserver(function() {
+					if (!$modal[0].isConnected) {
+						unlockPageScroll();
+					}
+				});
+				scrollLockObserver.observe(document.body, { childList: true, subtree: true });
+			}
 		}
 
 		function unlockPageScroll() {
 			var root = document.documentElement;
+			if (scrollLockObserver) {
+				scrollLockObserver.disconnect();
+				scrollLockObserver = null;
+			}
 			if (!root) {
 				return;
 			}
 			root.classList.remove('btbl-scroll-locked');
+			root.classList.remove('btbl-scroll-locked-left');
+			root.classList.remove('btbl-scroll-locked-right');
 			root.style.removeProperty('--btbl-scrollbar-width');
 		}
 

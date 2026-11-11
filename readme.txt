@@ -43,7 +43,7 @@ Import a JSON, XML, HTML, CSV, TXT, XLSX, ODS or ZIP export from another plugin.
 
 CSV files, manual data, WordPress content, external MySQL/MariaDB databases, and snapshots from public CSV, JSON or Google Sheets URLs.
 
-Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot without contacting it. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are unsupported; re-create the table when columns change.
+Remote snapshots are manual and administrator-only: save the public HTTPS URL and format, click Fetch snapshot, and published tables use the stored snapshot. CSV endpoints must return `text/csv` or `application/csv`; `text/plain` is rejected, though JSON endpoints may use it. Authentication, private Sheets, scheduled refresh and schema changes are unsupported; re-create the table when columns change.
 
 = Which plugin exports can I import? =
 
@@ -55,7 +55,7 @@ Imports rebuild table data and compatible display settings, not styling, formula
 
 Tables load 1,000 rows by default; the Options tab sets a limit from 1 to 10,000 on every source.
 
-External MySQL/MariaDB tables can page large tables on demand instead: at most 100 rows per request, paged, sorted and searched by the database within a 100,000-result limit. It requires selected columns, pagination and a non-null single-column primary or unique key, and no access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading, and the editor names the reason. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, as PHP's MySQL driver cannot use the system trust store.
+External MySQL/MariaDB tables can page large tables on demand instead: at most 100 rows per request, paged, sorted and searched by the database within a 100,000-result limit. It requires selected columns, pagination and a non-null single-column primary or unique key, and no access rules, value transforms, column filters, formatted dates, Number columns, footer totals, or the export, copy and print buttons; a table using any of them keeps standard loading. Database search follows the source collation. Encrypt the connection with TLS for any host outside your own machine; TLS needs the path of the CA certificate that signed it, as PHP's MySQL driver cannot use the system trust store.
 
 = Can I link to a filtered view of a table? =
 
@@ -79,7 +79,7 @@ Choose Number in a column's settings: plain decimals such as -12.5 join numeric 
 
 = Can I style BaraTables with custom CSS? =
 
-Minimal frontend styles keep your theme in control; adjust colors, spacing and typography with your theme, the Site Editor or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme via the "Theme CSS" output mode. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color and the plugin's default rather than an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's shape.
+Minimal frontend styles keep your theme in control; adjust colors, spacing and typography with your theme or custom CSS. The Design tab writes its choices as `--btbl-*` custom properties on `.btbl-table-wrapper` -- a stable API for themes: set a token on any ancestor to re-skin every table under it, or copy the block with Copy CSS and manage it in your theme. `--btbl-accent`, `--btbl-border`, `--btbl-muted` and `--btbl-surface` are declared by the wrapper itself, so they follow your theme's primary color, not an ancestor's value. Tokens cover the header, stripe, hover, border, footer and conditional colors, and the chart container's shape.
 
 A chart's text, grid and series colors are drawn on its canvas, so they are not CSS: they live in the chart's own settings, where the same Design tab controls them. The chart container's shape is CSS, and rides the token layer with the tables.
 
@@ -105,10 +105,21 @@ Fixes:
 * A table's search box, filters and buttons now use the same corner radius.
 * A table's custom CSS is applied in full: rules after a media query or keyframes block are kept, and a rule naming the table wrapper reaches it.
 * The chart type gallery no longer lets the page scroll behind it.
+* A table save that fails part-way restores the previous data instead of leaving the table half-written.
+* Saving a table that changed while you had it open is refused, instead of overwriting the newer version.
+* Chart colors are now readable against the page; the default palette and the presets were recolored.
+* On a multisite network, the hide-help-text preference is now per site.
+
+Accessibility:
+
+* The column visibility menu and the Table options menu work with the keyboard alone: every entry can be reached, and the menu can be closed.
+* A chart-only page now offers its data to screen readers.
+* The search column picker closes on Escape, and a table without a caption still has a name.
 
 Security:
 
 * The plugin's upgrade of saved table data now waits for an administrator.
+* A failed external database connection no longer prints the server's file path.
 
 Developer:
 
@@ -117,19 +128,19 @@ Developer:
 = 2.1.0 =
 New:
 
-* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from; its own value wins, one that opts out follows your theme.
+* Set one design for the whole site. BaraTables > Design holds the colors and typography every table and chart starts from; a table or chart that sets its own value keeps it.
 * The chart Design tab now offers the same presets and Copy CSS as the table Design tab.
 
 Fixes:
 
-* A colour or size the plugin cannot use no longer erases your value: it is kept and the field named, so a change cannot vanish while the save reports success.
-* The chart Design tab's controls reach every chart type: the palette colors heatmap cells and Gantt task groups, and the text and grid colors reach radar, treemap and tooltip labels.
+* A colour or size the plugin cannot use no longer erases your value: it is kept and the field named.
+* The chart Design tab's controls reach every chart type: the palette colors heatmap cells and Gantt task groups, and the text and grid colors reach radar, treemap and tooltips.
 * A chart font size is now in pixels. A size of 2em used to render as 2px.
-* Charts with no palette use ECharts' current colors, led by the accent, instead of a stale copy of an older release.
+* Charts with no palette use ECharts' current colors, led by the accent.
 * The Grid color control is no longer offered on charts that have no grid.
-* The series palette is reordered from the keyboard, and each color's remove button names the color it removes.
-* The "Theme CSS" output mode hands over completely: the plugin no longer prints the chart container's background, padding and radius, so your theme's CSS stays in charge.
-* The "Theme default" preset is now "Clear overrides": a blank value inherits the site default first, the old name no longer said what the button did.
+* The series palette is reordered from the keyboard, and each color's remove button names it.
+* The "Theme CSS" output mode hands over completely: the plugin no longer prints the chart container's background, padding and radius.
+* The "Theme default" preset is now "Clear overrides": a blank value inherits the site default first.
 * A table or chart whose name contains "&" or ">" saves again, and Additional CSS keeps the characters you typed.
 * A ZIP holding a readme next to your table imports the table, not the readme.
 * An uploaded file named DATA.CSV is accepted.
@@ -219,7 +230,7 @@ New:
 
 Improvements:
 
-* Table pages no longer load jQuery, and dropdown filters use a lighter picker, so they load faster.
+* Table pages no longer load jQuery, and dropdown filters use a lighter picker.
 * The table engine is now DataTables 3; pages with export buttons load fewer files.
 * Auto-built dropdown and checkbox filters cap at 250 options, so a near-unique column cannot stall the page.
 * The editor's Options tab is reorganized, and every field shows its default until you change it.
@@ -231,9 +242,9 @@ Fixes:
 * Day-first dates such as 25/12/2026 now format correctly with "Format as date".
 * Chart values written with a decimal comma (1.234,56) plot at the correct magnitude.
 * Tab-delimited files import as separate columns instead of one long column.
-* An invalid external database edit no longer silently keeps the previous connection; clearing every field removes it.
+* An invalid external database edit no longer silently keeps the previous connection.
 * Search limited to chosen columns follows columns you move by dragging.
-* The settings gear no longer appears on a switched-off control whose inner option is still checked.
+* The settings gear no longer appears on a switched-off control whose option is still checked.
 * Layout builder drop zones sit where their labels say.
 
 = 1.2.5 =
@@ -302,7 +313,7 @@ New:
 Fixes:
 
 * Filtering by category or tag.
-* Advanced Custom Fields Post Object, Relationship, Taxonomy and Repeater columns load correctly, showing their title, name or contents.
+* Advanced Custom Fields Post Object, Relationship, Taxonomy and Repeater columns load correctly.
 * Manual data grids hold up to 25,000 cells; the editor warns when your server's form-field limit is too low.
 * Two tables on the same page keep their own filters in the shareable link.
 * An import that fails to save can be retried without uploading the file again.
@@ -316,7 +327,7 @@ Fixes:
 * Date columns show the time of day, and timestamps use your site's timezone.
 * Blank lines in a CSV file are skipped.
 * Custom WP Query tables load up to the row limit you set.
-* On CSV and external database tables, row-level access control shows every row a visitor may see, past the row limit.
+* On CSV and external database tables, row-level access control shows every row a visitor may see.
 * Shareable filter links work for a value of 0.
 * Unnamed columns from a headerless CSV follow the site language.
 * The editor preview uses the same export button labels as the published table.
@@ -392,7 +403,7 @@ Security:
 == Upgrade Notice ==
 
 = 2.1.1 =
-Fixes right-to-left details; export libraries load on first click. Developers: sixteen published PHP methods and constants are deprecated.
+Fixes right-to-left details; export libraries load on first click; the table menus work with the keyboard; chart colors are readable. Developers: sixteen published PHP methods and constants are deprecated.
 
 = 2.1.0 =
 Adds a site-wide default design, brings the chart Design tab to parity with the table one, and fixes the chart colors that did not reach every chart type.

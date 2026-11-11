@@ -26,10 +26,16 @@
 	// graphical object a reader needs in order to understand the chart -- a light chart
 	// series on a white page was often well under 1.5:1. The failing colours were
 	// darkened in place: every one of them keeps its hue, its saturation and its place
-	// in the series order, and every one of them now clears 3:1 on the light background a
-	// chart draws on as well as on the dark backgrounds the design presets use (the
-	// preset palettes in admin-core.js ship the same values).
-	var CHART_PALETTE = ['#5070dd', '#7f971f', '#505372', '#eb6400', '#0b98ca', '#aa8a00', '#fa4b7a', '#836ab7', '#359e7c'];
+	// in the series order, and every one of them now clears 3:1 on the light background
+	// a chart draws on as well as on the dark backgrounds the design presets use.
+	//
+	// The third colour was a near-black slate that cleared 3:1 on white but only
+	// reached 1.97:1 on the bold preset's background and 2.38:1 on the midnight
+	// preset's -- a series that all but vanished on a dark page. It is a lighter
+	// slate of the same hue and saturation now, and every colour in the palette
+	// clears 3:1 on every background the plugin ships (the preset palettes in
+	// admin-core.js ship the same values).
+	var CHART_PALETTE = ['#5070dd', '#7f971f', '#7d7f97', '#eb6400', '#0b98ca', '#aa8a00', '#fa4b7a', '#836ab7', '#359e7c'];
 
 	// The default series colors lead with the table's accent, so a themed accent colors
 	// the chart too; the rest of the palette follows.

@@ -275,7 +275,7 @@
 				styleTextColor: '#24292f',
 				styleGridColor: '#e5e7eb',
 				styleFontSize: '14px',
-				stylePalette: ['#5070dd', '#7f971f', '#505372', '#eb6400', '#0b98ca']
+				stylePalette: ['#5070dd', '#7f971f', '#7d7f97', '#eb6400', '#0b98ca']
 			},
 			bold: {
 				styleBackground: '#1f2937',

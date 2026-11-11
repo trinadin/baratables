@@ -82,7 +82,8 @@ final class BaraTables_Data_Migrations {
 		$clear_legacy_labels = (int) get_option(self::LABEL_I18N_MIGRATION_OPTION, 0) < self::DATA_MIGRATION_GENERATION;
 		$unreadable = [];
 		$conflicted = [];
-		foreach (($add_auto_labels || $clear_legacy_labels) ? self::get_migration_table_ids() : [] as $id) {
+		$pending = array_merge($issues['unreadable'], $issues['conflicted']);
+		foreach (($add_auto_labels || $clear_legacy_labels) ? self::table_ids_to_check($pending) : [] as $id) {
 			$id = (int) $id;
 			$defn = get_post_meta($id, BaraTables_Repository::META_KEY, true);
 			if (!is_array($defn)) {
@@ -179,6 +180,28 @@ final class BaraTables_Data_Migrations {
 		delete_option(self::AUTO_LABEL_MIGRATION_OPTION);
 		delete_option(self::LABEL_I18N_MIGRATION_OPTION);
 		return null;
+	}
+
+	/**
+	 * The tables this pass has to look at.
+	 *
+	 * The first pass walks the whole site. A pass that follows one that could not
+	 * upgrade a table re-checks only the tables it could not upgrade: a stored
+	 * definition that cannot be read would otherwise make every admin request walk
+	 * every table on the site again, for as long as that table stays broken.
+	 *
+	 * A table created after the first pass needs no upgrade: the editor and the
+	 * importer both write the current shape, so it is not one of the pending
+	 * tables.
+	 *
+	 * @param int[] $pending The tables the last pass could not upgrade.
+	 * @return int[]
+	 */
+	private static function table_ids_to_check(array $pending): array {
+		if (!empty($pending)) {
+			return array_values(array_unique(array_map('intval', $pending)));
+		}
+		return self::get_migration_table_ids();
 	}
 
 	/**

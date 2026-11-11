@@ -1192,6 +1192,17 @@
 			}
 		});
 
+		// Focus leaving the menu closes it, the same way the search picker behaves: a
+		// menu that stays open after the keyboard has walked out of it hangs over the
+		// page with nothing focused inside it.
+		menu.addEventListener('focusout', function(event) {
+			var next = event.relatedTarget;
+			if (next && (menu.contains(next) || (toggleNode && toggleNode.contains(next)))) {
+				return;
+			}
+			close(false);
+		});
+
 		table.on('column-visibility.dt', syncStates);
 		table.on('column-reorder.dt', function() {
 			if (isOpen) {

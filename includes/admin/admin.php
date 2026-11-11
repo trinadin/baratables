@@ -288,6 +288,11 @@ class BaraTables_Admin {
 		// The stored definition is read FIRST: a design token whose submitted value the
 		// server would reject keeps the stored value instead of being deleted.
 		$existing = $this->get_existing_table_definition_for_post($post);
+		// The compare-and-set needs the RAW stored value. The helper above normalises
+		// what it returns, and a normalised value is not a valid expected value: the
+		// meta column holds the serialised sanitised definition, so only the raw read
+		// matches it.
+		$expected_definition = get_post_meta($post_id, BaraTables_Repository::META_KEY, true);
 		$request = $this->actions->collect_table_request_data($existing);
 		$definition = $this->actions->apply_request_to_definition($request, $existing, $update);
 		$identity = $this->persistence->save_editor_slug(
@@ -311,8 +316,30 @@ class BaraTables_Admin {
 		$definition['name'] = $request['name'] !== '' ? $request['name'] : ($definition['name'] ?? $post->post_title);
 		$definition['status'] = $post->post_status;
 
-		$persist_error = $this->persistence->persist($post_id, $definition, $slug);
+		// The write is a compare-and-set: it lands only while the stored definition is
+		// still the one this request read. Without it, two administrators who open the
+		// same table and both save would silently lose the first administrator's edits.
+		$persist_error = BaraTables_Base_Repository::persist_if_unchanged(
+			$post_id,
+			BaraTables_Repository::META_KEY,
+			BaraTables_Repository::META_SLUG,
+			$expected_definition,
+			$definition,
+			$slug
+		);
 		if ($persist_error) {
+			if ($persist_error->get_error_code() === 'baratables_definition_conflict') {
+				// Another administrator saved this table while this request was running.
+				// Their save is the current state, so nothing is rolled back: rolling back
+				// would destroy the work they just committed. Only the post fields this
+				// save changed are undone, and the administrator is told what happened.
+				$this->restore_conflicting_post_fields($post_id, $post, $snapshot, $slug);
+				BaraTables_Admin_Notice::queue(
+					__('This table changed while you were editing it, so your changes were not saved. Reload the editor and re-apply them.', 'baratables'),
+					'error'
+				);
+				return;
+			}
 			$rollback_error = $this->persistence->restore($post_id, $snapshot, [$this, 'save_table_from_editor'], 3);
 			BaraTables_Admin_Notice::queue(
 				$rollback_error
@@ -418,6 +445,51 @@ class BaraTables_Admin {
 					),
 					'warning'
 				);
+			}
+		}
+	}
+
+	/**
+	 * Undo only the post fields this save changed, after a compare-and-set conflict.
+	 *
+	 * The stored definition belongs to the administrator who saved it last, so it is
+	 * never rolled back here. The post fields -- title, table ID and status -- are this
+	 * save's own changes, so they are restored to make the refusal coherent. Each
+	 * field is restored only while it still holds the value this save wrote, so a
+	 * change another administrator committed in the meantime is never overwritten.
+	 */
+	private function restore_conflicting_post_fields(int $post_id, WP_Post $post, array $snapshot, string $written_slug): void {
+		$restore = [];
+		$current_name = (string) get_post_field('post_name', $post_id, 'raw');
+		if ($written_slug !== '' && $current_name === $written_slug && (string) ($snapshot['post_name'] ?? '') !== $current_name) {
+			$restore['post_name'] = (string) $snapshot['post_name'];
+		}
+		$current_title = (string) get_post_field('post_title', $post_id, 'raw');
+		if ($current_title === (string) $post->post_title && (string) ($snapshot['post_title'] ?? '') !== $current_title) {
+			$restore['post_title'] = (string) $snapshot['post_title'];
+		}
+		$current_status = (string) get_post_field('post_status', $post_id, 'raw');
+		if ($current_status === (string) $post->post_status && (string) ($snapshot['post_status'] ?? '') !== $current_status) {
+			$restore['post_status'] = (string) $snapshot['post_status'];
+		}
+		if (empty($restore)) {
+			return;
+		}
+
+		// The post update must not run this handler again, and the persistence guard
+		// keeps the slug-repair hooks out of a coordinated write.
+		$save_hook = 'save_post_' . BaraTables_Repository::CPT;
+		$callback_registered = has_action($save_hook, [$this, 'save_table_from_editor']) !== false;
+		if ($callback_registered) {
+			remove_action($save_hook, [$this, 'save_table_from_editor'], 9);
+		}
+		BaraTables_Persistence_Guard::begin();
+		try {
+			wp_update_post(array_merge(['ID' => $post_id], $restore), true);
+		} finally {
+			BaraTables_Persistence_Guard::end();
+			if ($callback_registered) {
+				add_action($save_hook, [$this, 'save_table_from_editor'], 9, 3);
 			}
 		}
 	}
@@ -765,6 +837,11 @@ class BaraTables_Chart_Admin {
 		}
 
 		$snapshot = $this->persistence->snapshot($post_id, BaraTables_Post_Input::raw('original_post_status'));
+		// The compare-and-set needs the RAW stored value. The lookup above normalises
+		// what it returns, and a normalised value is not a valid expected value: the
+		// meta column holds the serialised sanitised definition, so only the raw read
+		// matches it.
+		$expected_definition = get_post_meta($post_id, BaraTables_Chart_Repository::META_KEY, true);
 		$identity = $this->persistence->save_editor_slug(
 			$post_id,
 			$post,
@@ -786,8 +863,29 @@ class BaraTables_Chart_Admin {
 		$chart['name'] = $name !== '' ? $name : ($chart['name'] ?? $post->post_title);
 		$chart['status'] = $post->post_status;
 
-		$persist_error = $this->persistence->persist($post_id, $chart, $slug);
+		// The write is a compare-and-set: it lands only while the stored definition is
+		// still the one this request read, so two administrators saving the same chart
+		// cannot silently lose the first administrator's edits.
+		$persist_error = BaraTables_Base_Repository::persist_if_unchanged(
+			$post_id,
+			BaraTables_Chart_Repository::META_KEY,
+			BaraTables_Chart_Repository::META_SLUG,
+			$expected_definition,
+			$chart,
+			$slug
+		);
 		if ($persist_error) {
+			if ($persist_error->get_error_code() === 'baratables_definition_conflict') {
+				// Another administrator saved this chart while this request was running.
+				// Their save is the current state, so nothing is rolled back: rolling
+				// back would destroy the work they just committed.
+				$this->restore_conflicting_post_fields($post_id, $post, $snapshot, $slug);
+				BaraTables_Admin_Notice::queue(
+					__('This chart changed while you were editing it, so your changes were not saved. Reload the editor and re-apply them.', 'baratables'),
+					'error'
+				);
+				return;
+			}
 			$rollback_error = $this->persistence->restore($post_id, $snapshot, [$this, 'save_chart_from_editor'], 2);
 			BaraTables_Admin_Notice::queue(
 				$rollback_error
@@ -817,6 +915,51 @@ class BaraTables_Chart_Admin {
 				__('This chart has no series selected, so it will render empty. Choose at least one series column.', 'baratables'),
 				'warning'
 			);
+		}
+	}
+
+	/**
+	 * Undo only the post fields this save changed, after a compare-and-set conflict.
+	 *
+	 * The stored definition belongs to the administrator who saved it last, so it is
+	 * never rolled back here. The post fields -- title, chart ID and status -- are this
+	 * save's own changes, so they are restored to make the refusal coherent. Each
+	 * field is restored only while it still holds the value this save wrote, so a
+	 * change another administrator committed in the meantime is never overwritten.
+	 */
+	private function restore_conflicting_post_fields(int $post_id, WP_Post $post, array $snapshot, string $written_slug): void {
+		$restore = [];
+		$current_name = (string) get_post_field('post_name', $post_id, 'raw');
+		if ($written_slug !== '' && $current_name === $written_slug && (string) ($snapshot['post_name'] ?? '') !== $current_name) {
+			$restore['post_name'] = (string) $snapshot['post_name'];
+		}
+		$current_title = (string) get_post_field('post_title', $post_id, 'raw');
+		if ($current_title === (string) $post->post_title && (string) ($snapshot['post_title'] ?? '') !== $current_title) {
+			$restore['post_title'] = (string) $snapshot['post_title'];
+		}
+		$current_status = (string) get_post_field('post_status', $post_id, 'raw');
+		if ($current_status === (string) $post->post_status && (string) ($snapshot['post_status'] ?? '') !== $current_status) {
+			$restore['post_status'] = (string) $snapshot['post_status'];
+		}
+		if (empty($restore)) {
+			return;
+		}
+
+		// The post update must not run this handler again, and the persistence guard
+		// keeps the slug-repair hooks out of a coordinated write.
+		$save_hook = 'save_post_' . BaraTables_Chart_Repository::CPT;
+		$callback_registered = has_action($save_hook, [$this, 'save_chart_from_editor']) !== false;
+		if ($callback_registered) {
+			remove_action($save_hook, [$this, 'save_chart_from_editor'], 9);
+		}
+		BaraTables_Persistence_Guard::begin();
+		try {
+			wp_update_post(array_merge(['ID' => $post_id], $restore), true);
+		} finally {
+			BaraTables_Persistence_Guard::end();
+			if ($callback_registered) {
+				add_action($save_hook, [$this, 'save_chart_from_editor'], 9, 2);
+			}
 		}
 	}
 

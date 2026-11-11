@@ -17,6 +17,16 @@ final class BaraTables_Data_Migrations {
 	public const AUTO_LABEL_MIGRATION_OPTION = 'btbl_auto_label_migrated';
 	public const LABEL_I18N_MIGRATION_OPTION = 'btbl_label_i18n_migrated';
 	public const DATA_SCHEMA_OPTION = 'btbl_data_schema_version';
+	/**
+	 * The tables the data upgrade could not upgrade.
+	 *
+	 * A stored definition that is not an array cannot be migrated, and the upgrade
+	 * must not pretend it was. The post IDs are recorded so the failure is visible
+	 * instead of silent, and so the next pass re-checks exactly those tables.
+	 *
+	 * @var array{unreadable:int[],conflicted:int[]}
+	 */
+	public const DATA_MIGRATION_ISSUE_OPTION = 'btbl_data_migration_issues';
 	// Generation 1 could be stamped after an unchecked write. Revisit it once through the
 	// verified persistence path; only generation 2 proves the complete site scan succeeded.
 	private const DATA_MIGRATION_GENERATION = 2;
@@ -67,14 +77,30 @@ final class BaraTables_Data_Migrations {
 			return null;
 		}
 
+		$issues = self::get_issues();
 		$add_auto_labels = (int) get_option(self::AUTO_LABEL_MIGRATION_OPTION, 0) < self::DATA_MIGRATION_GENERATION;
 		$clear_legacy_labels = (int) get_option(self::LABEL_I18N_MIGRATION_OPTION, 0) < self::DATA_MIGRATION_GENERATION;
+		$unreadable = [];
+		$conflicted = [];
 		foreach (($add_auto_labels || $clear_legacy_labels) ? self::get_migration_table_ids() : [] as $id) {
-			$defn = get_post_meta((int) $id, BaraTables_Repository::META_KEY, true);
+			$id = (int) $id;
+			$defn = get_post_meta($id, BaraTables_Repository::META_KEY, true);
 			if (!is_array($defn)) {
+				// A table without any stored definition has nothing to migrate: an
+				// unfinished draft is not a broken table. A table WITH a stored
+				// definition that is not an array cannot be read at all, so the failure
+				// is recorded instead of being swallowed, and the upgrade is not
+				// allowed to count that table as migrated.
+				if (metadata_exists('post', $id, BaraTables_Repository::META_KEY)) {
+					$unreadable[] = $id;
+				}
 				continue;
 			}
 			$changed = false;
+			// The value the row still holds. It has to be captured BEFORE the
+			// definition is mutated in place below: the compare-and-set compares the
+			// row against this exact value, and a migrated copy would never match it.
+			$original = $defn;
 			if ($add_auto_labels && !empty($defn['columns']) && is_array($defn['columns'])) {
 				foreach ($defn['columns'] as &$column) {
 					if (!is_array($column) || array_key_exists('auto_label', $column)) {
@@ -101,11 +127,49 @@ final class BaraTables_Data_Migrations {
 				}
 			}
 			if ($changed) {
-				$error = BaraTables_Base_Repository::persist_definition((int) $id, BaraTables_Repository::META_KEY, $defn);
+				// Compare-and-set against the definition this pass read, not against the
+				// migrated copy: without it, a whole-definition read-modify-write would
+				// silently revert an administrator's save that landed while the upgrade
+				// was running.
+				$error = BaraTables_Base_Repository::persist_definition_if_unchanged($id, BaraTables_Repository::META_KEY, $original, $defn);
 				if ($error) {
+					if ($error->get_error_code() === 'baratables_definition_conflict') {
+						// Another writer changed this table. Leave it alone for this
+						// pass: the next admin request retries it, and the upgrade is
+						// not allowed to count it as migrated.
+						$conflicted[] = $id;
+						continue;
+					}
 					return $error;
 				}
 			}
+		}
+
+		$unreadable = self::normalize_issue_ids($unreadable);
+		$conflicted = self::normalize_issue_ids($conflicted);
+		$reported_change = ($unreadable !== $issues['unreadable']) || ($conflicted !== $issues['conflicted']);
+		self::record_issues($unreadable, $conflicted);
+
+		if (!empty($conflicted)) {
+			return new WP_Error(
+				'baratables_migration_conflict',
+				__('BaraTables could not upgrade a table that changed while the upgrade was running. That table was left as it is and will be upgraded on the next admin request.', 'baratables'),
+				['conflicted' => $conflicted]
+			);
+		}
+		if (!empty($unreadable)) {
+			if ($reported_change) {
+				return new WP_Error(
+					'baratables_migration_unreadable',
+					__('BaraTables could not read the saved definition of a table, so that table was left as it is. The upgrade will retry on the next admin request.', 'baratables'),
+					['unreadable' => $unreadable]
+				);
+			}
+			// The unreadable tables were already reported. They stay pending and are
+			// re-checked on the next admin request, so a table that was repaired in
+			// the meantime is upgraded, while a genuinely broken table is never
+			// counted as migrated and never blocks the rest of the site.
+			return null;
 		}
 
 		update_option(self::DATA_SCHEMA_OPTION, self::DATA_MIGRATION_GENERATION, true);
@@ -115,6 +179,57 @@ final class BaraTables_Data_Migrations {
 		delete_option(self::AUTO_LABEL_MIGRATION_OPTION);
 		delete_option(self::LABEL_I18N_MIGRATION_OPTION);
 		return null;
+	}
+
+	/**
+	 * The tables the last pass could not upgrade.
+	 *
+	 * @return array{unreadable:int[],conflicted:int[]}
+	 */
+	private static function get_issues(): array {
+		$issues = get_option(self::DATA_MIGRATION_ISSUE_OPTION, []);
+		$issues = is_array($issues) ? $issues : [];
+		return [
+			'unreadable' => self::normalize_issue_ids($issues['unreadable'] ?? []),
+			'conflicted' => self::normalize_issue_ids($issues['conflicted'] ?? []),
+		];
+	}
+
+	/**
+	 * Record the tables the pass could not upgrade.
+	 *
+	 * The record is what makes the failure visible: a table whose definition cannot
+	 * be read is not counted as migrated, and the next pass re-checks exactly those
+	 * tables instead of forgetting them.
+	 *
+	 * @param int[] $unreadable Tables whose stored definition could not be read.
+	 * @param int[] $conflicted Tables another writer changed during the pass.
+	 */
+	private static function record_issues(array $unreadable, array $conflicted): void {
+		$issues = [
+			'unreadable' => self::normalize_issue_ids($unreadable),
+			'conflicted' => self::normalize_issue_ids($conflicted),
+		];
+		if (empty($issues['unreadable']) && empty($issues['conflicted'])) {
+			delete_option(self::DATA_MIGRATION_ISSUE_OPTION);
+			return;
+		}
+		update_option(self::DATA_MIGRATION_ISSUE_OPTION, $issues, false);
+	}
+
+	/**
+	 * Normalize a list of post IDs.
+	 *
+	 * @param mixed $ids The recorded IDs.
+	 * @return int[]
+	 */
+	private static function normalize_issue_ids($ids): array {
+		if (!is_array($ids)) {
+			return [];
+		}
+		$normalized = array_values(array_unique(array_map('intval', $ids)));
+		sort($normalized);
+		return $normalized;
 	}
 
 	/** @return int[] Every table status, including Trash, auto-drafts and custom workflow states. */

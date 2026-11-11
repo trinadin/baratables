@@ -100,6 +100,15 @@ abstract class BaraTables_Base_Repository {
 			if (!self::meta_matches_snapshot($post_id, $meta_key, $snapshot)) {
 				return new WP_Error('baratables_meta_rollback_failed', __('WordPress could not restore the previously saved plugin data.', 'baratables'));
 			}
+		} catch (Throwable $throwable) {
+			// A throwable during the restore is reported the way a failed restore is
+			// reported: the caller decides what the administrator is told. The guard is
+			// still ended by the finally block below.
+			return new WP_Error(
+				'baratables_meta_rollback_failed',
+				__('WordPress could not restore the previously saved plugin data.', 'baratables'),
+				self::throwable_data($throwable)
+			);
 		} finally {
 			BaraTables_Persistence_Guard::end();
 		}
@@ -121,7 +130,21 @@ abstract class BaraTables_Base_Repository {
 				return null;
 			}
 			$error = new WP_Error('baratables_definition_not_saved', __('WordPress did not save the plugin definition.', 'baratables'));
-			self::restore_meta_snapshot_unchecked($post_id, $meta_key, $before, true);
+			self::restore_meta_snapshot_if_owned($post_id, $meta_key, $before, true, self::owned_value($post_id, $meta_key, $expected));
+			return self::with_rollback_result($error, $post_id, $meta_key, $before);
+		} catch (Throwable $throwable) {
+			// Something raised while the definition was being written -- a third-party
+			// save_post hook raising an Error, for example. Without this catch the
+			// exception escapes, the finally block ends the guard, and the table is
+			// left half-written with the administrator's content lost. The same
+			// compensation the error path performs runs here, and the caller gets a
+			// WP_Error so its "could not be saved" notice path runs.
+			$data = self::throwable_data($throwable);
+			$rollback_throwable = self::compensate_safely($post_id, $meta_key, $before, true, self::owned_value($post_id, $meta_key, $expected));
+			if ($rollback_throwable) {
+				$data['rollback_exception'] = get_class($rollback_throwable) . ': ' . $rollback_throwable->getMessage();
+			}
+			$error = new WP_Error('baratables_definition_write_failed', __('WordPress did not save the plugin definition.', 'baratables'), $data);
 			return self::with_rollback_result($error, $post_id, $meta_key, $before);
 		} finally {
 			BaraTables_Persistence_Guard::end();
@@ -132,6 +155,13 @@ abstract class BaraTables_Base_Repository {
 	public static function persist_definition_if_unchanged(int $post_id, string $meta_key, array $expected, array $definition): ?WP_Error {
 		// The stored value is the sanitized one; see persist_definition().
 		$expected_stored = self::sanitize_definition($definition);
+		if (empty($expected)) {
+			// An empty expected value cannot be expressed as a WHERE clause: WordPress
+			// drops the meta_value condition for an empty prev_value, so the write would
+			// land unconditionally. Refuse instead of overwriting a value this caller
+			// never read.
+			return new WP_Error('baratables_definition_conflict', __('The plugin definition changed during this operation.', 'baratables'));
+		}
 		BaraTables_Persistence_Guard::begin();
 		try {
 			update_post_meta($post_id, $meta_key, wp_slash($definition), $expected);
@@ -143,6 +173,86 @@ abstract class BaraTables_Base_Repository {
 				return new WP_Error('baratables_definition_conflict', __('The plugin definition changed during this operation.', 'baratables'));
 			}
 			return new WP_Error('baratables_definition_not_saved', __('WordPress did not save the plugin definition.', 'baratables'));
+		} catch (Throwable $throwable) {
+			// No rollback here on purpose: this method never rolls back across a
+			// concurrent writer, and a value another writer stored after this write is
+			// newer than anything this call could restore. The caller is told the
+			// write did not complete.
+			return new WP_Error(
+				'baratables_definition_write_failed',
+				__('WordPress did not save the plugin definition.', 'baratables'),
+				self::throwable_data($throwable)
+			);
+		} finally {
+			BaraTables_Persistence_Guard::end();
+		}
+	}
+
+	/**
+	 * Compare-and-swap a definition and its lookup ID as one compensated unit.
+	 *
+	 * The expected value is the raw stored definition the caller read, exactly as
+	 * get_post_meta() returned it. The write lands only while the row still holds
+	 * that value, so a save built from a stale read can never overwrite the save
+	 * another administrator committed in the meantime. The lookup ID belongs to the
+	 * same unit, so it is written only after the compare-and-swap succeeded.
+	 *
+	 * A conflict is reported with the 'baratables_definition_conflict' code and
+	 * nothing is rolled back: the stored definition belongs to the writer that
+	 * committed it last.
+	 *
+	 * @param mixed $expected The raw stored definition, exactly as get_post_meta() returned it.
+	 */
+	public static function persist_if_unchanged(int $post_id, string $meta_key, string $meta_slug, $expected, array $definition, string $slug): ?WP_Error {
+		$before_definition = self::snapshot_meta($post_id, $meta_key);
+		$before_slug = self::snapshot_meta($post_id, $meta_slug);
+		// The stored value is the sanitized one; see persist_definition().
+		$expected_definition = self::sanitize_definition($definition);
+
+		BaraTables_Persistence_Guard::begin();
+		try {
+			self::compare_and_set_definition($post_id, $meta_key, $expected, $definition);
+			$stored_definition = get_post_meta($post_id, $meta_key, true);
+			if ($stored_definition === $expected_definition) {
+				// The write landed. The lookup ID is part of the same unit, so it is
+				// written now -- after the compare-and-swap, never before it.
+				update_post_meta($post_id, $meta_slug, $slug);
+				$stored_slug = get_post_meta($post_id, $meta_slug, true);
+				if (is_string($stored_slug) && $stored_slug === $slug) {
+					return null;
+				}
+				$error = new WP_Error('baratables_meta_slug_not_saved', __('WordPress did not save the plugin ID lookup.', 'baratables'));
+				self::restore_meta_snapshot_if_owned($post_id, $meta_key, $before_definition, true, self::owned_value($post_id, $meta_key, $expected_definition));
+				self::restore_meta_snapshot_if_owned($post_id, $meta_slug, $before_slug, false, self::owned_value($post_id, $meta_slug, $slug));
+				$error = self::with_rollback_result($error, $post_id, $meta_key, $before_definition);
+				return self::with_rollback_result($error, $post_id, $meta_slug, $before_slug);
+			}
+			if ($stored_definition !== $expected) {
+				// The row holds a value that is neither the one this caller read nor the
+				// one it wanted to write: another writer got there first. Nothing is
+				// rolled back, because the stored value is theirs.
+				return new WP_Error('baratables_definition_conflict', __('The plugin definition changed during this operation.', 'baratables'));
+			}
+			// The row still holds the value this caller read, so WordPress refused the
+			// write. That is a genuine write failure, not a conflict.
+			$error = new WP_Error('baratables_definition_not_saved', __('WordPress did not save the plugin definition.', 'baratables'));
+			self::restore_meta_snapshot_if_owned($post_id, $meta_key, $before_definition, true, self::owned_value($post_id, $meta_key, $expected_definition));
+			return self::with_rollback_result($error, $post_id, $meta_key, $before_definition);
+		} catch (Throwable $throwable) {
+			// The write raised instead of failing: compensate the same way the error
+			// path does and report it, so a half-written entity is never left behind.
+			$data = self::throwable_data($throwable);
+			$rollback_throwable = self::compensate_safely($post_id, $meta_key, $before_definition, true, self::owned_value($post_id, $meta_key, $expected_definition));
+			$slug_throwable = self::compensate_safely($post_id, $meta_slug, $before_slug, false, self::owned_value($post_id, $meta_slug, $slug));
+			if ($rollback_throwable) {
+				$data['rollback_exception'] = get_class($rollback_throwable) . ': ' . $rollback_throwable->getMessage();
+			}
+			if ($slug_throwable) {
+				$data['slug_rollback_exception'] = get_class($slug_throwable) . ': ' . $slug_throwable->getMessage();
+			}
+			$error = new WP_Error('baratables_definition_write_failed', __('WordPress did not save the plugin definition.', 'baratables'), $data);
+			$error = self::with_rollback_result($error, $post_id, $meta_key, $before_definition);
+			return self::with_rollback_result($error, $post_id, $meta_slug, $before_slug);
 		} finally {
 			BaraTables_Persistence_Guard::end();
 		}
@@ -174,8 +284,30 @@ abstract class BaraTables_Base_Repository {
 				return null;
 			}
 
-			self::restore_meta_snapshot_unchecked($post_id, $meta_key, $before_definition, true);
-			self::restore_meta_snapshot_unchecked($post_id, $meta_slug, $before_slug, false);
+			self::restore_meta_snapshot_if_owned($post_id, $meta_key, $before_definition, true, self::owned_value($post_id, $meta_key, $expected_definition));
+			self::restore_meta_snapshot_if_owned($post_id, $meta_slug, $before_slug, false, self::owned_value($post_id, $meta_slug, $slug));
+			$error = self::with_rollback_result($error, $post_id, $meta_key, $before_definition);
+			return self::with_rollback_result($error, $post_id, $meta_slug, $before_slug);
+		} catch (Throwable $throwable) {
+			// Something raised while the entity was being written -- a third-party
+			// save_post hook raising an Error, for example. The exception used to escape
+			// from here: the finally block ended the guard, the rollback never ran, and
+			// the table was left half-written with the administrator's content lost.
+			// The same compensation the error path performs runs now, and the caller
+			// gets a WP_Error so its "could not be saved" notice path runs.
+			//
+			// A true PHP fatal (out of memory, max_execution_time) cannot be caught and
+			// is not covered by this.
+			$data = self::throwable_data($throwable);
+			$rollback_throwable = self::compensate_safely($post_id, $meta_key, $before_definition, true, self::owned_value($post_id, $meta_key, $expected_definition));
+			$slug_throwable = self::compensate_safely($post_id, $meta_slug, $before_slug, false, self::owned_value($post_id, $meta_slug, $slug));
+			if ($rollback_throwable) {
+				$data['rollback_exception'] = get_class($rollback_throwable) . ': ' . $rollback_throwable->getMessage();
+			}
+			if ($slug_throwable) {
+				$data['slug_rollback_exception'] = get_class($slug_throwable) . ': ' . $slug_throwable->getMessage();
+			}
+			$error = new WP_Error('baratables_definition_write_failed', __('WordPress did not save the plugin definition.', 'baratables'), $data);
 			$error = self::with_rollback_result($error, $post_id, $meta_key, $before_definition);
 			return self::with_rollback_result($error, $post_id, $meta_slug, $before_slug);
 		} finally {
@@ -187,6 +319,117 @@ abstract class BaraTables_Base_Repository {
 		// update_post_meta() unslashes values before serialization. Slash the complete definition
 		// first so literal backslashes in imported cells, queries, and passwords survive exactly.
 		update_post_meta($post_id, $meta_key, wp_slash($definition));
+	}
+
+	/**
+	 * Write a definition only while the row still holds the value the caller read.
+	 *
+	 * update_post_meta()'s fourth argument compiles into a WHERE meta_value = <serialised
+	 * expected value> clause, so the write lands only while the row is unchanged. The
+	 * expected value has to be the raw stored value -- exactly what get_post_meta()
+	 * returned -- because that is what WordPress serialized into the column.
+	 *
+	 * An empty expected value cannot be expressed that way: WordPress drops the
+	 * meta_value condition for an empty prev_value, and the write would land
+	 * unconditionally. That case is guarded separately.
+	 */
+	private static function compare_and_set_definition(int $post_id, string $meta_key, $expected, array $definition): void {
+		if (is_array($expected) && !empty($expected)) {
+			update_post_meta($post_id, $meta_key, wp_slash($definition), $expected);
+			return;
+		}
+		if (metadata_exists('post', $post_id, $meta_key)) {
+			// A definition exists now. It may only be overwritten while it still holds
+			// the exact value that was read.
+			$current = get_post_meta($post_id, $meta_key, true);
+			if ($current !== $expected) {
+				return;
+			}
+			// An empty definition cannot be expressed as a WHERE clause, so this write
+			// is not atomic. It is still refused when the row changed in the meantime.
+			update_post_meta($post_id, $meta_key, wp_slash($definition));
+			return;
+		}
+		// No definition is stored: create one, but only while no other writer created
+		// one in the meantime. The unique flag makes the insert fail in that case.
+		add_post_meta($post_id, $meta_key, wp_slash($definition), true);
+	}
+
+	/**
+	 * The value this write still owns on a metadata row, or null when it owns none.
+	 *
+	 * Ownership is decided by what the row holds now, not by whether the write call
+	 * returned: a write that landed before a throwable still owns its value, and a
+	 * value another writer stored afterwards is not ours to undo.
+	 *
+	 * @param mixed $expected The value this write stored.
+	 * @return mixed The owned value, or null.
+	 */
+	private static function owned_value(int $post_id, string $meta_key, $expected) {
+		try {
+			$current = get_post_meta($post_id, $meta_key, true);
+		} catch (Throwable $throwable) {
+			return null;
+		}
+		return $current === $expected ? $expected : null;
+	}
+
+	/**
+	 * Restore a snapshot only while this write still owns the row.
+	 *
+	 * A rollback must never overwrite a value another writer stored after this
+	 * write: that value is newer than the snapshot, and restoring the snapshot would
+	 * silently discard the other writer's committed work. The restore is therefore a
+	 * compare-and-set against the value THIS write produced, and it is skipped when
+	 * the row no longer holds that value. A key this write never stored is left
+	 * exactly as it is.
+	 *
+	 * @param mixed $owned_value The value this write stored, or null when it stored none.
+	 */
+	private static function restore_meta_snapshot_if_owned(int $post_id, string $meta_key, array $snapshot, bool $definition, $owned_value): bool {
+		if ($owned_value === null || $owned_value === '' || $owned_value === []) {
+			// This write stored nothing on this key, so there is nothing of ours to
+			// undo, and the row may already hold another writer's value.
+			return false;
+		}
+		$current = get_post_meta($post_id, $meta_key, true);
+		if ($current !== $owned_value) {
+			// Another writer stored something else after this write. Their value wins.
+			return false;
+		}
+		if (!empty($snapshot['exists'])) {
+			$value = $snapshot['value'] ?? '';
+			// The fourth argument compiles into a WHERE meta_value = <serialised owned
+			// value> clause, so the restore lands only while the row still holds our
+			// value.
+			$written = (bool) update_post_meta($post_id, $meta_key, $definition && is_array($value) ? wp_slash($value) : $value, $owned_value);
+		} else {
+			// delete_post_meta()'s third argument is the value that has to match, so
+			// the row is removed only while it still holds our value.
+			$written = (bool) delete_post_meta($post_id, $meta_key, $owned_value);
+		}
+		return $written && self::meta_matches_snapshot($post_id, $meta_key, $snapshot);
+	}
+
+	/**
+	 * Compensate a failed write without letting the compensation itself throw.
+	 *
+	 * @return Throwable|null The throwable the compensation raised, if any.
+	 */
+	private static function compensate_safely(int $post_id, string $meta_key, array $snapshot, bool $definition, $owned_value): ?Throwable {
+		try {
+			self::restore_meta_snapshot_if_owned($post_id, $meta_key, $snapshot, $definition, $owned_value);
+		} catch (Throwable $throwable) {
+			return $throwable;
+		}
+		return null;
+	}
+
+	/** @return array<string,string> Diagnostic data for a caught throwable. */
+	private static function throwable_data(Throwable $throwable): array {
+		return [
+			'exception' => get_class($throwable) . ': ' . $throwable->getMessage(),
+		];
 	}
 
 	private static function restore_meta_snapshot_unchecked(int $post_id, string $meta_key, array $snapshot, bool $definition): void {
@@ -209,13 +452,15 @@ abstract class BaraTables_Base_Repository {
 	private static function with_rollback_result(WP_Error $error, int $post_id, string $meta_key, array $snapshot): WP_Error {
 		if (!self::meta_matches_snapshot($post_id, $meta_key, $snapshot)) {
 			$data = $error->get_error_data();
-			$failures = is_array($data) && isset($data['rollback_failures']) && is_array($data['rollback_failures'])
+			// Keep the diagnostic data the error already carries; only the rollback
+			// failures are added to it.
+			$data = is_array($data) ? $data : [];
+			$failures = isset($data['rollback_failures']) && is_array($data['rollback_failures'])
 				? $data['rollback_failures']
 				: [];
 			$failures[] = ['post_id' => $post_id, 'plugin_field' => $meta_key];
-			$error->add_data([
-				'rollback_failures' => $failures,
-			]);
+			$data['rollback_failures'] = $failures;
+			$error->add_data($data);
 		}
 		return $error;
 	}

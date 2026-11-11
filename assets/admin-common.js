@@ -44,7 +44,12 @@ jQuery(function($) {
 		var hide = !document.body.classList.contains('btbl-help-hidden');
 		document.body.classList.toggle('btbl-help-hidden', hide);
 		var label = hide ? ($toggle.data('show-label') || '') : ($toggle.data('hide-label') || '');
-		$toggle.attr({'aria-label': label, title: label});
+		// The pressed state travels with the label: "true" means the help text is
+		// currently hidden, and the label stays the ACTION that offers to change it.
+		// Updating it here, in the same handler that hides the help text, keeps the
+		// state and the page in step -- a static attribute would go stale after the
+		// first click.
+		$toggle.attr({'aria-label': label, title: label, 'aria-pressed': hide ? 'true' : 'false'});
 		$.post(window.ajaxurl, {action: 'btbl_toggle_help', hide: hide ? '1' : '0', _wpnonce: $toggle.data('nonce')});
 	});
 });

@@ -128,14 +128,43 @@ class BaraTables_Admin_Notice {
  * tables opt out of the always-visible orientation hints (marked .btbl-help-text)
  * without affecting first-time users (default: help shown). Conditional notices,
  * collapsed-gear hints, tooltips and confirms are intentionally NOT governed.
+ *
+ * The preference is per site: WordPress keeps a user option in user meta under a
+ * blog-prefixed key, so hiding the help text on one site of a network leaves the
+ * other sites alone.
  */
 class BaraTables_Help {
 	private const META_KEY = 'btbl_hide_help';
 	private const NONCE = 'btbl_help_toggle';
 
+	/**
+	 * The per-site key the preference is stored under.
+	 *
+	 * WordPress stores a user option in user meta under a blog-prefixed key: the
+	 * table prefix ('wp_') on a single site, and the table prefix plus the blog id
+	 * ('wp_2_') on multisite. The prefix is what makes the preference per site.
+	 */
+	private static function option_key(): string {
+		global $wpdb;
+		return $wpdb->get_blog_prefix() . self::META_KEY;
+	}
+
 	public static function hidden(): bool {
 		$user_id = get_current_user_id();
-		return $user_id > 0 && (bool) get_user_meta($user_id, self::META_KEY, true);
+		if ($user_id <= 0) {
+			return false;
+		}
+		$value = get_user_option(self::META_KEY, $user_id);
+		if (!$value) {
+			return false;
+		}
+		// get_user_option() reads the per-site (blog-prefixed) user option first, but
+		// falls back to the un-prefixed user meta when that value is absent. That
+		// fallback is the network-global behaviour this class is moving away from: it
+		// would keep the help text hidden on every subsite of the network, and "Show
+		// help text" could not turn it back on for a user who hid the help before the
+		// upgrade. The per-site value decides.
+		return (bool) get_user_meta($user_id, self::option_key(), true);
 	}
 
 	public static function body_class(string $classes): string {
@@ -145,12 +174,19 @@ class BaraTables_Help {
 	public static function render_toggle(): void {
 		$hidden = self::hidden();
 		$label = $hidden ? __('Show help text', 'baratables') : __('Hide help text', 'baratables');
+		// aria-pressed carries the state the label alone cannot: the button reads as
+		// "pressed" while the help text is hidden, and "Show help text" is then the
+		// action it offers. The label stays what it was -- the action -- and the state
+		// travels in its own attribute. The front-end script updates it in the same
+		// handler that hides the help text, so the state never goes stale.
+		$pressed = $hidden ? 'true' : 'false';
 		printf(
-			'<button type="button" class="btbl-help-toggle" id="btbl-help-toggle" data-nonce="%1$s" data-hide-label="%2$s" data-show-label="%3$s" title="%4$s" aria-label="%4$s"><span class="dashicons dashicons-editor-help" aria-hidden="true"></span></button>',
+			'<button type="button" class="btbl-help-toggle" id="btbl-help-toggle" data-nonce="%1$s" data-hide-label="%2$s" data-show-label="%3$s" title="%4$s" aria-label="%4$s" aria-pressed="%5$s"><span class="dashicons dashicons-editor-help" aria-hidden="true"></span></button>',
 			esc_attr(wp_create_nonce(self::NONCE)),
 			esc_attr__('Hide help text', 'baratables'),
 			esc_attr__('Show help text', 'baratables'),
-			esc_attr($label)
+			esc_attr($label),
+			esc_attr($pressed)
 		);
 	}
 
@@ -162,9 +198,9 @@ class BaraTables_Help {
 		$user_id = get_current_user_id();
 		$hide = isset($_POST['hide']) && sanitize_text_field(wp_unslash($_POST['hide'])) === '1';
 		if ($hide) {
-			update_user_meta($user_id, self::META_KEY, 1);
+			update_user_option($user_id, self::META_KEY, 1);
 		} else {
-			delete_user_meta($user_id, self::META_KEY);
+			delete_user_option($user_id, self::META_KEY);
 		}
 		wp_send_json_success(['hidden' => $hide]);
 	}
@@ -631,6 +667,17 @@ class BaraTables_Entity_Persistence {
 				'ID'        => $post_id,
 				'post_name' => $slug,
 			], true);
+		} catch (Throwable $e) {
+			// A throwing post update -- a filter, a broken plugin -- must not escape the
+			// method: the editor would lose the failure entirely and the slug change
+			// would be left half-applied with nothing reported. The method's own error
+			// contract carries it instead, and the finally block below still ends the
+			// persistence guard and re-registers the save hook.
+			$updated = new WP_Error(
+				'baratables_slug_save_failed',
+				__('The requested ID could not be saved. Please try again.', 'baratables'),
+				['exception' => get_class($e)]
+			);
 		} finally {
 			BaraTables_Persistence_Guard::end();
 			if ($callback_registered) {

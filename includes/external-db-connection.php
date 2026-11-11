@@ -98,8 +98,13 @@ final class BaraTables_External_Db_Connection extends wpdb {
 			// certificate against that CA, and the host name against the certificate.
 			$connect_flags = MYSQLI_CLIENT_SSL | MYSQLI_CLIENT_SSL_VERIFY_SERVER_CERT;
 		}
-		// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_real_connect -- Bounded equivalent of wpdb::db_connect() for a separate read-only source.
-		$connected = mysqli_real_connect($this->dbh, $host, $this->dbuser, $this->dbpassword, null, $port, $socket, $connect_flags);
+		// A refused or unreachable source must not print anything. The raw mysqli warning
+		// names the absolute path of this file and the line it came from, which leaks the
+		// server's directory layout to whoever can see the page output or the log. Core
+		// silences the same call the same way (wpdb::db_connect()), and the failure stays
+		// observable through the return value below rather than through a printed warning.
+		// phpcs:ignore WordPress.DB.RestrictedFunctions.mysql_mysqli_real_connect,WordPress.PHP.NoSilencedErrors.Discouraged -- Bounded equivalent of wpdb::db_connect() for a separate read-only source; the raw warning would carry the server's absolute path.
+		$connected = @mysqli_real_connect($this->dbh, $host, $this->dbuser, $this->dbpassword, null, $port, $socket, $connect_flags);
 		if (!$connected || $this->dbh->connect_errno) {
 			$this->dbh = null;
 			return false;

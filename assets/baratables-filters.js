@@ -99,12 +99,30 @@
 			return;
 		}
 
+		// Tom Select shows its own widget in place of the select, and the widget is what a
+		// screen reader meets. The vendored v2.6.2 build copies `aria-label` from the
+		// select onto its inner input, but it wires `aria-labelledby` onto its widget only
+		// when the document holds a <label for="..."> for the select -- and our selects are
+		// named by `aria-labelledby` alone, pointing at the filter's own heading. Left
+		// alone, the visible picker would come up as an unnamed combobox. Copy both names
+		// across; the select keeps its own name either way.
+		['aria-label', 'aria-labelledby'].forEach(function(attribute) {
+			var value = select.getAttribute(attribute);
+			if (!value) {
+				return;
+			}
+			[instance.control, instance.control_input].forEach(function(target) {
+				if (target && typeof target.setAttribute === 'function' && !target.getAttribute(attribute)) {
+					target.setAttribute(attribute, value);
+				}
+			});
+		});
+
 		// Tom Select reports user selections on its own event bus, while the adapters, the
 		// Reset button, and URL syncing all speak native `change` events on the select.
 		// Bridge both directions: selections become bubbling change events, and programmatic
 		// value changes (presets, reset) refresh the picker via sync(). The flag keeps the
-		// two paths from retriggering each other; Tom Select copies aria-labelledby from the
-		// select onto its widgets itself, so the accessible name carries over natively.
+		// two paths from retriggering each other.
 		var bridging = false;
 		instance.on('change', function() {
 			if (bridging) { return; }

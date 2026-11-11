@@ -653,13 +653,14 @@
 		var definitions = [];
 		var utilityDefinitions = [];
 		var seen = {};
+		var tableId = config.tableId || '';
 		var registry = {
 			copy:       { extend: 'copyHtml5',  defaultText: 'Copy',              optionKey: 'buttonTextCopy' },
 			csv:        { extend: 'csvHtml5',   defaultText: 'Export CSV',        optionKey: 'buttonTextCsv' },
 			excel:      { extend: 'excelHtml5', defaultText: 'Export Excel',      optionKey: 'buttonTextExcel' },
 			pdf:        { extend: 'pdfHtml5',   defaultText: 'Export PDF',        optionKey: 'buttonTextPdf' },
 			print:      { extend: 'print',      defaultText: 'Print',             optionKey: 'buttonTextPrint' },
-			colvis:     { extend: 'colvis',     defaultText: 'Column visibility', optionKey: 'buttonTextColvis' },
+			colvis:     { extend: 'btblColvis',  defaultText: 'Column visibility', optionKey: 'buttonTextColvis' },
 			pagelength: { extend: 'pageLength', defaultText: 'Page length',       optionKey: 'buttonTextPagelength' }
 		};
 		// Spreadsheet formula injection (CWE-1236): cell text comes from imported CSVs, external
@@ -712,6 +713,18 @@
 			if (!key || !registry[key] || seen[key]) { return; }
 			seen[key] = true;
 			var definition = { extend: registry[key].extend };
+			if (key === 'colvis') {
+				// The plugin owns this control's popup, so the button must point at the
+				// plugin's own menu rather than at the table (which is what the vendored
+				// Buttons control does for every button it builds).
+				definition.menuId = 'btbl-colvis-' + tableId;
+			}
+			if (key === 'pagelength') {
+				// The page-length control opens a collection of its own, with the same
+				// popover defects as the "Table options" collection, so it needs its own
+				// popup id for the toggle to point at.
+				definition.attr = collectionPopupAttributes('btbl-pagelength-' + tableId, 'btbl-collection-' + tableId);
+			}
 			if (key === 'excel' || key === 'pdf') {
 				// Their libraries are not script tags on the page: the button loads its own
 				// on the first click, then runs the built-in html5 export action. The
@@ -758,12 +771,467 @@
 			definitions.push({
 				extend: 'collection',
 				text: resolveLabelHtml(options.buttonTextTableOptions || '', 'Table options'),
-				buttons: utilityDefinitions
+				buttons: utilityDefinitions,
+				attr: collectionPopupAttributes('btbl-collection-' + tableId)
 			});
 		} else {
 			definitions = definitions.concat(utilityDefinitions);
 		}
 		return definitions;
+	}
+
+	// The state and target of a collection popup the plugin owns.
+	//
+	// The vendored Buttons control points every button's aria-controls at the table and
+	// leaves the popup itself unnamed, so the toggle cannot say what it controls.
+	function collectionPopupAttributes(popupId, fallbackId) {
+		var attributes = {
+			'aria-haspopup': 'dialog',
+			'aria-expanded': 'false',
+			'aria-controls': popupId,
+			// Marks the toggle as one of the plugin's own popups, so the popover handler
+			// below leaves third-party collections alone.
+			'data-btbl-popup': popupId
+		};
+		if (fallbackId) {
+			// The control that stands in for this popup's own toggle when that toggle is
+			// gone: the page-length popup opens inside the collection that holds its
+			// button, and that collection closes as soon as the nested popup opens.
+			attributes['data-btbl-popup-fallback'] = fallbackId;
+		}
+		return attributes;
+	}
+
+	// The plain-text name of a popup toggle, without the drop arrow the vendored
+	// collection decorates its button with.
+	function popupToggleLabel(toggle) {
+		var clone = toggle && toggle.cloneNode ? toggle.cloneNode(true) : null;
+		if (!clone) {
+			return '';
+		}
+		var arrows = clone.querySelectorAll('.dt-button-down-arrow');
+		Array.prototype.forEach.call(arrows, function(arrow) {
+			if (arrow.parentNode) {
+				arrow.parentNode.removeChild(arrow);
+			}
+		});
+		return labelToPlainText(clone.innerHTML || '', '');
+	}
+
+	// The toggle that opened the popup that has just opened.
+	//
+	// The vendored popover marks its own trigger with aria-expanded and takes that
+	// mark off every toggle it closes, so the expanded one belongs to the popup that
+	// opened. When two of the plugin's popups claim to be expanded, the one whose own
+	// popup is not on the page yet is the newer of the two.
+	function findPopupToggle() {
+		var candidates = document.querySelectorAll('[data-btbl-popup][aria-expanded="true"]');
+		var first = null;
+		for (var index = 0; index < candidates.length; index++) {
+			if (!first) {
+				first = candidates[index];
+			}
+			var controls = candidates[index].getAttribute('aria-controls');
+			if (controls && !document.getElementById(controls)) {
+				return candidates[index];
+			}
+		}
+		return first;
+	}
+
+	// Hand the focus back to the control that opened a popup.
+	function focusPopupToggle(popupId) {
+		if (!popupId) {
+			return;
+		}
+		var toggle = document.querySelector('[data-btbl-popup="' + popupId + '"]');
+		if (!toggle || typeof toggle.focus !== 'function') {
+			return;
+		}
+		// A toggle inside a collection is about to be detached with it: the collection
+		// closes as soon as the popup nested in it opens.
+		if (toggle.closest && toggle.closest('.dt-button-collection')) {
+			var fallbackId = toggle.getAttribute('data-btbl-popup-fallback') || '';
+			var fallback = fallbackId ? document.querySelector('[data-btbl-popup="' + fallbackId + '"]') : null;
+			if (fallback && document.contains(fallback)) {
+				fallback.focus();
+			}
+			return;
+		}
+		if (document.contains(toggle)) {
+			toggle.focus();
+		}
+	}
+
+	// Correct the vendored collection popover for the collections the plugin owns.
+	//
+	// The vendored popover has three defects the plugin has to answer for:
+	//
+	// - its body-level keydown handler treats every button in the popover as one Tab
+	//   stop: when focus sits on any of them it moves focus back to the FIRST item and
+	//   cancels the default, so Tab never advances and focus can never leave (WCAG
+	//   2.1.1). Letting the Tab event pass the popover's own element keeps the
+	//   browser's own focus order.
+	// - it labels a list of plain buttons role="menu", which promises a menu keyboard
+	//   pattern it does not implement, and leaves the container unnamed.
+	// - it marks the container aria-modal, which tells assistive technology that the
+	//   rest of the page is inert -- including the plugin's own column-visibility menu,
+	//   which lives outside the container.
+	//
+	// The popover element announces itself with a bubbling "buttons-popover" event, so
+	// the container can be corrected as it opens.
+	var collectionPopoverBound = false;
+
+	function bindCollectionPopover() {
+		if (collectionPopoverBound) {
+			return;
+		}
+		collectionPopoverBound = true;
+		var handler = function(event) {
+			var container = event.target;
+			if (!container || !container.classList || !container.classList.contains('dt-button-collection')) {
+				return;
+			}
+			var toggle = findPopupToggle();
+			if (!toggle) {
+				return;
+			}
+			// The vendored popover labels its content role="menu" as it opens, and the
+			// content carries no class of its own, so that role is what finds it.
+			var content = container.querySelector('[role="menu"]')
+				|| container.querySelector('[role="group"]')
+				|| container.firstElementChild;
+			if (!content) {
+				return;
+			}
+			var popupId = toggle.getAttribute('data-btbl-popup');
+			var label = popupToggleLabel(toggle);
+			// A dropdown popover is not a modal dialog: the page stays usable and the
+			// plugin's own menus, which live outside this container, stay reachable.
+			container.removeAttribute('aria-modal');
+			if (label) {
+				container.setAttribute('aria-label', label);
+			}
+			if (popupId) {
+				// Only one element may answer to the id the toggle points at, so a
+				// container that is still fading out gives it up first.
+				var previous = document.getElementById(popupId);
+				if (previous && previous !== container && previous.removeAttribute) {
+					previous.removeAttribute('id');
+				}
+				container.id = popupId;
+			}
+			// A group of plain buttons is not a menu.
+			content.setAttribute('role', 'group');
+			if (label) {
+				content.setAttribute('aria-label', label);
+			}
+			if (container.getAttribute('data-btbl-popup-ready') === 'true') {
+				return;
+			}
+			container.setAttribute('data-btbl-popup-ready', 'true');
+			// The vendored popover listens for Tab on the body, so the event has to
+			// stop at the popover itself: the browser's own focus order then applies
+			// and the focus can walk out of the popover.
+			container.addEventListener('keydown', function(keyEvent) {
+				if (keyEvent.key === 'Tab' || keyEvent.keyCode === 9) {
+					keyEvent.stopPropagation();
+				}
+			});
+			// Escape closes the popover; the focus has to come back to the control that
+			// opened it, because the vendored close leaves it on the page.
+			container.addEventListener('keyup', function(keyEvent) {
+				if (keyEvent.key !== 'Escape' && keyEvent.keyCode !== 27) {
+					return;
+				}
+				focusPopupToggle(popupId);
+			});
+		};
+		// DataTables dispatches that event natively, or through jQuery when the page
+		// happens to load jQuery, so both routes are covered. Only one of them fires.
+		document.body.addEventListener('buttons-popover', handler);
+		if (window.jQuery) {
+			window.jQuery(document.body).on('buttons-popover', handler);
+		}
+	}
+
+	// The plugin-owned column-visibility control.
+	//
+	// The vendored Buttons colvis popover cannot be used as it stands. Its body-level
+	// keydown handler treats every button inside the collection as one Tab stop: when
+	// focus sits on any of them it moves focus back to the FIRST item and cancels the
+	// default, so Tab never reaches the next column and focus can never leave the menu
+	// (WCAG 2.1.1). The same popover labels a plain list of buttons role="menu" without
+	// any menuitem semantics, leaves the container without an accessible name, and the
+	// vendored button points aria-controls at the table instead of the popup it opens.
+	//
+	// This control replaces it with markup the plugin owns: a labelled group of toggle
+	// buttons, each exposing aria-pressed, every one of them reachable with Tab, and
+	// Escape closing the menu and handing the focus back to the toggle.
+	var colvisControllers = {};
+
+	function registerColvisExtension() {
+		var dt = window.DataTable;
+		if (!dt || !dt.ext || !dt.ext.buttons) {
+			return false;
+		}
+		if (!dt.ext.buttons.btblColvis) {
+			dt.ext.buttons.btblColvis = function(dtApi, opts) {
+				var menuId = opts && opts.menuId ? opts.menuId : '';
+				return {
+					text: opts && opts.text ? opts.text : 'Column visibility',
+					className: 'buttons-colvis btbl-colvis-button',
+					attr: {
+						'aria-haspopup': 'true',
+						'aria-expanded': 'false',
+						'aria-controls': menuId
+					},
+					action: function(event, api, node, conf) {
+						var id = conf && conf.menuId ? conf.menuId : menuId;
+						var controller = colvisControllers[id];
+						if (controller) {
+							controller.toggle(node && typeof node.get === 'function' ? node.get(0) : node, event);
+						}
+					}
+				};
+			};
+		}
+		return true;
+	}
+
+	function createColvisController(table, wrapper, tableId, options) {
+		var menuId = 'btbl-colvis-' + tableId;
+		var toggleLabel = labelToPlainText(resolveLabelHtml(options.buttonTextColvis || '', 'Column visibility'), 'Column visibility');
+		// The same fallback caption the search picker uses for a column with no heading.
+		var fallbackLabel = resolveLabelHtml(options.searchColumnFallback || '', 'Column');
+		var menu = document.createElement('div');
+		menu.id = menuId;
+		menu.className = 'btbl-colvis-menu';
+		// A group of toggle buttons is not a menu: role="menu" would demand the menuitem
+		// keyboard pattern, which is exactly what this control does not implement.
+		menu.setAttribute('role', 'group');
+		menu.setAttribute('aria-label', toggleLabel);
+		menu.hidden = true;
+		var list = document.createElement('ul');
+		list.className = 'btbl-colvis-list';
+		menu.appendChild(list);
+		// The menu lives in the document from the start, hidden, so the toggle's
+		// aria-controls always points at an element that exists.
+		(wrapper || document.body).appendChild(menu);
+		var toggleNode = null;
+		var isOpen = false;
+		var documentClickHandler = null;
+		var lastActivationType = '';
+
+		function columnVisible(index) {
+			var column = table.column(index);
+			if (!column) {
+				return false;
+			}
+			var state = column.visible();
+			// A single column answers with a boolean; a selection answers with an array.
+			if (state && typeof state.length === 'number') {
+				return !!state[0];
+			}
+			return !!state;
+		}
+
+		function columnLabel(index, column) {
+			var nodes = asNodeList(column.header());
+			var headerHtml = nodes.length ? (nodes[0].innerHTML || '') : '';
+			var label = labelToPlainText(headerHtml, '');
+			if (!label && typeof column.title === 'function') {
+				label = labelToPlainText(column.title() || '', '');
+			}
+			return label || fallbackLabel + ' ' + (index + 1);
+		}
+
+		function buildItems() {
+			while (list.firstChild) {
+				list.removeChild(list.firstChild);
+			}
+			table.columns().every(function(index) {
+				var item = document.createElement('li');
+				item.className = 'btbl-colvis-item';
+				var button = document.createElement('button');
+				button.type = 'button';
+				button.className = 'btbl-colvis-toggle';
+				button.setAttribute('data-btbl-colvis-index', String(index));
+				button.setAttribute('aria-pressed', columnVisible(index) ? 'true' : 'false');
+				// The checkmark is drawn from aria-pressed by the stylesheet, so the visible
+				// mark and the exposed state cannot drift apart.
+				var check = document.createElement('span');
+				check.className = 'btbl-colvis-check';
+				check.setAttribute('aria-hidden', 'true');
+				var text = document.createElement('span');
+				text.className = 'btbl-colvis-label';
+				text.textContent = columnLabel(index, this);
+				button.appendChild(check);
+				button.appendChild(text);
+				item.appendChild(button);
+				list.appendChild(item);
+				button.addEventListener('click', function() {
+					table.columns(index).visible(!columnVisible(index));
+				});
+			});
+		}
+
+		function syncStates() {
+			var buttons = list.querySelectorAll('.btbl-colvis-toggle');
+			Array.prototype.forEach.call(buttons, function(button) {
+				var index = parseInt(button.getAttribute('data-btbl-colvis-index'), 10);
+				button.setAttribute('aria-pressed', columnVisible(index) ? 'true' : 'false');
+			});
+		}
+
+		// The menu sits next to the control that opened it, so the Tab order runs from
+		// the toolbar into the menu and on out again. Inside a vendored collection the
+		// collection itself is the anchor: the menu goes after it, not inside it, so the
+		// collection's own layout and overflow rules stay untouched.
+		function placeMenu() {
+			var collection = toggleNode && toggleNode.closest ? toggleNode.closest('.dt-button-collection') : null;
+			if (collection && collection.parentNode) {
+				collection.parentNode.insertBefore(menu, collection.nextSibling);
+				return;
+			}
+			var group = toggleNode && toggleNode.closest ? toggleNode.closest('.dt-buttons') : null;
+			var anchor = group && group.parentNode ? group : (toggleNode ? toggleNode.parentNode : null);
+			if (anchor && anchor.parentNode) {
+				anchor.parentNode.insertBefore(menu, anchor.nextSibling);
+				return;
+			}
+			document.body.appendChild(menu);
+		}
+
+		function position() {
+			if (!toggleNode || typeof toggleNode.getBoundingClientRect !== 'function') {
+				return;
+			}
+			var rect = toggleNode.getBoundingClientRect();
+			menu.style.left = Math.max(0, Math.round(rect.left)) + 'px';
+			menu.style.top = Math.round(rect.bottom) + 'px';
+			// Keep the menu on screen when the control sits near the right edge.
+			var maxLeft = Math.max(0, window.innerWidth - menu.offsetWidth - 8);
+			if (parseInt(menu.style.left, 10) > maxLeft) {
+				menu.style.left = maxLeft + 'px';
+			}
+		}
+
+		function close(returnFocus) {
+			if (!isOpen) {
+				return;
+			}
+			isOpen = false;
+			menu.hidden = true;
+			if (documentClickHandler) {
+				document.removeEventListener('click', documentClickHandler);
+				documentClickHandler = null;
+			}
+			if (toggleNode) {
+				toggleNode.setAttribute('aria-expanded', 'false');
+			}
+			if (!returnFocus) {
+				return;
+			}
+			if (toggleNode && typeof toggleNode.focus === 'function' && document.contains(toggleNode)) {
+				toggleNode.focus();
+			} else if (wrapper && typeof wrapper.focus === 'function') {
+				// The control that opened the menu is gone (a surrounding collection closed
+				// with it), so the focus lands on the table rather than on the document.
+				wrapper.setAttribute('tabindex', '-1');
+				wrapper.focus();
+			}
+		}
+
+		function open() {
+			if (!toggleNode) {
+				return;
+			}
+			buildItems();
+			placeMenu();
+			menu.hidden = false;
+			isOpen = true;
+			toggleNode.setAttribute('aria-expanded', 'true');
+			position();
+			documentClickHandler = function(event) {
+				if (menu.contains(event.target)) {
+					return;
+				}
+				if (toggleNode && toggleNode.contains(event.target)) {
+					return;
+				}
+				close(false);
+			};
+			document.addEventListener('click', documentClickHandler);
+			var first = list.querySelector('.btbl-colvis-toggle');
+			if (first) {
+				first.focus();
+			}
+		}
+
+		menu.addEventListener('keyup', function(event) {
+			if (event.key !== 'Escape') {
+				return;
+			}
+			// A vendored collection closes itself on Escape as well. Keeping the event
+			// inside this menu leaves that collection open, so the toggle that opened
+			// the menu is still there to take the focus back.
+			if (toggleNode && toggleNode.closest && toggleNode.closest('.dt-button-collection')) {
+				event.stopPropagation();
+			}
+			close(true);
+		});
+
+		menu.addEventListener('click', function(event) {
+			// A click inside this menu lands outside the vendored collection it was opened
+			// from, which would close that collection and detach the control that opened
+			// this menu -- leaving Escape with a dead toggle to focus. Keeping the click
+			// inside the menu leaves the collection, and the control, in place.
+			if (toggleNode && toggleNode.closest && toggleNode.closest('.dt-button-collection')) {
+				event.stopPropagation();
+			}
+		});
+
+		table.on('column-visibility.dt', syncStates);
+		table.on('column-reorder.dt', function() {
+			if (isOpen) {
+				buildItems();
+			}
+		});
+		table.on('destroy', function() {
+			// A page builder or AJAX swap tears the table down and builds a new one.
+			// The old menu and its controller go with it.
+			if (documentClickHandler) {
+				document.removeEventListener('click', documentClickHandler);
+				documentClickHandler = null;
+			}
+			if (menu.parentNode) {
+				menu.parentNode.removeChild(menu);
+			}
+			delete colvisControllers[menuId];
+		});
+
+		return {
+			menuId: menuId,
+			toggle: function(node, event) {
+				// The vendored button runs its action on the keypress AND on the click that
+				// follows it, so one key press can reach the action twice and open the
+				// menu and close it again. The click a keyboard activation produces carries
+				// detail 0, which tells it apart from a real pointer click, so the second
+				// half of one activation cannot undo the first.
+				var type = event && event.type ? event.type : '';
+				if (type === 'click' && event.detail === 0 && lastActivationType === 'keypress') {
+					return;
+				}
+				lastActivationType = type;
+				toggleNode = node || toggleNode;
+				if (isOpen) {
+					close(true);
+					return;
+				}
+				open();
+			}
+		};
 	}
 
 	function buildOrderDefinitions(config, slugToIndex, maxOrders) {
@@ -1132,6 +1600,11 @@
 			// controller.
 			searchFeatureItem = { btblSearch: searchController };
 		}
+		// The column-visibility button is a plugin-owned Buttons control, so its type has
+		// to exist before the toolbar is built.
+		registerColvisExtension();
+		// The toolbar's own collection popovers are corrected as they open.
+		bindCollectionPopover();
 		var tableConfig = buildDataTableConfiguration(resolvedOptions, config, slugToIndex, languageResult, searchFeatureItem, searchController);
 		btblRegisterDateType();
 		btblRegisterNumberType();
@@ -1143,6 +1616,10 @@
 			new DataTableLib.Api(tableEl).destroy();
 		}
 		var table = new DataTableLib(tableEl, tableConfig);
+		// The plugin-owned column-visibility control: one controller per table, bound to
+		// the button the toolbar built for it.
+		var colvisController = createColvisController(table, wrapper, tableId, resolvedOptions);
+		colvisControllers[colvisController.menuId] = colvisController;
 		if (config.serverSide && config.serverSide.url) {
 			table.on('xhr', function(event, settings, json) {
 				if (!json || json.error) {

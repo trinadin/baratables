@@ -362,6 +362,27 @@
 					openDropdown();
 				}
 			});
+			// Escape closes the picker and hands the focus back to the toggle that opened
+			// it, so the keyboard user is never left inside a closed popup.
+			searchColumnsEl.addEventListener('keydown', function(event) {
+				if (event.key !== 'Escape') {
+					return;
+				}
+				if (!dropdownEl.classList.contains('is-open')) {
+					return;
+				}
+				closeDropdown();
+				toggleEl.focus();
+			});
+			// Focus leaving the picker closes it. Focus that stays inside (the toggle and
+			// the checkboxes) leaves it open.
+			searchColumnsEl.addEventListener('focusout', function(event) {
+				var next = event.relatedTarget;
+				if (next && searchColumnsEl.contains(next)) {
+					return;
+				}
+				closeDropdown();
+			});
 			dropdownEl.addEventListener('change', function(event) {
 				if (event.target && event.target.type === 'checkbox') {
 					applyColumnSelection();

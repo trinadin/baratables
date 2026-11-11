@@ -682,15 +682,38 @@ class BaraTables_Frontend {
 			$chart_div_html = '<div id="' . esc_attr($chart_id) . '" class="btbl-chart" role="img" aria-label="' . esc_attr($chart_aria_label) . '"' . $chart_style . '>'
 				. '<noscript><p class="btbl-chart-noscript">' . esc_html__('Enable JavaScript to view this chart.', 'baratables') . '</p></noscript>'
 				. '</div>';
+			// A chart-only render puts no rows on the page, so the chart's data needs an
+			// accessible representation of its own: the same rows, as a visually hidden
+			// table with a caption, printed right next to the canvas. A render that also
+			// prints the table needs no second copy of the data.
+			$chart_data_html = '';
+			if ($chart_enabled && !$render_table) {
+				$chart_data_html = $this->render_chart_data_table($definition, $rows, $chart_options, $chart_aria_label);
+			}
+			$chart_block_html = $chart_div_html . $chart_data_html;
 			if ($chart_enabled && ($chart_options['position'] ?? 'above') === 'above') :
 				?>
-				<?php echo $chart_div_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d. ?>
+				<?php echo $chart_block_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d; the data table escapes every value it prints. ?>
 			<?php endif; ?>
 			<?php if ($render_table && !empty($filters)) { $this->render_filter_panel($filters, $table_options, $table_id, $allowed_inline); } ?>
 			<?php if ($render_table) : ?>
 				<div class="btbl-results-wrapper">
-					<table id="btbl-table-<?php echo esc_attr($table_id); ?>" class="<?php echo esc_attr($table_class_attr); ?>">
-						<?php $caption = trim(wp_strip_all_tags((string) ($table_options['caption'] ?? ''))); ?>
+					<?php
+					$caption = trim(wp_strip_all_tags((string) ($table_options['caption'] ?? '')));
+					// A table with no caption has no accessible name, so a screen reader
+					// announces an unnamed table. Name it after the table the admin
+					// configured -- the plugin already knows that name -- rather than
+					// inventing a visible caption that could misstate the data.
+					$table_aria_label = '';
+					if ($caption === '') {
+						$table_aria_label = trim(wp_strip_all_tags((string) ($definition['name'] ?? '')));
+						if ($table_aria_label === '') {
+							$table_aria_label = trim((string) ($definition['id'] ?? ''));
+						}
+					}
+					$table_aria_label_attr = $table_aria_label !== '' ? ' aria-label="' . esc_attr($table_aria_label) . '"' : '';
+					?>
+					<table id="btbl-table-<?php echo esc_attr($table_id); ?>" class="<?php echo esc_attr($table_class_attr); ?>"<?php echo $table_aria_label_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: value passed through esc_attr(). ?>>
 						<?php if ($caption !== '') : ?>
 							<caption><?php echo wp_kses($caption, $allowed_inline); ?></caption>
 						<?php endif; ?>
@@ -757,7 +780,7 @@ class BaraTables_Frontend {
 					<?php endif; ?>
 				</div>
 			<?php elseif ($chart_enabled && ($chart_options['position'] ?? 'above') === 'below') : ?>
-				<?php echo $chart_div_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d. ?>
+				<?php echo $chart_block_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Safe: id via esc_attr(), height cast to int + esc_attr()d; the data table escapes every value it prints. ?>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -980,6 +1003,41 @@ class BaraTables_Frontend {
 	 *         so a chart referencing an unknown slug still behaves exactly as before.
 	 */
 	private function project_rows_for_chart(array $rows, array $columns, array $chart_options): array {
+		$plan = $this->chart_projection_plan($columns, $chart_options);
+
+		// Nothing matched (unknown slugs, or a definition whose columns are not resolvable):
+		// keep the original payload rather than shipping a chart that cannot find its data.
+		if (!$plan['narrowed']) {
+			return ['rows' => $rows, 'slug_index' => null];
+		}
+
+		$projected = [];
+		foreach ($rows as $row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			$new_row = [];
+			foreach ($plan['keep'] as $idx) {
+				$new_row[] = $row[$idx] ?? '';
+			}
+			$projected[] = $new_row;
+		}
+
+		return ['rows' => $projected, 'slug_index' => $plan['slug_index']];
+	}
+
+	/**
+	 * Which source columns a chart plots, and how they line up with the chart's rows.
+	 *
+	 * The chart payload and the accessible data table printed beside a chart-only render
+	 * must agree on the data, so both read this one plan.
+	 *
+	 * @return array{keep: int[], slug_index: ?array<string, int>, narrowed: bool}
+	 *         The kept source column indexes, the slug => projected-index map for them, and
+	 *         whether anything was narrowed at all. When nothing was narrowed the chart
+	 *         keeps every column, so the plan keeps them all too.
+	 */
+	private function chart_projection_plan(array $columns, array $chart_options): array {
 		$wanted = array_fill_keys(BaraTables_Chart_Types::referenced_columns($chart_options), true);
 
 		$keep = [];
@@ -991,25 +1049,72 @@ class BaraTables_Frontend {
 			}
 		}
 
-		// Nothing matched (unknown slugs, or a definition whose columns are not resolvable):
-		// keep the original payload rather than shipping a chart that cannot find its data.
-		if (empty($keep) || count($keep) >= count($columns)) {
-			return ['rows' => $rows, 'slug_index' => null];
+		$narrowed = !empty($keep) && count($keep) < count($columns);
+		return [
+			'keep'       => $narrowed ? $keep : array_keys($columns),
+			'slug_index' => $narrowed ? $slug_index : null,
+			'narrowed'   => $narrowed,
+		];
+	}
+
+	/**
+	 * The chart's own data as a real, visually hidden table.
+	 *
+	 * A chart-only render puts no rows on the page, and the vendored ECharts build never
+	 * registers its ARIA component, so the canvas is an empty image to a screen reader.
+	 * This prints the SAME rows the chart plots as a table with a caption: hidden from
+	 * sight, but present in the accessibility tree. The rows come from the same
+	 * access-controlled result the tabular render uses, so nothing the table's access
+	 * control forbids can leak through the fallback.
+	 */
+	private function render_chart_data_table(array $definition, array $rows, array $chart_options, string $caption): string {
+		$plan = $this->chart_projection_plan($definition['columns'], $chart_options);
+		$slugs = $this->service->column_slugs_in_order($definition['columns']);
+		$labels = $this->service->build_column_slug_label_list($definition['columns']);
+		$label_by_slug = [];
+		foreach ($labels as $entry) {
+			if (is_array($entry) && isset($entry['slug'])) {
+				$label_by_slug[(string) $entry['slug']] = (string) ($entry['label'] ?? '');
+			}
 		}
 
-		$projected = [];
+		$html = '<div class="btbl-chart-data btbl-visually-hidden"><table>';
+		if ($caption !== '') {
+			$html .= '<caption>' . esc_html($caption) . '</caption>';
+		}
+		$html .= '<thead><tr>';
+		foreach ($plan['keep'] as $idx) {
+			$slug = isset($slugs[$idx]) ? (string) $slugs[$idx] : '';
+			$header = isset($label_by_slug[$slug]) ? $label_by_slug[$slug] : '';
+			$html .= '<th scope="col">' . esc_html($header) . '</th>';
+		}
+		$html .= '</tr></thead><tbody>';
 		foreach ($rows as $row) {
 			if (!is_array($row)) {
 				continue;
 			}
-			$new_row = [];
-			foreach ($keep as $idx) {
-				$new_row[] = $row[$idx] ?? '';
+			$html .= '<tr>';
+			foreach ($plan['keep'] as $idx) {
+				$html .= '<td>' . $this->chart_data_cell_text((string) ($row[$idx] ?? '')) . '</td>';
 			}
-			$projected[] = $new_row;
+			$html .= '</tr>';
 		}
+		$html .= '</tbody></table></div>';
+		return $html;
+	}
 
-		return ['rows' => $projected, 'slug_index' => $slug_index];
+	/**
+	 * A chart cell as plain text.
+	 *
+	 * The tabular render keeps a cell's allowed inline markup; a screen reader reading a
+	 * chart's data wants the text, not the markup, so the tags come off and the entities
+	 * are decoded once before the value is escaped for output.
+	 */
+	private function chart_data_cell_text(string $cell): string {
+		if (strpbrk($cell, '<&') === false) {
+			return esc_html($cell);
+		}
+		return esc_html(html_entity_decode(wp_strip_all_tags($cell), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 	}
 
 	private function render_filter_select(array $options, array $args = []): void {

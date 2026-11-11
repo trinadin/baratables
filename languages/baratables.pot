@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-09T23:38:46+00:00\n"
+"POT-Creation-Date: 2026-11-11T02:30:49+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: baratables\n"
@@ -86,74 +86,78 @@ msgstr ""
 msgid "Remote snapshot updated. Reloading the editor..."
 msgstr ""
 
-#: includes/admin/admin.php:306
+#: includes/admin/admin.php:311
 msgid "The table ID could not be saved. The previous ID was kept."
 msgstr ""
 
-#: includes/admin/admin.php:319
+#: includes/admin/admin.php:338
+msgid "This table changed while you were editing it, so your changes were not saved. Reload the editor and re-apply them."
+msgstr ""
+
+#: includes/admin/admin.php:346
 msgid "The table could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again."
 msgstr ""
 
-#: includes/admin/admin.php:320
+#: includes/admin/admin.php:347
 msgid "The table could not be saved. Its previous data and table ID were restored."
 msgstr ""
 
 #. translators: %s is a comma-separated list of chart post IDs.
-#: includes/admin/admin.php:350
+#: includes/admin/admin.php:377
 #, php-format
 msgid "The table ID was restored, but linked chart post IDs %s could not be restored or queued for automatic recovery. Retry the save before editing those charts."
 msgstr ""
 
 #. translators: %d is the number of linked charts queued for recovery.
-#: includes/admin/admin.php:355
+#: includes/admin/admin.php:382
 #, php-format
 msgid "The table ID was restored. %d linked chart will be restored automatically on the next admin request."
 msgid_plural "The table ID was restored. %d linked charts will be restored automatically on the next admin request."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/admin.php:363
+#: includes/admin/admin.php:390
 msgid "The table ID and linked charts could not be updated consistently. Retry the save before editing them again."
 msgstr ""
 
-#: includes/admin/admin.php:364
+#: includes/admin/admin.php:391
 msgid "The table ID change was cancelled because a linked chart could not be updated. Previous data was restored."
 msgstr ""
 
-#: includes/admin/admin.php:383
+#: includes/admin/admin.php:410
 msgid "This table has no columns, so it will not display anything. Select at least one column on the Columns &amp; filters tab, then update."
 msgstr ""
 
-#: includes/admin/admin.php:392
+#: includes/admin/admin.php:419
 msgid "Value overrides were not valid JSON, so no rules were saved. Check the JSON on the Advanced tab."
 msgstr ""
 
 #. translators: %s is a comma-separated list of invalid regex patterns.
-#: includes/admin/admin.php:416
+#: includes/admin/admin.php:443
 #, php-format
 msgid "These value-override regex patterns are invalid and were skipped (remember the delimiters, e.g. #pattern#): %s"
 msgstr ""
 
 #. translators: %s: the table shortcode to paste into content.
-#: includes/admin/admin.php:436
+#: includes/admin/admin.php:508
 #, php-format
 msgid "Table published. Add it to any page or post with the shortcode %s, or choose the BaraTables table block in the block editor."
 msgstr ""
 
-#: includes/admin/admin.php:457
+#: includes/admin/admin.php:529
 msgid "The external database settings were not valid, so the previous connection was kept. The table name may only contain letters, numbers, and underscores. Clear every connection field to remove the connection."
 msgstr ""
 
-#: includes/admin/admin.php:462
+#: includes/admin/admin.php:534
 msgid "The external database settings are not valid or incomplete. Fill in host, database, user, and table to connect."
 msgstr ""
 
-#: includes/admin/admin.php:468
+#: includes/admin/admin.php:540
 msgid "The external database connection was removed from this table."
 msgstr ""
 
 #. translators: %d: number of linked charts updated.
-#: includes/admin/admin.php:480
+#: includes/admin/admin.php:552
 #, php-format
 msgid "%d linked chart was updated automatically."
 msgid_plural "%d linked charts were updated automatically."
@@ -161,81 +165,85 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: 1: the ID the user asked for, 2: the unique ID actually saved.
-#: includes/admin/admin.php:489
+#: includes/admin/admin.php:561
 #, php-format
 msgid "The table ID \"%1$s\" was already in use, so it was saved as \"%2$s\"."
 msgstr ""
 
 #. translators: 1: old Table ID, 2: new Table ID.
-#: includes/admin/admin.php:491
+#: includes/admin/admin.php:563
 #, php-format
 msgid "Table ID changed from \"%1$s\" to \"%2$s\". Update any [bara_table id=\"%1$s\"] you have already pasted into your content."
 msgstr ""
 
-#: includes/admin/admin.php:574
+#: includes/admin/admin.php:646
 msgid "Chart builder"
 msgstr ""
 
-#: includes/admin/admin.php:584
+#: includes/admin/admin.php:656
 #: includes/admin/design-screen.php:343
 msgid "Chart preview"
 msgstr ""
 
-#: includes/admin/admin.php:596
+#: includes/admin/admin.php:668
 msgid "Save the chart to see a preview."
 msgstr ""
 
-#: includes/admin/admin.php:712
+#: includes/admin/admin.php:784
 msgid "Chart ID"
 msgstr ""
 
-#: includes/admin/admin.php:719
+#: includes/admin/admin.php:791
 msgid "Chart settings"
 msgstr ""
 
-#: includes/admin/admin.php:720
+#: includes/admin/admin.php:792
 #: assets/block-picker.js:52
 msgid "Chart"
 msgstr ""
 
-#: includes/admin/admin.php:721
+#: includes/admin/admin.php:793
 #: includes/admin/design-screen.php:38
 #: includes/admin/pages.php:66
 msgid "Design"
 msgstr ""
 
-#: includes/admin/admin.php:759
+#: includes/admin/admin.php:831
 msgid "This chart has no source table, so it will show \"Chart not found.\" Edit the chart and choose one."
 msgstr ""
 
-#: includes/admin/admin.php:760
+#: includes/admin/admin.php:832
 msgid "This chart's table no longer exists, so it will show \"Chart not found.\" Edit the chart and choose another."
 msgstr ""
 
-#: includes/admin/admin.php:781
+#: includes/admin/admin.php:858
 msgid "The chart ID could not be saved. The previous ID was kept."
 msgstr ""
 
-#: includes/admin/admin.php:794
+#: includes/admin/admin.php:884
+msgid "This chart changed while you were editing it, so your changes were not saved. Reload the editor and re-apply them."
+msgstr ""
+
+#: includes/admin/admin.php:892
 msgid "The chart could not be saved, and WordPress could not completely restore its previous data. Retry the save before editing it again."
 msgstr ""
 
-#: includes/admin/admin.php:795
+#: includes/admin/admin.php:893
 msgid "The chart could not be saved. Its previous data and chart ID were restored."
 msgstr ""
 
-#: includes/admin/admin.php:817
+#: includes/admin/admin.php:915
 msgid "This chart has no series selected, so it will render empty. Choose at least one series column."
 msgstr ""
 
 #. translators: 1: the ID the user asked for, 2: the unique ID actually saved.
-#: includes/admin/admin.php:840
+#: includes/admin/admin.php:983
 #, php-format
 msgid "The chart ID \"%1$s\" was already in use, so it was saved as \"%2$s\"."
 msgstr ""
 
 #. translators: 1: old Chart ID, 2: new Chart ID.
-#: includes/admin/admin.php:842
+#: includes/admin/admin.php:985
 #, php-format
 msgid "Chart ID changed from \"%1$s\" to \"%2$s\". Update any [bara_chart id=\"%1$s\"] you have already pasted into your content."
 msgstr ""
@@ -302,8 +310,8 @@ msgstr ""
 
 #: includes/admin/design-fields.php:155
 #: includes/admin/design-fields.php:162
-#: includes/admin/ui-chart-tabs.php:144
-#: includes/admin/ui-chart-tabs.php:149
+#: includes/admin/ui-chart-tabs.php:157
+#: includes/admin/ui-chart-tabs.php:162
 #: includes/admin/ui.php:869
 msgid "None"
 msgstr ""
@@ -411,7 +419,7 @@ msgstr ""
 
 #: includes/admin/design-fields.php:515
 #: includes/admin/design-screen.php:315
-#: includes/admin/ui-chart-tabs.php:305
+#: includes/admin/ui-chart-tabs.php:318
 msgid "Series palette"
 msgstr ""
 
@@ -427,7 +435,7 @@ msgstr ""
 
 #: includes/admin/design-screen.php:37
 #: includes/admin/design-screen.php:167
-#: includes/admin/ui-chart-tabs.php:278
+#: includes/admin/ui-chart-tabs.php:291
 #: includes/admin/ui.php:1377
 msgid "Site design"
 msgstr ""
@@ -453,7 +461,7 @@ msgid "Site CSS"
 msgstr ""
 
 #: includes/admin/design-screen.php:204
-#: includes/admin/ui-chart-tabs.php:313
+#: includes/admin/ui-chart-tabs.php:326
 #: includes/admin/ui.php:1447
 msgid "Copy CSS"
 msgstr ""
@@ -471,13 +479,13 @@ msgid "Save site design"
 msgstr ""
 
 #: includes/admin/design-screen.php:247
-#: includes/admin/ui-chart-tabs.php:316
+#: includes/admin/ui-chart-tabs.php:329
 #: includes/admin/ui.php:1365
 msgid "Copied to your clipboard."
 msgstr ""
 
 #: includes/admin/design-screen.php:249
-#: includes/admin/ui-chart-tabs.php:316
+#: includes/admin/ui-chart-tabs.php:329
 #: includes/admin/ui.php:1367
 msgid "Clipboard unavailable — the CSS is selected below; copy it manually."
 msgstr ""
@@ -487,7 +495,7 @@ msgid "Paste it into Appearance > Customize > Additional CSS (or a child theme s
 msgstr ""
 
 #: includes/admin/design-screen.php:284
-#: includes/repositories.php:622
+#: includes/repositories.php:867
 msgid "Tables"
 msgstr ""
 
@@ -496,7 +504,7 @@ msgid "These are the colors and the spacing. Whether the stripes and highlights 
 msgstr ""
 
 #: includes/admin/design-screen.php:305
-#: includes/repositories.php:740
+#: includes/repositories.php:985
 msgid "Charts"
 msgstr ""
 
@@ -1017,377 +1025,381 @@ msgstr ""
 msgid "Footer totals cover the first %d preview rows."
 msgstr ""
 
-#: includes/admin/support.php:147
-#: includes/admin/support.php:152
+#: includes/admin/support.php:176
+#: includes/admin/support.php:187
 msgid "Show help text"
 msgstr ""
 
-#: includes/admin/support.php:147
-#: includes/admin/support.php:151
+#: includes/admin/support.php:176
+#: includes/admin/support.php:186
 msgid "Hide help text"
 msgstr ""
 
-#: includes/admin/support.php:207
+#: includes/admin/support.php:243
 msgid "Duplicate"
 msgstr ""
 
-#: includes/admin/support.php:214
-#: includes/admin/support.php:221
-#: includes/admin/support.php:245
+#: includes/admin/support.php:250
+#: includes/admin/support.php:257
+#: includes/admin/support.php:281
 msgid "Invalid duplicate request."
 msgstr ""
 
-#: includes/admin/support.php:224
+#: includes/admin/support.php:260
 msgid "You are not allowed to duplicate this item."
 msgstr ""
 
-#: includes/admin/support.php:250
+#: includes/admin/support.php:286
 msgid "The original item has no saved definition to duplicate."
 msgstr ""
 
 #. translators: %s is the original item title.
-#: includes/admin/support.php:254
+#: includes/admin/support.php:290
 #, php-format
 msgid "%s (copy)"
 msgstr ""
 
-#: includes/admin/support.php:266
+#: includes/admin/support.php:302
 msgid "The duplicated item could not be loaded."
 msgstr ""
 
 #. translators: %d is the WordPress post ID of an incomplete draft.
-#: includes/admin/support.php:294
+#: includes/admin/support.php:330
 #, php-format
 msgid "The item could not be duplicated. An incomplete, non-public draft remains (post ID %d)."
 msgstr ""
 
-#: includes/admin/support.php:314
+#: includes/admin/support.php:350
 #: includes/admin/ui.php:782
 msgid "Copied"
 msgstr ""
 
 #. translators: %s is the shortcode.
-#: includes/admin/support.php:315
+#: includes/admin/support.php:351
 #, php-format
 msgid "Copy shortcode: %s"
 msgstr ""
 
-#: includes/admin/support.php:324
+#: includes/admin/support.php:360
 msgid "Shortcode:"
 msgstr ""
 
-#: includes/admin/support.php:338
+#: includes/admin/support.php:374
 msgid "Edit ID"
 msgstr ""
 
-#: includes/admin/support.php:343
+#: includes/admin/support.php:379
 msgid "OK"
 msgstr ""
 
-#: includes/admin/support.php:344
+#: includes/admin/support.php:380
 msgid "Cancel"
 msgstr ""
 
 #. translators: %s is the shortcode tag, e.g. [bara_table].
-#: includes/admin/support.php:348
+#: includes/admin/support.php:384
 #, php-format
 msgid "Lowercase letters, numbers, and hyphens. Any %s you have already pasted into a page will need updating by hand."
 msgstr ""
 
 #. translators: %d is the server's max_input_vars setting.
-#: includes/admin/support.php:422
+#: includes/admin/support.php:458
 #, php-format
 msgid "Nothing was saved. The editor sent more fields than this server accepts (max_input_vars is %d), so the data arrived incomplete. Use fewer grid cells, or ask your host to raise max_input_vars."
 msgstr ""
 
-#: includes/admin/support.php:550
+#: includes/admin/support.php:586
 msgid "WordPress did not delete an incomplete item, but BaraTables kept it non-public."
 msgstr ""
 
-#: includes/admin/support.php:551
+#: includes/admin/support.php:587
 msgid "WordPress did not delete or quarantine an incomplete item."
 msgstr ""
 
-#: includes/admin/support.php:647
+#: includes/admin/support.php:678
+msgid "The requested ID could not be saved. Please try again."
+msgstr ""
+
+#: includes/admin/support.php:694
 msgid "WordPress did not save the requested ID."
 msgstr ""
 
-#: includes/admin/support.php:716
+#: includes/admin/support.php:763
 msgid "WordPress could not completely restore the previous plugin data."
 msgstr ""
 
-#: includes/admin/support.php:738
+#: includes/admin/support.php:785
 msgid "WordPress did not repair the stored ID."
 msgstr ""
 
-#: includes/admin/support.php:894
+#: includes/admin/support.php:941
 msgid "BaraTables could not synchronize this item's ID or restore its previous data. Retry the save before editing it again."
 msgstr ""
 
-#: includes/admin/support.php:895
+#: includes/admin/support.php:942
 msgid "BaraTables could not synchronize this item's ID. Its previous data was restored."
 msgstr ""
 
 #. translators: %d is the number of data rows.
-#: includes/admin/support.php:1186
+#: includes/admin/support.php:1233
 #, php-format
 msgid "(%d row)"
 msgid_plural "(%d rows)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/admin/support.php:1202
+#: includes/admin/support.php:1249
 #: includes/admin/ui.php:264
 msgid "Post type"
 msgstr ""
 
-#: includes/admin/support.php:1203
+#: includes/admin/support.php:1250
 #: includes/admin/ui.php:78
 msgid "Data source"
 msgstr ""
 
-#: includes/admin/support.php:1204
+#: includes/admin/support.php:1251
 msgid "Taxonomy"
 msgstr ""
 
-#: includes/admin/support.php:1205
+#: includes/admin/support.php:1252
 msgid "Fields"
 msgstr ""
 
-#: includes/admin/support.php:1206
-#: includes/admin/support.php:1288
+#: includes/admin/support.php:1253
+#: includes/admin/support.php:1335
 msgid "Shortcode"
 msgstr ""
 
-#: includes/admin/support.php:1285
-#: includes/admin/ui-chart-tabs.php:43
+#: includes/admin/support.php:1332
+#: includes/admin/ui-chart-tabs.php:41
 #: assets/block-picker.js:35
 msgid "Table"
 msgstr ""
 
-#: includes/admin/support.php:1286
+#: includes/admin/support.php:1333
 msgid "Type"
 msgstr ""
 
-#: includes/admin/support.php:1287
+#: includes/admin/support.php:1334
 #: includes/services.php:758
 msgid "Columns"
 msgstr ""
 
+#: includes/admin/ui-chart-tabs.php:42
+#: includes/admin/ui-chart-tabs.php:177
+msgid "Chart type"
+msgstr ""
+
 #. translators: %s is a comma-separated list of column references.
-#: includes/admin/ui-chart-tabs.php:37
+#: includes/admin/ui-chart-tabs.php:50
 #, php-format
 msgid "These chart columns no longer exist and were cleared: %s. Pick replacements below, then update."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:44
+#: includes/admin/ui-chart-tabs.php:57
 msgid "Switching tables will reset the column choices for this chart. Continue?"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:44
-#: includes/repositories.php:624
+#: includes/admin/ui-chart-tabs.php:57
+#: includes/repositories.php:869
 msgid "No tables found."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:44
+#: includes/admin/ui-chart-tabs.php:57
 msgid "Searching..."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:45
+#: includes/admin/ui-chart-tabs.php:58
 msgid "Select table"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:55
+#: includes/admin/ui-chart-tabs.php:68
 msgid "Stack series"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:61
-#: includes/admin/ui-chart-tabs.php:164
-msgid "Chart type"
-msgstr ""
-
-#: includes/admin/ui-chart-tabs.php:62
+#: includes/admin/ui-chart-tabs.php:75
 msgid "Preview chart types"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:64
+#: includes/admin/ui-chart-tabs.php:77
 msgid "Open chart type gallery"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:74
+#: includes/admin/ui-chart-tabs.php:87
 msgid "Chart height (px)"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:76
+#: includes/admin/ui-chart-tabs.php:89
 msgid "Recommended 300-500px."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:81
+#: includes/admin/ui-chart-tabs.php:94
 msgid "X-axis / category column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:82
-#: includes/admin/ui-chart-tabs.php:112
-#: includes/admin/ui-chart-tabs.php:117
-#: includes/admin/ui-chart-tabs.php:122
-#: includes/admin/ui-chart-tabs.php:129
-#: includes/admin/ui-chart-tabs.php:134
-#: includes/admin/ui-chart-tabs.php:139
+#: includes/admin/ui-chart-tabs.php:95
+#: includes/admin/ui-chart-tabs.php:125
+#: includes/admin/ui-chart-tabs.php:130
+#: includes/admin/ui-chart-tabs.php:135
+#: includes/admin/ui-chart-tabs.php:142
+#: includes/admin/ui-chart-tabs.php:147
+#: includes/admin/ui-chart-tabs.php:152
 msgid "Select column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:84
+#: includes/admin/ui-chart-tabs.php:97
 msgid "Row labels. Each row becomes one category on the chart."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:85
+#: includes/admin/ui-chart-tabs.php:98
 msgid "Item names. Each row becomes one slice, stage, or tile."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:86
+#: includes/admin/ui-chart-tabs.php:99
 msgid "Plotted as a number along the horizontal axis. Rows without a numeric value are skipped."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:87
+#: includes/admin/ui-chart-tabs.php:100
 msgid "The column that supplies the chart's categories or values."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:91
-#: includes/admin/ui-chart-tabs.php:92
+#: includes/admin/ui-chart-tabs.php:104
+#: includes/admin/ui-chart-tabs.php:105
 msgid "Series columns"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:101
+#: includes/admin/ui-chart-tabs.php:114
 msgid "Each selected column is plotted as its own series."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:102
+#: includes/admin/ui-chart-tabs.php:115
 msgid "Only the first selected column is plotted; the rest are ignored."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:103
+#: includes/admin/ui-chart-tabs.php:116
 msgid "Each selected column becomes its own set of points."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:104
+#: includes/admin/ui-chart-tabs.php:117
 msgid "The first column sets each bubble's height; the second sets its size. Extra columns are ignored."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:105
+#: includes/admin/ui-chart-tabs.php:118
 msgid "The columns to plot."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:111
+#: includes/admin/ui-chart-tabs.php:124
 msgid "X category column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:113
+#: includes/admin/ui-chart-tabs.php:126
 msgid "Categories shown across the chart."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:116
+#: includes/admin/ui-chart-tabs.php:129
 msgid "Y category column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:118
+#: includes/admin/ui-chart-tabs.php:131
 msgid "Categories shown down the chart."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:121
+#: includes/admin/ui-chart-tabs.php:134
 msgid "Value column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:123
+#: includes/admin/ui-chart-tabs.php:136
 msgid "Numeric values control each cell color; non-numeric rows are skipped."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:128
+#: includes/admin/ui-chart-tabs.php:141
 msgid "Task / label column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:130
+#: includes/admin/ui-chart-tabs.php:143
 msgid "Used for the task names on the Y-axis."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:133
+#: includes/admin/ui-chart-tabs.php:146
 msgid "Start date/time column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:135
+#: includes/admin/ui-chart-tabs.php:148
 msgid "Dates should be parseable (e.g. 2024-01-31 or 2024-01-31 12:00)."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:138
+#: includes/admin/ui-chart-tabs.php:151
 msgid "End date/time column"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:140
+#: includes/admin/ui-chart-tabs.php:153
 msgid "Each task needs both a start and end."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:143
+#: includes/admin/ui-chart-tabs.php:156
 msgid "Group / lane column (optional)"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:145
+#: includes/admin/ui-chart-tabs.php:158
 msgid "Use to color tasks by owner/lane."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:148
+#: includes/admin/ui-chart-tabs.php:161
 msgid "Progress % column (optional)"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:150
+#: includes/admin/ui-chart-tabs.php:163
 msgid "Shown in tooltips; numbers should be 0-100."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:154
+#: includes/admin/ui-chart-tabs.php:167
 msgid "Add columns first, then configure the chart."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:160
+#: includes/admin/ui-chart-tabs.php:173
 msgid "Choose chart type"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:161
+#: includes/admin/ui-chart-tabs.php:174
 msgid "Close chart type chooser"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:271
+#: includes/admin/ui-chart-tabs.php:284
 msgid "The chart's background, padding and radius live on the container; its text, grid and series colors are drawn on the canvas and stay in the chart options. Paste this into Appearance > Customize > Additional CSS (or a child theme stylesheet)."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:276
+#: includes/admin/ui-chart-tabs.php:289
 msgid "Styles apply to the Chart preview as you edit, and publish with the chart. Leave anything blank to inherit the site default, and then the chart's own defaults."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:279
+#: includes/admin/ui-chart-tabs.php:292
 msgid "The site default applies to every chart that leaves a value blank here."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:292
+#: includes/admin/ui-chart-tabs.php:305
 #: includes/admin/ui.php:1391
 msgid "Use the site default design"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:298
+#: includes/admin/ui-chart-tabs.php:311
 #: includes/admin/ui.php:1397
 msgid "Style presets"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:299
+#: includes/admin/ui-chart-tabs.php:312
 msgid "One click fills the controls below; keep tweaking from there. Your chart and its data are not touched."
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:311
+#: includes/admin/ui-chart-tabs.php:324
 msgid "Chart CSS"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:316
+#: includes/admin/ui-chart-tabs.php:329
 msgid "Generated chart CSS"
 msgstr ""
 
-#: includes/admin/ui-chart-tabs.php:317
+#: includes/admin/ui-chart-tabs.php:330
 msgid "Copies the chart container's background, padding and radius as CSS. The chart's text, grid and series colors are drawn on the canvas, so they stay in the chart options."
 msgstr ""
 
@@ -2242,16 +2254,16 @@ msgstr ""
 msgid "No rows"
 msgstr ""
 
-#: includes/chart-link-recovery.php:37
+#: includes/chart-link-recovery.php:40
 msgid "WordPress could not queue the linked-chart recovery."
 msgstr ""
 
-#: includes/chart-link-recovery.php:78
-msgid "WordPress could not clear the completed linked-chart recovery."
+#: includes/chart-link-recovery.php:99
+msgid "WordPress could not update the linked-chart recovery journal."
 msgstr ""
 
-#: includes/chart-link-recovery.php:83
-msgid "WordPress could not update the linked-chart recovery journal."
+#: includes/chart-link-recovery.php:233
+msgid "WordPress could not clear the completed linked-chart recovery."
 msgstr ""
 
 #: includes/chart-service.php:103
@@ -2334,7 +2346,15 @@ msgstr[1] ""
 msgid "BaraTables could not finish upgrading its saved data. Your previous data was kept and the upgrade will retry automatically."
 msgstr ""
 
-#: includes/data-migrations.php:113
+#: includes/data-migrations.php:156
+msgid "BaraTables could not upgrade a table that changed while the upgrade was running. That table was left as it is and will be upgraded on the next admin request."
+msgstr ""
+
+#: includes/data-migrations.php:164
+msgid "BaraTables could not read the saved definition of a table, so that table was left as it is. The upgrade will retry on the next admin request."
+msgstr ""
+
+#: includes/data-migrations.php:177
 msgid "WordPress could not record that the BaraTables data upgrade completed."
 msgstr ""
 
@@ -2391,67 +2411,67 @@ msgstr ""
 msgid "Enable JavaScript to view this chart."
 msgstr ""
 
-#: includes/frontend.php:745
+#: includes/frontend.php:768
 msgid "No results match these filters."
 msgstr ""
 
-#: includes/frontend.php:746
+#: includes/frontend.php:769
 msgid "This table has no rows."
 msgstr ""
 
-#: includes/frontend.php:752
+#: includes/frontend.php:775
 msgid "Table admin tools"
 msgstr ""
 
-#: includes/frontend.php:754
-#: includes/repositories.php:620
+#: includes/frontend.php:777
+#: includes/repositories.php:865
 msgid "Edit table"
 msgstr ""
 
-#: includes/frontend.php:771
+#: includes/frontend.php:794
 #: includes/services.php:749
 msgid "Filters"
 msgstr ""
 
-#: includes/frontend.php:779
+#: includes/frontend.php:802
 msgid "Clear filters"
 msgstr ""
 
-#: includes/frontend.php:808
-#: includes/frontend.php:1020
-#: includes/frontend.php:1078
+#: includes/frontend.php:831
+#: includes/frontend.php:1125
+#: includes/frontend.php:1183
 msgid "All"
 msgstr ""
 
-#: includes/frontend.php:810
+#: includes/frontend.php:833
 msgid "Select options"
 msgstr ""
 
-#: includes/frontend.php:896
+#: includes/frontend.php:919
 msgid "The Excel file could not be created. Check your connection and try again."
 msgstr ""
 
-#: includes/frontend.php:897
+#: includes/frontend.php:920
 msgid "The PDF could not be created. Check your connection and try again."
 msgstr ""
 
-#: includes/frontend.php:903
+#: includes/frontend.php:926
 msgid "The Excel file is taking longer than expected. It may still download."
 msgstr ""
 
-#: includes/frontend.php:904
+#: includes/frontend.php:927
 msgid "The PDF is taking longer than expected. It may still download."
 msgstr ""
 
-#: includes/frontend.php:934
+#: includes/frontend.php:957
 msgid "Start"
 msgstr ""
 
-#: includes/frontend.php:935
+#: includes/frontend.php:958
 msgid "End"
 msgstr ""
 
-#: includes/frontend.php:936
+#: includes/frontend.php:959
 msgid "Progress"
 msgstr ""
 
@@ -2586,118 +2606,127 @@ msgid "The previous snapshot was kept."
 msgstr ""
 
 #: includes/repositories.php:101
+#: includes/repositories.php:109
 msgid "WordPress could not restore the previously saved plugin data."
 msgstr ""
 
-#: includes/repositories.php:123
-#: includes/repositories.php:145
-#: includes/repositories.php:164
+#: includes/repositories.php:132
+#: includes/repositories.php:147
+#: includes/repositories.php:175
+#: includes/repositories.php:183
+#: includes/repositories.php:238
+#: includes/repositories.php:253
+#: includes/repositories.php:274
+#: includes/repositories.php:310
 msgid "WordPress did not save the plugin definition."
 msgstr ""
 
-#: includes/repositories.php:143
+#: includes/repositories.php:163
+#: includes/repositories.php:173
+#: includes/repositories.php:234
 msgid "The plugin definition changed during this operation."
 msgstr ""
 
-#: includes/repositories.php:169
+#: includes/repositories.php:224
+#: includes/repositories.php:279
 msgid "WordPress did not save the plugin ID lookup."
 msgstr ""
 
-#: includes/repositories.php:613
+#: includes/repositories.php:858
 msgctxt "post type general name"
 msgid "Tables"
 msgstr ""
 
-#: includes/repositories.php:614
+#: includes/repositories.php:859
 msgctxt "post type singular name"
 msgid "Table"
 msgstr ""
 
-#: includes/repositories.php:615
+#: includes/repositories.php:860
 msgctxt "admin menu"
 msgid "BaraTables"
 msgstr ""
 
-#: includes/repositories.php:616
+#: includes/repositories.php:861
 msgctxt "add new on admin bar"
 msgid "Table"
 msgstr ""
 
-#: includes/repositories.php:617
+#: includes/repositories.php:862
 msgctxt "table"
 msgid "Add New"
 msgstr ""
 
-#: includes/repositories.php:618
+#: includes/repositories.php:863
 msgid "Add table"
 msgstr ""
 
-#: includes/repositories.php:619
+#: includes/repositories.php:864
 msgid "New table"
 msgstr ""
 
-#: includes/repositories.php:621
+#: includes/repositories.php:866
 msgid "View table"
 msgstr ""
 
-#: includes/repositories.php:623
+#: includes/repositories.php:868
 msgid "Search tables"
 msgstr ""
 
-#: includes/repositories.php:625
+#: includes/repositories.php:870
 msgid "No tables found in Trash."
 msgstr ""
 
-#: includes/repositories.php:731
+#: includes/repositories.php:976
 msgctxt "post type general name"
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:732
+#: includes/repositories.php:977
 msgctxt "post type singular name"
 msgid "Chart"
 msgstr ""
 
-#: includes/repositories.php:733
+#: includes/repositories.php:978
 msgctxt "admin menu"
 msgid "Charts"
 msgstr ""
 
-#: includes/repositories.php:734
+#: includes/repositories.php:979
 msgctxt "add new on admin bar"
 msgid "Chart"
 msgstr ""
 
-#: includes/repositories.php:735
+#: includes/repositories.php:980
 msgctxt "chart"
 msgid "Add New"
 msgstr ""
 
-#: includes/repositories.php:736
+#: includes/repositories.php:981
 msgid "Add chart"
 msgstr ""
 
-#: includes/repositories.php:737
+#: includes/repositories.php:982
 msgid "New chart"
 msgstr ""
 
-#: includes/repositories.php:738
+#: includes/repositories.php:983
 msgid "Edit chart"
 msgstr ""
 
-#: includes/repositories.php:739
+#: includes/repositories.php:984
 msgid "View chart"
 msgstr ""
 
-#: includes/repositories.php:741
+#: includes/repositories.php:986
 msgid "Search charts"
 msgstr ""
 
-#: includes/repositories.php:742
+#: includes/repositories.php:987
 msgid "No charts found."
 msgstr ""
 
-#: includes/repositories.php:743
+#: includes/repositories.php:988
 msgid "No charts found in Trash."
 msgstr ""
 

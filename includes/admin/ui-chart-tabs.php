@@ -27,6 +27,19 @@ class BaraTables_Admin_Tab_Chart {
 				];
 			}
 			$chart_types = BaraTables_Chart_Types::all();
+			// The visible label AND the control's own accessible name come from one string,
+			// so the two can never drift apart.
+			//
+			// The name has to live on the control itself, not only on the <label for>. The
+			// chart editor's table picker is enhanced with the bundled Tom Select, which
+			// hides the original <select> -- it stays in the accessibility tree, clipped to
+			// nothing -- and re-points the label's `for` at its own widget. A name that
+			// lived only on the label was therefore taken away from the original control,
+			// leaving a combobox with no accessible name behind. Stating the name on the
+			// control survives that rewrite, and Tom Select copies it onto the widget it
+			// shows in its place.
+			$table_label = __('Table', 'baratables');
+			$chart_type_label = __('Chart type', 'baratables');
 			?>
 		<div id="btbl-tab-chart" class="<?php echo esc_attr($panel_class); ?>" role="tabpanel" aria-labelledby="btbl-tab-chart-label">
 			<?php $dropped_columns = $context['dropped_columns'] ?? []; ?>
@@ -40,8 +53,8 @@ class BaraTables_Admin_Tab_Chart {
 				</div>
 			<?php endif; ?>
 			<div class="btbl-control">
-				<label class="btbl-small-heading" for="btbl_chart_table"><?php esc_html_e('Table', 'baratables'); ?></label>
-				<select name="btbl_chart_table" id="btbl_chart_table" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" data-no-results-label="<?php echo esc_attr__('No tables found.', 'baratables'); ?>" data-searching-label="<?php echo esc_attr__('Searching...', 'baratables'); ?>" required>
+				<label class="btbl-small-heading" for="btbl_chart_table"><?php echo esc_html($table_label); ?></label>
+				<select name="btbl_chart_table" id="btbl_chart_table" aria-label="<?php echo esc_attr($table_label); ?>" data-switch-confirm="<?php echo esc_attr__('Switching tables will reset the column choices for this chart. Continue?', 'baratables'); ?>" data-no-results-label="<?php echo esc_attr__('No tables found.', 'baratables'); ?>" data-searching-label="<?php echo esc_attr__('Searching...', 'baratables'); ?>" required>
 					<option value=""><?php esc_html_e('Select table', 'baratables'); ?></option>
 					<?php foreach ($table_choices as $id => $label) : ?>
 						<option value="<?php echo esc_attr($id); ?>" <?php selected($selected_table, $id); ?>><?php echo esc_html($label); ?></option>
@@ -58,13 +71,13 @@ class BaraTables_Admin_Tab_Chart {
 			<div class="btbl-control-grid btbl-chart-grid">
 				<div class="btbl-control">
 					<div class="btbl-small-heading-row">
-						<label class="btbl-small-heading" for="btbl_chart_type"><?php esc_html_e('Chart type', 'baratables'); ?></label>
+						<label class="btbl-small-heading" for="btbl_chart_type"><?php echo esc_html($chart_type_label); ?></label>
 						<a href="#btbl-chart-type-modal" class="btbl-chart-preview-trigger" aria-haspopup="dialog" aria-controls="btbl-chart-type-modal" title="<?php echo esc_attr__('Preview chart types', 'baratables'); ?>">
 							<span class="dashicons dashicons-visibility" aria-hidden="true"></span>
 							<span class="screen-reader-text"><?php esc_html_e('Open chart type gallery', 'baratables'); ?></span>
 						</a>
 					</div>
-					<select name="btbl_chart_type" id="btbl_chart_type" class="btbl-chart-type-select">
+					<select name="btbl_chart_type" id="btbl_chart_type" class="btbl-chart-type-select" aria-label="<?php echo esc_attr($chart_type_label); ?>">
 						<?php foreach ($chart_types as $type_slug => $type_capabilities) : ?>
 							<option value="<?php echo esc_attr($type_slug); ?>" data-mode="<?php echo esc_attr($type_capabilities['mode']); ?>" data-stackable="<?php echo $type_capabilities['stackable'] ? '1' : '0'; ?>" <?php selected($chart_options['type'], $type_slug); ?>><?php echo esc_html($type_capabilities['label']); ?></option>
 						<?php endforeach; ?>

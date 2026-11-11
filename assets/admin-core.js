@@ -262,33 +262,41 @@
 			}
 		},
 		chart: {
+			// Each preset's series palette is measured against ITS OWN styleBackground, not
+			// against white: the bold and midnight presets paint on a dark canvas, where a
+			// light series colour is the one with the contrast to spare. Every colour in
+			// every palette clears the 3:1 non-text contrast WCAG 1.4.11 (Level AA) asks of
+			// a graphical object a reader needs in order to understand the chart. The
+			// colours shared with the default series palette are the same values the
+			// chart runtime ships (assets/baratables-charts.js), so a preset and the
+			// default never disagree about a colour.
 			minimal: {
 				styleBackground: '#ffffff',
 				styleTextColor: '#24292f',
 				styleGridColor: '#e5e7eb',
 				styleFontSize: '14px',
-				stylePalette: ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df']
+				stylePalette: ['#5070dd', '#7f971f', '#505372', '#eb6400', '#0b98ca']
 			},
 			bold: {
 				styleBackground: '#1f2937',
 				styleTextColor: '#f9fafb',
 				styleGridColor: '#4b5563',
 				styleFontSize: '15px',
-				stylePalette: ['#fb628b', '#ffd10a', '#3fbe95', '#0ca8df', '#785db0']
+				stylePalette: ['#fa4b7a', '#aa8a00', '#359e7c', '#0b98ca', '#836ab7']
 			},
 			midnight: {
 				styleBackground: '#111827',
 				styleTextColor: '#f9fafb',
 				styleGridColor: '#374151',
 				styleFontSize: '14px',
-				stylePalette: ['#5070dd', '#3fbe95', '#b6d634', '#ff994d', '#fb628b']
+				stylePalette: ['#5070dd', '#359e7c', '#7f971f', '#eb6400', '#fa4b7a']
 			},
 			paper: {
 				styleBackground: '#faf7f2',
 				styleTextColor: '#3f3a34',
 				styleGridColor: '#e5ded2',
 				styleFontSize: '14px',
-				stylePalette: ['#9a60b4', '#c98a3b', '#5b8c5a', '#b0555a', '#4a6fa5']
+				stylePalette: ['#9a60b4', '#b77c32', '#5b8c5a', '#b0555a', '#4a6fa5']
 			}
 		}
 	};

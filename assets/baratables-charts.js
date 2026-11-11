@@ -19,10 +19,17 @@
 		return size >= 1 ? size : 0;
 	}
 
-	// The palette the vendored ECharts build (v6.1.0) draws with. The plugin used to
-	// carry its own hardcoded copy of the older ECharts 5 palette, which no longer
-	// matched the library it renders with.
-	var CHART_PALETTE = ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df', '#ffd10a', '#fb628b', '#785db0', '#3fbe95'];
+	// The plugin's own series palette.
+	//
+	// It used to be a copy of the vendored ECharts build's default colours, but six of
+	// the nine sat below the 3:1 non-text contrast WCAG 1.4.11 (Level AA) asks of a
+	// graphical object a reader needs in order to understand the chart -- a light chart
+	// series on a white page was often well under 1.5:1. The failing colours were
+	// darkened in place: every one of them keeps its hue, its saturation and its place
+	// in the series order, and every one of them now clears 3:1 on the light background a
+	// chart draws on as well as on the dark backgrounds the design presets use (the
+	// preset palettes in admin-core.js ship the same values).
+	var CHART_PALETTE = ['#5070dd', '#7f971f', '#505372', '#eb6400', '#0b98ca', '#aa8a00', '#fa4b7a', '#836ab7', '#359e7c'];
 
 	// The default series colors lead with the table's accent, so a themed accent colors
 	// the chart too; the rest of the palette follows.
@@ -51,7 +58,11 @@
 		} catch (err) {
 			accent = '';
 		}
-		return accent ? accentPalette(accent) : [];
+		// Without an accent -- a chart rendered outside a table wrapper, so the accent
+		// token never reaches it -- the plugin's own palette draws the series. Letting the
+		// library's default palette take over would put its own colours back on the
+		// canvas, and those include the low-contrast hues this palette exists to avoid.
+		return accent ? accentPalette(accent) : CHART_PALETTE.slice();
 	}
 
 	function normalizeConfig(config) {

@@ -350,9 +350,28 @@ abstract class BaraTables_Base_Repository {
 			update_post_meta($post_id, $meta_key, wp_slash($definition));
 			return;
 		}
-		// No definition is stored: create one, but only while no other writer created
-		// one in the meantime. The unique flag makes the insert fail in that case.
-		add_post_meta($post_id, $meta_key, wp_slash($definition), true);
+		// No definition is stored: create one.
+		//
+		// add_post_meta()'s unique flag is a SELECT followed by an INSERT, and the
+		// metadata table carries no unique index on (post_id, meta_key), so two
+		// writers that both find the key empty can both create a row for it. The
+		// row the read-back returns is the one that owns the key; a row this write
+		// created that the read-back does NOT return is this write's own duplicate,
+		// and it is removed so the key ends up holding exactly one definition.
+		$meta_id = add_post_meta($post_id, $meta_key, wp_slash($definition), true);
+		if (!is_numeric($meta_id) || (int) $meta_id <= 0) {
+			// Another writer stored a definition between the read and the insert, so
+			// this write created nothing and there is nothing of ours to undo.
+			return;
+		}
+		if (get_post_meta($post_id, $meta_key, true) === self::sanitize_definition($definition)) {
+			// This write's row is the one the read-back returns, so it owns the key.
+			return;
+		}
+		// Another writer's row is the one the read-back returns, so this write's row
+		// is the duplicate. It is removed by its own id, so the other writer's row
+		// is left untouched.
+		delete_metadata_by_mid('post', (int) $meta_id);
 	}
 
 	/**

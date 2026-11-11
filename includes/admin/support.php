@@ -487,6 +487,243 @@ class BaraTables_Admin_Action_Guard {
 	}
 }
 
+/**
+ * The version of a stored definition, as the editor rendered it.
+ *
+ * A save has to know WHICH definition it is about to replace. Reading the stored
+ * definition at save time cannot answer that: by then the other administrator's
+ * save has already landed, so the read returns THEIR definition and the write
+ * looks like it replaces the version the editor rendered. The editor therefore
+ * carries a token of the definition it was rendered from, and a save compares
+ * that token with the definition that is stored now.
+ *
+ * A refused save must also leave the post itself alone. WordPress writes the
+ * post row before save_post runs, so by the time a save notices the conflict
+ * the title and the publication status are already changed. The token is
+ * therefore checked before the row is written: the post fields a refused save
+ * would have changed are kept at the values the row holds now, which are the
+ * values the administrator who won committed.
+ */
+final class BaraTables_Definition_Version {
+	/** The hidden field the editor form carries the token in. */
+	public const TOKEN_FIELD = 'btbl_definition_token';
+
+	/** @var array<int,bool> The posts whose update this request refused. */
+	private static array $refused = [];
+
+	/** @var array<int,bool> The posts whose update this request has already judged. */
+	private static array $judged = [];
+
+	/** @var array<int,bool> The posts whose editor save this request has already handled. */
+	private static array $handled = [];
+
+	/** @var bool Whether this request is repairing a post after a refused save. */
+	private static bool $repairing = false;
+
+	/**
+	 * A token that identifies one exact stored definition.
+	 *
+	 * The value is hashed as it is stored, so two definitions that differ in any
+	 * way -- a changed value, a changed key, a changed order -- get different
+	 * tokens.
+	 *
+	 * @param mixed $value The stored definition, exactly as get_post_meta() returned it.
+	 */
+	public static function token($value): string {
+		return hash('sha256', serialize($value));
+	}
+
+	/**
+	 * The token of the definition that is stored for a post right now.
+	 */
+	public static function stored_token(int $post_id, string $meta_key): string {
+		return self::token(get_post_meta($post_id, $meta_key, true));
+	}
+
+	/**
+	 * The token the submitted editor form carries, or an empty string when it
+	 * carries none.
+	 */
+	public static function submitted_token(): string {
+		if (!isset($_POST[self::TOKEN_FIELD])) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- The token is not an authorisation: WordPress verifies the editor nonce before the post row is written, and a wrong token only refuses the save.
+			return '';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- The token is not an authorisation: WordPress verifies the editor nonce before the post row is written, the value is sanitised here, and a wrong token only refuses the save.
+		return sanitize_text_field(wp_unslash($_POST[self::TOKEN_FIELD]));
+	}
+
+	/**
+	 * The post the submitted editor form edits.
+	 *
+	 * WordPress sends the post an editor form belongs to in post_ID, and the
+	 * classic editor uses that same field to decide which post it writes. The
+	 * token belongs to that form, so it says something about that post alone.
+	 *
+	 * @return int The post id, or 0 when the request carries no editor form.
+	 */
+	public static function target_post_id(): int {
+		if (!isset($_POST['post_ID']) || !is_scalar($_POST['post_ID'])) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Standard WordPress admin form field; it names the post the request edits.
+			return 0;
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Standard WordPress admin form field; it names the post the request edits.
+		return (int) $_POST['post_ID'];
+	}
+
+	/**
+	 * Whether the submitted form was rendered from the definition that is stored now.
+	 *
+	 * A form without a token was rendered before the plugin carried one -- a page
+	 * open across the update -- so it cannot say which version it was rendered
+	 * from. Such a save falls back to the compare-and-set that runs inside the
+	 * request, which still catches a write that lands while this request runs.
+	 */
+	public static function matches(int $post_id, string $meta_key): bool {
+		$submitted = self::submitted_token();
+		if ($submitted === '') {
+			return true;
+		}
+		return hash_equals(self::stored_token($post_id, $meta_key), $submitted);
+	}
+
+	/**
+	 * Whether this request refused the update of a post.
+	 */
+	public static function refused(int $post_id): bool {
+		return !empty(self::$refused[$post_id]);
+	}
+
+	/**
+	 * Whether this request already judged the update of a post.
+	 *
+	 * A post is judged once per request. The update that carries the editor form
+	 * is the one the token speaks about; a later update of the same post in the
+	 * same request is a different operation -- a plugin renaming the post, the
+	 * slug repair -- and must not be judged against a form that has already been
+	 * applied or refused.
+	 */
+	public static function already_judged(int $post_id): bool {
+		return !empty(self::$judged[$post_id]);
+	}
+
+	/**
+	 * Whether this request already handled the editor save of a post.
+	 *
+	 * The form in a request is applied once. A second save of the same post in
+	 * the same request is not that form, and must not apply it again.
+	 */
+	public static function already_handled(int $post_id): bool {
+		return !empty(self::$handled[$post_id]);
+	}
+
+	/**
+	 * Record that this request handled the editor save of a post.
+	 */
+	public static function mark_handled(int $post_id): void {
+		self::$handled[$post_id] = true;
+	}
+
+	/**
+	 * Mark this request as repairing a post, so the check below stands aside.
+	 */
+	public static function begin_repair(): void {
+		self::$repairing = true;
+	}
+
+	/**
+	 * End a repair started by begin_repair().
+	 */
+	public static function end_repair(): void {
+		self::$repairing = false;
+	}
+
+	/**
+	 * Render the hidden field that carries the version of the definition the editor
+	 * form was rendered from.
+	 *
+	 * A save that finds a different definition stored compares this token with the
+	 * one that is stored now, and refuses to overwrite it.
+	 */
+	public static function render_token_field(int $post_id, string $meta_key): void {
+		printf(
+			'<input type="hidden" name="%s" value="%s" />',
+			esc_attr(self::TOKEN_FIELD),
+			esc_attr(self::stored_token($post_id, $meta_key))
+		);
+	}
+
+	/**
+	 * The metadata key that holds the definition of a post type, or an empty
+	 * string for a post type the plugin does not own.
+	 */
+	public static function meta_key_for_post_type(string $post_type): string {
+		if ($post_type === BaraTables_Repository::CPT) {
+			return BaraTables_Repository::META_KEY;
+		}
+		if ($post_type === BaraTables_Chart_Repository::CPT) {
+			return BaraTables_Chart_Repository::META_KEY;
+		}
+		return '';
+	}
+
+	/**
+	 * Keep the post fields a refused save would have changed.
+	 *
+	 * WordPress writes the post row before save_post runs, so the title and the
+	 * publication status are already changed by the time the save itself notices
+	 * that somebody else committed a change in the meantime. The check runs here
+	 * instead, before the row is written: the fields are kept at the values the
+	 * row holds now, so a refused save undoes nothing and takes nothing away.
+	 *
+	 * @param array<string,mixed> $data The post data about to be written.
+	 * @param array<string,mixed> $postarr The sanitized post data.
+	 * @return array<string,mixed> The post data to write.
+	 */
+	public static function preserve_post_data($data, $postarr) {
+		if (!is_array($data) || !is_array($postarr) || self::$repairing) {
+			return $data;
+		}
+		// A request without the token field carries no editor form, so there is
+		// nothing to judge here. A page that was open across the update lands
+		// here too: it falls back to the compare-and-set that runs inside the
+		// request, which still catches a write that lands while it runs.
+		if (self::submitted_token() === '') {
+			return $data;
+		}
+		$post_id = isset($postarr['ID']) ? (int) $postarr['ID'] : 0;
+		if ($post_id <= 0) {
+			return $data;
+		}
+		// The token belongs to the form in this request, and the form edits one
+		// post. An update of another post is not that form's business, and an
+		// update of the same post that comes after the form was judged is a
+		// different operation -- a plugin renaming the post, the slug repair.
+		// Neither may be refused against a form that has already been applied or
+		// refused.
+		$target = self::target_post_id();
+		if (($target > 0 && $target !== $post_id) || self::already_judged($post_id)) {
+			return $data;
+		}
+		self::$judged[$post_id] = true;
+		$meta_key = self::meta_key_for_post_type((string) ($postarr['post_type'] ?? ''));
+		if ($meta_key === '' || self::matches($post_id, $meta_key)) {
+			return $data;
+		}
+		self::$refused[$post_id] = true;
+		foreach (['post_content', 'post_title', 'post_excerpt', 'post_status', 'post_name'] as $field) {
+			if (!array_key_exists($field, $data)) {
+				continue;
+			}
+			$current = get_post_field($field, $post_id, 'raw');
+			if ($current === null || $current === '') {
+				continue;
+			}
+			// The data about to be written is slashed; the row holds plain values.
+			$data[$field] = wp_slash($current);
+		}
+		return $data;
+	}
+}
+
 /** Shared boundary checks for authenticated admin fragment requests. */
 final class BaraTables_Admin_Ajax_Guard {
 	public static function verify(string $nonce_action, string $nonce_field): void {
@@ -742,6 +979,17 @@ class BaraTables_Entity_Persistence {
 				$this->meta_slug_key,
 				$snapshot['meta_slug'] ?? ['exists' => false, 'value' => '']
 			);
+		} catch (Throwable $throwable) {
+			// A throwable during the restore -- a filter on the post update, a
+			// third-party hook -- must not escape: the administrator would get a PHP
+			// fatal instead of the "could not be saved" notice, and the definition
+			// and the lookup ID would stay half-written. The restore is reported as
+			// failed instead, which is what the caller acts on.
+			$post_error = new WP_Error(
+				'baratables_entity_rollback_failed',
+				__('WordPress could not completely restore the previous plugin data.', 'baratables'),
+				['exception' => get_class($throwable) . ': ' . $throwable->getMessage()]
+			);
 		} finally {
 			BaraTables_Persistence_Guard::end();
 			if ($callback_registered) {
@@ -774,6 +1022,15 @@ class BaraTables_Entity_Persistence {
 					'ID'        => $post_id,
 					'post_name' => $slug,
 				], true);
+			} catch (Throwable $throwable) {
+				// The same rule as everywhere else that writes: a throwable is
+				// reported, never allowed to escape into the save that triggered it.
+				// The finally block below still ends the persistence guard.
+				return new WP_Error(
+					'baratables_slug_not_repaired',
+					__('WordPress did not repair the stored ID.', 'baratables'),
+					['exception' => get_class($throwable) . ': ' . $throwable->getMessage()]
+				);
 			} finally {
 				BaraTables_Persistence_Guard::end();
 			}

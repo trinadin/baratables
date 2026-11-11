@@ -10,7 +10,9 @@
  * The journal is one option row, so two requests can write it at the same time.
  * Every write therefore merges inside update_option(): the value another request
  * stored in the meantime is read again and kept, so a queued entry is never lost
- * to a concurrent retry.
+ * to a concurrent retry. Two requests that queue an entry at the very same
+ * moment can still race on the row's creation, so the row is created with
+ * add_option(), which refuses to write over a row that already exists.
  */
 
 if (!defined('ABSPATH')) {
@@ -125,11 +127,22 @@ final class BaraTables_Chart_Link_Recovery {
 		};
 		add_filter('pre_update_option_' . self::CHART_LINK_RECOVERY_OPTION, $merge, 10, 2);
 		try {
+			// The row may not exist yet. add_option() refuses to write an option that
+			// already exists, so a row another request created in the meantime is not
+			// overwritten -- the write below merges into it instead. Its "does not
+			// exist" cache entry is cleared first, so that check reads the database
+			// instead of trusting a cache entry that still says the row is absent.
+			wp_cache_delete('notoptions', 'options');
+			add_option(
+				self::CHART_LINK_RECOVERY_OPTION,
+				array_replace(self::current_entries(), $entries),
+				'',
+				false
+			);
 			update_option(self::CHART_LINK_RECOVERY_OPTION, $entries, false);
 			if (!self::contains_entries(self::current_entries(), $entries)) {
-				// Another request created the journal between the read and the write.
-				// WordPress refuses to create a row that already exists, so the merge
-				// is written once more, now that the row is there.
+				// Our entries are not in the journal: another request wrote over
+				// them. Write once more, now that the row is there.
 				update_option(self::CHART_LINK_RECOVERY_OPTION, $entries, false);
 			}
 		} finally {
